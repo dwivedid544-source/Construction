@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Environment Variables & Credentials
+.env
+*.env
+
+# Logs & Debugging Output
+logs
+*.log
+npm-debug.log*
+db_debug_output.json
+diff.txt
+diff_utf8.txt
+
+# Uploads & Temp Files
+uploads/
+tmp/
+
+# OS Files
+.DS_Store
+Thumbs.db
