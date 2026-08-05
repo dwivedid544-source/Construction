@@ -144,7 +144,7 @@ const loginUser = async (req, res, next) => {
                     if (emailLower.includes('foreman')) return 'FOREMAN';
                     if (emailLower.includes('worker')) return 'WORKER';
                     if (emailLower.includes('client')) return 'CLIENT';
-                    if (emailLower.includes('subcontractor') || emailLower.includes('sub')) return 'SUBCONTRACTOR';
+                    if (emailLower.includes('subcontractor') || emailLower.includes('sub') || emailLower.includes('contractor')) return 'SUBCONTRACTOR';
                     if (emailLower.includes('engineer')) return 'ENGINEER';
                     return 'COMPANY_OWNER';
                 };
