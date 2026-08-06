@@ -1,7 +1,25 @@
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
-});
+let prismaInstance = null;
 
-module.exports = prisma;
+const getPrismaClient = () => {
+  if (!prismaInstance) {
+    // Only instantiate Prisma Client when Prisma driver is active
+    try {
+      prismaInstance = new PrismaClient();
+    } catch (e) {
+      console.warn('PrismaClient lazy initialization warning:', e.message);
+    }
+  }
+  return prismaInstance;
+};
+
+module.exports = new Proxy({}, {
+  get(target, prop) {
+    const client = getPrismaClient();
+    if (!client) {
+      throw new Error(`PrismaClient is not initialized. Ensure process.env.DB_DRIVER='prisma' and connection is configured.`);
+    }
+    return client[prop];
+  }
+});
