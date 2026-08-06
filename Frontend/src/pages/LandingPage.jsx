@@ -474,7 +474,11 @@ const LandingPage = () => {
                     {/* Login CTA Button */}
                     <div style={{ display: isMobile ? 'none' : 'flex', alignItems: 'center', gap: 14 }}>
                         <button
-                            onClick={() => navigate('/login')}
+                            onClick={() => {
+                                const el = document.getElementById('pricing');
+                                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                else window.location.hash = '#pricing';
+                            }}
                             className="btn-blue"
                             style={{ padding: '9px 22px', fontSize: 13 }}
                         >
@@ -526,7 +530,12 @@ const LandingPage = () => {
                             </a>
                         ))}
                         <button
-                            onClick={() => { setIsMenuOpen(false); navigate('/login'); }}
+                            onClick={() => {
+                                setIsMenuOpen(false);
+                                const el = document.getElementById('pricing');
+                                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                else window.location.hash = '#pricing';
+                            }}
                             className="btn-blue"
                             style={{ width: '100%', marginTop: 8 }}
                         >
