@@ -4,12 +4,12 @@ import {
     Menu, X, ArrowRight, Building2, HardHat, Hammer, Wrench,
     CheckCircle, ChevronRight, Phone, Mail, MapPin, Star, Shield, Zap, Flame, Award,
     Users, Clock, Activity, ArrowUpRight, Lock, Check, HelpCircle, ClipboardCheck,
-    Globe, Smartphone, FileText, PieChart, Wallet, Layers, ShieldCheck, Truck
+    Globe, Smartphone, FileText, PieChart, Wallet, Layers, ShieldCheck, Truck,
+    Instagram, Linkedin, Youtube
 } from 'lucide-react';
 import Logo from '../assets/images/logo.png.jpeg';
 import landingPageImg from '../assets/images/landingpage.png';
 import api from '../utils/api';
-import WhatsAppFloatingButton from '../components/WhatsAppFloatingButton';
 
 /* ─── Animated Counter Component ───────────────────────────────────────── */
 const Counter = ({ end, suffix = '' }) => {
@@ -42,6 +42,8 @@ const LandingPage = () => {
     const [scrolled, setScrolled] = useState(false);
     const [pricingPlans, setPricingPlans] = useState([]);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [privacyOpen, setPrivacyOpen] = useState(false);
+    const [termsOpen, setTermsOpen] = useState(false);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -124,6 +126,75 @@ const LandingPage = () => {
             }
         })();
     }, []);
+
+    const handleRazorpayPayment = (amountInRupees = 999, planName = 'KT Construct Subscription') => {
+        let numericAmount = 999;
+        if (typeof amountInRupees === 'number') {
+            numericAmount = amountInRupees;
+        } else if (typeof amountInRupees === 'string') {
+            const cleaned = amountInRupees.replace(/[^0-9]/g, '');
+            numericAmount = cleaned === '' ? 0 : parseInt(cleaned, 10);
+        }
+
+        // FREE PLAN (₹0) -> Skip Razorpay payment & redirect to Register for 7-day trial!
+        if (numericAmount === 0 || amountInRupees === 0 || amountInRupees === '₹0' || String(planName).toLowerCase().includes('free')) {
+            localStorage.setItem('selectedPlan', 'Free Trial (7 Days)');
+            localStorage.setItem('isTrialActive', 'true');
+            navigate('/register');
+            return;
+        }
+
+        const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TMRyc8lDjomNTV';
+
+        const loadScript = (src) => {
+            return new Promise((resolve) => {
+                if (window.Razorpay) {
+                    resolve(true);
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = () => resolve(true);
+                script.onerror = () => resolve(false);
+                document.body.appendChild(script);
+            });
+        };
+
+        loadScript('https://checkout.razorpay.com/v1/checkout.js').then((res) => {
+            if (!res) {
+                alert('Razorpay SDK failed to load. Please check your internet connection.');
+                return;
+            }
+
+            const options = {
+                key: key,
+                amount: numericAmount * 100, // Amount in paise
+                currency: 'INR',
+                name: 'Kiaan Technology',
+                description: planName,
+                image: Logo,
+                handler: function (response) {
+                    alert(`Payment Successful!\nPayment ID: ${response.razorpay_payment_id}`);
+                    localStorage.setItem('subscriptionStatus', 'active');
+                    navigate('/login');
+                },
+                prefill: {
+                    name: 'Customer',
+                    email: 'info@kiaantechnology.com',
+                    contact: '9752100980'
+                },
+                theme: {
+                    color: '#3b82f6'
+                }
+            };
+
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', function (response) {
+                alert(`Payment Failed: ${response.error?.description || 'Transaction declined'}`);
+            });
+            rzp.open();
+        });
+    };
 
     const navLinks = [
         { name: 'Home', href: '#home' },
@@ -513,7 +584,7 @@ const LandingPage = () => {
 
                             {/* CTAs */}
                             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 48 }}>
-                                <button onClick={() => navigate('/login')} className="btn-blue">
+                                <button onClick={() => handleRazorpayPayment(999, 'KT Construct Starter Plan')} className="btn-blue">
                                     Get Started Free <ArrowRight size={16} />
                                 </button>
                                 <button
@@ -909,7 +980,7 @@ const LandingPage = () => {
                                 {/* Get Started Button placed cleanly at the bottom */}
                                 <div style={{ marginTop: 'auto', paddingTop: 16 }}>
                                     <button
-                                        onClick={() => navigate('/login')}
+                                        onClick={() => handleRazorpayPayment(plan.price, plan.name)}
                                         style={{
                                             width: '100%',
                                             padding: '12px 20px',
@@ -971,7 +1042,7 @@ const LandingPage = () => {
                                 Join hundreds of general contractors and site engineers who have already streamlined their construction projects with KT Construct.
                             </p>
 
-                            <button onClick={() => navigate('/login')} className="btn-white">
+                            <button onClick={() => handleRazorpayPayment(999, 'KT Construct Free Trial')} className="btn-white">
                                 Start Free Trial <ArrowRight size={16} />
                             </button>
                         </div>
@@ -981,70 +1052,119 @@ const LandingPage = () => {
 
             {/* ══ FOOTER SECTION ══════════════════════════════════════════════ */}
             <footer id="contact" style={{
-                background: '#070b19',
-                borderTop: '1px solid rgba(59, 130, 246, 0.2)',
-                paddingTop: 70,
-                paddingBottom: 30
+                background: '#0a0d18',
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                paddingTop: 60,
+                paddingBottom: 30,
+                color: '#94a3b8'
             }}>
                 <div className="container-custom">
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                         gap: 40,
-                        marginBottom: 60
+                        marginBottom: 50
                     }}>
                         {/* Brand Info */}
-                        <div style={{ gridColumn: isMobile ? 'span 1' : 'span 1' }}>
+                        <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                                 <div style={{
-                                    width: 40,
-                                    height: 40,
+                                    width: 38,
+                                    height: 38,
                                     borderRadius: '50%',
-                                    background: 'radial-gradient(circle, rgba(37, 99, 235, 0.3) 0%, rgba(15, 23, 42, 0.85) 100%)',
-                                    border: '1.5px solid rgba(96, 165, 250, 0.45)',
+                                    background: 'radial-gradient(circle, rgba(217, 119, 6, 0.3) 0%, rgba(15, 23, 42, 0.9) 100%)',
+                                    border: '1.5px solid rgba(245, 158, 11, 0.5)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    padding: 5,
-                                    boxShadow: '0 0 14px rgba(37, 99, 235, 0.35)',
+                                    padding: 4,
+                                    boxShadow: '0 0 12px rgba(245, 158, 11, 0.25)',
                                     flexShrink: 0,
                                     overflow: 'hidden'
                                 }}>
-                                    <img src={Logo} alt="KT Construct" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    <img src={Logo} alt="KT Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                 </div>
-                                <span className="font-title" style={{ fontSize: 16, fontWeight: 800, color: '#ffffff' }}>
-                                    KT <span style={{ color: '#3b82f6' }}>CONSTRUCT</span>
+                                <span className="font-title" style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', letterSpacing: '0.04em' }}>
+                                    KIAAN <span style={{ color: '#d97706', fontWeight: 600 }}>TECHNOLOGY</span>
                                 </span>
                             </div>
-                            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, marginBottom: 20 }}>
-                                The complete construction management platform for contractors, site engineers, and project leaders. Streamline RFQs, bids, POs, and daily site logs.
+                            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, marginBottom: 20, maxWidth: 300 }}>
+                                The ultimate super admin platform to manage all your business softwares from one centralized, intelligent dashboard.
                             </p>
-                            {/* Social Icons */}
-                            <div style={{ display: 'flex', gap: 10 }}>
-                                {['KC', 'IN', 'TW', 'FB'].map((social, i) => (
-                                    <div key={i} style={{
-                                        width: 32, height: 32, borderRadius: 8,
-                                        background: 'rgba(255, 255, 255, 0.05)',
-                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                            {/* Social Hyperlinked Icons */}
+                            <div style={{ display: 'flex', gap: 12 }}>
+                                <a href="https://www.instagram.com/kiaan_technology4/" target="_blank" rel="noopener noreferrer"
+                                    title="Instagram"
+                                    style={{
+                                        width: 36, height: 36, borderRadius: '50%',
+                                        background: 'rgba(255, 255, 255, 0.06)',
+                                        border: '1px solid rgba(255, 255, 255, 0.12)',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: 11, fontWeight: 700, color: '#60a5fa', cursor: 'pointer'
-                                    }}>
-                                        {social}
-                                    </div>
-                                ))}
+                                        color: '#cbd5e1', textDecoration: 'none', transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#ffffff'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'; e.currentTarget.style.color = '#cbd5e1'; }}
+                                >
+                                    <Instagram size={16} />
+                                </a>
+
+                                <a href="https://www.linkedin.com/company/kiaan-technology-pvt-ltd/posts/?feedView=all" target="_blank" rel="noopener noreferrer"
+                                    title="LinkedIn"
+                                    style={{
+                                        width: 36, height: 36, borderRadius: '50%',
+                                        background: 'rgba(255, 255, 255, 0.06)',
+                                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: '#cbd5e1', textDecoration: 'none', transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#ffffff'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'; e.currentTarget.style.color = '#cbd5e1'; }}
+                                >
+                                    <Linkedin size={16} />
+                                </a>
+
+                                <a href="https://www.youtube.com/@kiaantechnology-r3p" target="_blank" rel="noopener noreferrer"
+                                    title="YouTube"
+                                    style={{
+                                        width: 36, height: 36, borderRadius: '50%',
+                                        background: 'rgba(255, 255, 255, 0.06)',
+                                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: '#cbd5e1', textDecoration: 'none', transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#ffffff'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'; e.currentTarget.style.color = '#cbd5e1'; }}
+                                >
+                                    <Youtube size={16} />
+                                </a>
+
+                                <a href="https://kiaantechnology.com/" target="_blank" rel="noopener noreferrer"
+                                    title="Website"
+                                    style={{
+                                        width: 36, height: 36, borderRadius: '50%',
+                                        background: 'rgba(255, 255, 255, 0.06)',
+                                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: '#cbd5e1', textDecoration: 'none', transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#ffffff'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)'; e.currentTarget.style.color = '#cbd5e1'; }}
+                                >
+                                    <Globe size={16} />
+                                </a>
                             </div>
                         </div>
 
                         {/* Quick Links */}
                         <div>
-                            <h4 style={{ fontSize: 14, fontWeight: 700, color: '#ffffff', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <h4 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', marginBottom: 18 }}>
                                 Quick Links
                             </h4>
                             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {['Home', 'About Us', 'Pricing', 'Blog', 'Contact'].map(link => (
                                     <li key={link}>
                                         <a href={'#' + link.toLowerCase().replace(' ', '-')} style={{ fontSize: 13, color: '#94a3b8', textDecoration: 'none', transition: 'color 0.2s' }}
-                                            onMouseEnter={e => e.target.style.color = '#60a5fa'}
+                                            onMouseEnter={e => e.target.style.color = '#ffffff'}
                                             onMouseLeave={e => e.target.style.color = '#94a3b8'}
                                         >
                                             {link}
@@ -1054,16 +1174,16 @@ const LandingPage = () => {
                             </ul>
                         </div>
 
-                        {/* Software Modules */}
+                        {/* Softwares */}
                         <div>
-                            <h4 style={{ fontSize: 14, fontWeight: 700, color: '#ffffff', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Software Modules
+                            <h4 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', marginBottom: 18 }}>
+                                Softwares
                             </h4>
                             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                {['Site Daily Logs', 'RFQs & Bids Management', 'Purchase Orders (PO)', 'Subcontractor Portal', 'Blueprint Vault'].map(s => (
+                                {['HRM Software', 'CRM Software', 'Billing System', 'Inventory Management', 'Project Management'].map(s => (
                                     <li key={s}>
                                         <a href="#features" style={{ fontSize: 13, color: '#94a3b8', textDecoration: 'none', transition: 'color 0.2s' }}
-                                            onMouseEnter={e => e.target.style.color = '#60a5fa'}
+                                            onMouseEnter={e => e.target.style.color = '#ffffff'}
                                             onMouseLeave={e => e.target.style.color = '#94a3b8'}
                                         >
                                             {s}
@@ -1075,21 +1195,31 @@ const LandingPage = () => {
 
                         {/* Contact Us */}
                         <div>
-                            <h4 style={{ fontSize: 14, fontWeight: 700, color: '#ffffff', marginBottom: 18, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            <h4 style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', marginBottom: 18 }}>
                                 Contact Us
                             </h4>
-                            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 14 }}>
                                 <li style={{ display: 'flex', gap: 10, fontSize: 13, color: '#94a3b8' }}>
-                                    <MapPin size={16} color="#60a5fa" style={{ flexShrink: 0, marginTop: 2 }} />
-                                    <span>24751, Sector 62 Noida, India, 20130</span>
+                                    <MapPin size={16} color="#8b5cf6" style={{ flexShrink: 0, marginTop: 2 }} />
+                                    <span>2341/E, Sudama Nagar, Indore, M.P.</span>
                                 </li>
                                 <li style={{ display: 'flex', gap: 10, fontSize: 13, color: '#94a3b8' }}>
-                                    <Phone size={16} color="#60a5fa" style={{ flexShrink: 0 }} />
-                                    <span>+91 97551 55968</span>
+                                    <Phone size={16} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                                    <a href="tel:+919752100980" style={{ color: '#94a3b8', textDecoration: 'none' }}
+                                        onMouseEnter={e => e.target.style.color = '#ffffff'}
+                                        onMouseLeave={e => e.target.style.color = '#94a3b8'}
+                                    >
+                                        +91-97521 00980
+                                    </a>
                                 </li>
                                 <li style={{ display: 'flex', gap: 10, fontSize: 13, color: '#94a3b8' }}>
-                                    <Mail size={16} color="#60a5fa" style={{ flexShrink: 0 }} />
-                                    <span>info@kiaantechnology.com</span>
+                                    <Mail size={16} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                                    <a href="mailto:info@kiaantechnology.com" style={{ color: '#94a3b8', textDecoration: 'none' }}
+                                        onMouseEnter={e => e.target.style.color = '#ffffff'}
+                                        onMouseLeave={e => e.target.style.color = '#94a3b8'}
+                                    >
+                                        info@kiaantechnology.com
+                                    </a>
                                 </li>
                             </ul>
                         </div>
@@ -1106,11 +1236,31 @@ const LandingPage = () => {
                         gap: 16
                     }}>
                         <p style={{ fontSize: 12, color: '#64748b', textAlign: isMobile ? 'center' : 'left' }}>
-                            © {new Date().getFullYear()} Kiaan Technology. All rights reserved.<br />
-                            <span style={{ opacity: 0.8 }}>Powered by Kiaan Technology</span>
+                            © {new Date().getFullYear()} Master Hub SaaS. All rights reserved.<br />
+                            <a href="https://kiaantechnology.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}>
+                                Powered by Kiaan Technology
+                            </a>
                         </p>
                         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
-                            {['Privacy Policy', 'Terms & Conditions', 'Documentation', 'Report Owner', 'Contact Us'].map(policy => (
+                            <button onClick={() => setTermsOpen(true)} style={{
+                                fontSize: 12, color: '#64748b', background: 'none', border: 'none',
+                                cursor: 'pointer', padding: 0, fontFamily: 'inherit'
+                            }}
+                                onMouseEnter={e => e.target.style.color = '#94a3b8'}
+                                onMouseLeave={e => e.target.style.color = '#64748b'}
+                            >
+                                Terms &amp; Conditions
+                            </button>
+                            <button onClick={() => setPrivacyOpen(true)} style={{
+                                fontSize: 12, color: '#64748b', background: 'none', border: 'none',
+                                cursor: 'pointer', padding: 0, fontFamily: 'inherit'
+                            }}
+                                onMouseEnter={e => e.target.style.color = '#94a3b8'}
+                                onMouseLeave={e => e.target.style.color = '#64748b'}
+                            >
+                                Privacy Policy
+                            </button>
+                            {['Documentation', 'Support Center', 'Contact Us'].map(policy => (
                                 <a key={policy} href="#" style={{ fontSize: 12, color: '#64748b', textDecoration: 'none' }}
                                     onMouseEnter={e => e.target.style.color = '#94a3b8'}
                                     onMouseLeave={e => e.target.style.color = '#64748b'}
@@ -1122,7 +1272,267 @@ const LandingPage = () => {
                     </div>
                 </div>
             </footer>
-            <WhatsAppFloatingButton />
+
+            {/* ── Privacy Policy Modal ── */}
+            {privacyOpen && (
+                <div onClick={() => setPrivacyOpen(false)} style={{
+                    position: 'fixed', inset: 0, zIndex: 9999,
+                    background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '24px 16px',
+                }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: '#fff', borderRadius: 20, width: '100%', maxWidth: 720,
+                        maxHeight: '88vh', display: 'flex', flexDirection: 'column',
+                        boxShadow: '0 32px 80px rgba(0,0,0,0.35)',
+                        overflow: 'hidden',
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            padding: '20px 28px 18px',
+                            borderBottom: '1px solid #f1f5f9',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                            flexShrink: 0,
+                        }}>
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>Privacy Policy</h2>
+                                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Kiaan Technology Private Limited — Last Updated: 8/6/2026</p>
+                            </div>
+                            <button onClick={() => setPrivacyOpen(false)} style={{
+                                width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.15)',
+                                background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                                flexShrink: 0,
+                            }}>×</button>
+                        </div>
+
+                        {/* Scrollable body */}
+                        <div style={{ overflowY: 'auto', padding: '24px 28px', flex: 1, lineHeight: 1.75, color: '#334155', fontSize: 13.5 }}>
+                            <p style={{ marginTop: 0, color: '#475569' }}>
+                                Welcome to <strong>Kiaan Technology Private Limited</strong>. This Privacy Policy outlines how we collect, use, process, and protect your personal information when you use our website (<a href="https://kiaantechnology.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1' }}>kiaantechnology.com</a>), SaaS platforms, mobile applications, and services (including Payroll Management, HRMS, Job Portals, and Payment Integration). By using our services, you agree to the collection and use of information in accordance with this policy. This policy complies with the <strong>Indian IT Act 2000, DPDP Act 2023, GDPR</strong>, and app store guidelines.
+                            </p>
+
+                            {[{
+                                title: '1. Information Collection',
+                                content: null,
+                                bullets: [
+                                    '<strong>Personal Data:</strong> Name, email address, phone number, physical address, KYC documents, etc.',
+                                    '<strong>Professional Data:</strong> Employee ID, designation, salary details, and resume data for HRMS and Job portals.',
+                                    '<strong>Usage Data:</strong> IP address, browser type, device identifiers, and platform usage metrics.',
+                                ]
+                            }, {
+                                title: '2. Personal Data Usage',
+                                content: 'We use your data to:',
+                                bullets: [
+                                    'Provide, operate, and maintain our software solutions.',
+                                    'Process payroll, attendance, and recruitment functionalities.',
+                                    'Improve and personalize user experience.',
+                                    'Communicate regarding updates, security alerts, and support.',
+                                ]
+                            }, {
+                                title: '3. Cookies Policy',
+                                content: 'We use cookies and similar tracking technologies to track activity on our service and store certain information. You can instruct your browser to refuse all cookies or to indicate when a cookie is being sent.',
+                                bullets: null
+                            }, {
+                                title: '4. Data Retention',
+                                content: 'We retain your personal data only for as long as is necessary for the purposes set out in this Privacy Policy, complying with legal obligations, resolving disputes, and enforcing our legal agreements.',
+                                bullets: null
+                            }, {
+                                title: '5. Data Security',
+                                content: 'We implement industry-standard security measures (including encryption and secure server infrastructure) to protect your data. However, no method of transmission over the Internet or electronic storage is 100% secure.',
+                                bullets: null
+                            }, {
+                                title: '6. User Rights',
+                                content: 'Depending on your jurisdiction (e.g., GDPR, DPDP), you have the right to:',
+                                bullets: [
+                                    'Access, update, or delete your personal data.',
+                                    'Withdraw consent at any time.',
+                                    'Object to the processing of your data.',
+                                    'Request data portability.',
+                                ]
+                            }, {
+                                title: '7. Third-Party Services',
+                                content: 'We may employ third-party companies (such as Razorpay for payments) to facilitate our service. These third parties have access to your Personal Data only to perform these tasks on our behalf and are obligated not to disclose or use it for any other purpose.',
+                                bullets: null
+                            }, {
+                                title: '8. Analytics & Tracking',
+                                content: 'We may use third-party Service Providers to monitor and analyze the use of our service to improve our offerings.',
+                                bullets: null
+                            }, {
+                                title: '9. Children\'s Privacy',
+                                content: 'Our services are not intended for use by children under the age of 18. We do not knowingly collect personally identifiable information from children.',
+                                bullets: null
+                            }, {
+                                title: '10. International Data Transfers',
+                                content: 'Your information, including Personal Data, may be transferred to — and maintained on — computers located outside of your state or country where data protection laws may differ. By consenting to this policy, you agree to that transfer.',
+                                bullets: null
+                            }, {
+                                title: '11. Changes to Policy',
+                                content: 'We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last Updated" date.',
+                                bullets: null
+                            }].map(section => (
+                                <div key={section.title} style={{ marginBottom: 20 }}>
+                                    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 6px', paddingBottom: 6, borderBottom: '1px solid #f1f5f9' }}>{section.title}</h3>
+                                    {section.content && <p style={{ margin: '0 0 8px' }}>{section.content}</p>}
+                                    {section.bullets && (
+                                        <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                            {section.bullets.map((b, i) => (
+                                                <li key={i} dangerouslySetInnerHTML={{ __html: b }} />
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            ))}
+
+                            {/* Contact block */}
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px', marginTop: 8 }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 10px' }}>12. Contact Information</h3>
+                                <p style={{ margin: '0 0 5px' }}>If you have any questions about this Privacy Policy, please contact us:</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#475569' }}>
+                                    <span>🏢 <strong>Company:</strong> Kiaan Technology Private Limited</span>
+                                    <span>📍 <strong>Address:</strong> 2341/E, Sudama Nagar, Indore, Madhya Pradesh, India</span>
+                                    <span>📞 <strong>Phone:</strong> <a href="tel:+919752100980" style={{ color: '#6366f1' }}>+91-97521 00980</a></span>
+                                    <span>✉️ <strong>Email:</strong> <a href="mailto:info@kiaantechnology.com" style={{ color: '#6366f1' }}>info@kiaantechnology.com</a></span>
+                                    <span>🌐 <strong>Website:</strong> <a href="https://kiaantechnology.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1' }}>kiaantechnology.com</a></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{
+                            padding: '14px 28px', borderTop: '1px solid #f1f5f9',
+                            display: 'flex', justifyContent: 'flex-end', flexShrink: 0,
+                            background: '#f8fafc',
+                        }}>
+                            <button onClick={() => setPrivacyOpen(false)} style={{
+                                background: '#0f172a', color: '#fff', border: 'none',
+                                borderRadius: 8, padding: '9px 24px', fontSize: 13,
+                                fontWeight: 600, cursor: 'pointer', letterSpacing: '0.02em',
+                            }}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Terms & Conditions Modal ── */}
+            {termsOpen && (
+                <div onClick={() => setTermsOpen(false)} style={{
+                    position: 'fixed', inset: 0, zIndex: 9999,
+                    background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '24px 16px',
+                }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: '#fff', borderRadius: 20, width: '100%', maxWidth: 720,
+                        maxHeight: '88vh', display: 'flex', flexDirection: 'column',
+                        boxShadow: '0 32px 80px rgba(0,0,0,0.35)',
+                        overflow: 'hidden',
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            padding: '20px 28px 18px',
+                            borderBottom: '1px solid #f1f5f9',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                            flexShrink: 0,
+                        }}>
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>Terms &amp; Conditions</h2>
+                                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Kiaan Technology Private Limited — Last Updated: 8/6/2026</p>
+                            </div>
+                            <button onClick={() => setTermsOpen(false)} style={{
+                                width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.15)',
+                                background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                                flexShrink: 0,
+                            }}>×</button>
+                        </div>
+
+                        {/* Scrollable body */}
+                        <div style={{ overflowY: 'auto', padding: '24px 28px', flex: 1, lineHeight: 1.75, color: '#334155', fontSize: 13.5 }}>
+                            <p style={{ marginTop: 0, color: '#475569' }}>
+                                Welcome to the services provided by <strong>Kiaan Technology Private Limited</strong>. By accessing or using our website (<a href="https://kiaantechnology.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1' }}>kiaantechnology.com</a>), SaaS Platforms, Mobile Applications, and related services, you agree to be bound by these Terms and Conditions.
+                            </p>
+
+                            {[{
+                                title: '1. Acceptance of Terms',
+                                content: 'By accessing our software services, you confirm that you have read, understood, and agreed to these terms. If you do not agree, you must not use our services.'
+                            }, {
+                                title: '2. User Accounts',
+                                content: 'You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You must notify us immediately of any unauthorized use.'
+                            }, {
+                                title: '3. Service Usage Rules',
+                                content: 'Our services (including Admin, Employer, Employee, and Job Seeker Portals) must be used lawfully. You shall not engage in reverse engineering, data scraping, or deploying malicious code on our platforms.'
+                            }, {
+                                title: '4. Payroll, HRMS & Job Portal Services',
+                                content: 'While we strive for accuracy in our Payroll Management, HRMS, and Recruitment platforms, Kiaan Technology Pvt Ltd is not liable for data entry errors made by users. Employers are solely responsible for compliance with local labor and tax laws.'
+                            }, {
+                                title: '5. Payment Terms & Subscription Plans',
+                                content: 'Payments for subscriptions, API usage, and app developments are handled via integrated secure payment gateways (e.g., Razorpay). Subscription plans auto-renew unless cancelled prior to the renewal date.'
+                            }, {
+                                title: '6. Refund & Cancellation Rules',
+                                content: 'Unless otherwise stated in a specific service contract, all SaaS subscription fees are non-refundable. Cancellations will stop future billing, but active subscriptions will run until the end of the current billing cycle.'
+                            }, {
+                                title: '7. Intellectual Property Rights',
+                                content: 'All code, designs, algorithms, and intellectual property provided by Kiaan Technology Private Limited remain our exclusive property. The software is licensed, not sold, to you.'
+                            }, {
+                                title: '8. Limitation of Liability',
+                                content: 'In no event shall Kiaan Technology Private Limited be liable for any indirect, incidental, special, or consequential damages arising out of your use of the services.'
+                            }, {
+                                title: '9. Service Availability',
+                                content: 'We aim for 99.9% uptime but do not guarantee uninterrupted access. We reserve the right to perform scheduled maintenance, which may temporarily suspend service access.'
+                            }, {
+                                title: '10. Termination & Suspension',
+                                content: 'We reserve the right to suspend or terminate your account immediately if you breach these terms or engage in fraudulent activities.'
+                            }, {
+                                title: '11. Confidentiality',
+                                content: 'Both parties agree to keep all proprietary information, business metrics, and user data strictly confidential and protected from unauthorized disclosure.'
+                            }, {
+                                title: '12. Dispute Resolution & Governing Law',
+                                content: 'These Terms shall be governed by the laws of India. Any disputes arising out of or in connection with these terms shall be subject to the exclusive jurisdiction of the courts in Indore, Madhya Pradesh.'
+                            }, {
+                                title: '13. Indemnification',
+                                content: 'You agree to indemnify and hold harmless Kiaan Technology Private Limited against any claims, losses, or damages arising out of your breach of these terms or misuse of the services.'
+                            }, {
+                                title: '14. Force Majeure',
+                                content: 'We shall not be liable for any failure to perform our obligations where such failure results from any cause beyond our reasonable control (e.g., acts of God, strikes, network failures).'
+                            }].map(section => (
+                                <div key={section.title} style={{ marginBottom: 20 }}>
+                                    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 6px', paddingBottom: 6, borderBottom: '1px solid #f1f5f9' }}>{section.title}</h3>
+                                    <p style={{ margin: 0 }}>{section.content}</p>
+                                </div>
+                            ))}
+
+                            {/* Contact block */}
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px', marginTop: 8 }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 10px' }}>15. Contact Information</h3>
+                                <p style={{ margin: '0 0 8px' }}>For any legal inquiries regarding these terms, please contact:</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#475569' }}>
+                                    <span>🏢 <strong>Company:</strong> Kiaan Technology Private Limited</span>
+                                    <span>📍 <strong>Address:</strong> 2341/E, Sudama Nagar, Indore, Madhya Pradesh, India</span>
+                                    <span>📞 <strong>Phone:</strong> <a href="tel:+919752100980" style={{ color: '#6366f1' }}>+91-97521 00980</a></span>
+                                    <span>✉️ <strong>Email:</strong> <a href="mailto:info@kiaantechnology.com" style={{ color: '#6366f1' }}>info@kiaantechnology.com</a></span>
+                                    <span>🌐 <strong>Website:</strong> <a href="https://kiaantechnology.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1' }}>kiaantechnology.com</a></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{
+                            padding: '14px 28px', borderTop: '1px solid #f1f5f9',
+                            display: 'flex', justifyContent: 'flex-end', flexShrink: 0,
+                            background: '#f8fafc',
+                        }}>
+                            <button onClick={() => setTermsOpen(false)} style={{
+                                background: '#0f172a', color: '#fff', border: 'none',
+                                borderRadius: 8, padding: '9px 24px', fontSize: 13,
+                                fontWeight: 600, cursor: 'pointer', letterSpacing: '0.02em',
+                            }}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

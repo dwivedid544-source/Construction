@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Briefcase, Clock, FileText,
   Wrench, ClipboardList, BarChart2, DollarSign,
   Users, Settings, LogOut, Menu, X, Bell, MessageSquare,
-  Search, ChevronDown, RefreshCw, MapPin, Building2, PenTool, Camera, FileQuestion, AlertCircle, Activity
+  Search, ChevronDown, RefreshCw, MapPin, Building2, PenTool, Camera, FileQuestion, AlertCircle, Activity, Lock
 } from 'lucide-react';
 import api, { BASE_URL } from '../utils/api';
 import Logo from '../assets/images/logo.png.jpeg';
@@ -35,6 +35,64 @@ const CompanyAdminLayout = () => {
   const [issueCount, setIssueCount] = useState(0);
   const [poCount, setPoCount] = useState(0);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showTrialExpiredModal, setShowTrialExpiredModal] = useState(() => {
+    return localStorage.getItem('isTrialActive') === 'true' || localStorage.getItem('subscriptionStatus') === 'expired';
+  });
+
+  const handleRazorpayBuyPlan = (amountInRupees = 999, planName = 'KT Construct Pro Plan') => {
+    const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TMRyc8lDjomNTV';
+
+    const loadScript = (src) => {
+      return new Promise((resolve) => {
+        if (window.Razorpay) {
+          resolve(true);
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+      });
+    };
+
+    loadScript('https://checkout.razorpay.com/v1/checkout.js').then((res) => {
+      if (!res) {
+        toast.error('Razorpay SDK failed to load. Please check your internet connection.');
+        return;
+      }
+
+      const options = {
+        key: key,
+        amount: (amountInRupees || 999) * 100, // Amount in paise
+        currency: 'INR',
+        name: 'Kiaan Technology',
+        description: planName,
+        image: Logo,
+        handler: function (response) {
+          toast.success(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
+          setShowTrialExpiredModal(false);
+          localStorage.setItem('subscriptionStatus', 'active');
+          localStorage.removeItem('isTrialActive');
+        },
+        prefill: {
+          name: user?.name || 'Customer',
+          email: user?.email || 'info@kiaantechnology.com',
+          contact: '9752100980'
+        },
+        theme: {
+          color: '#ef4444'
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response) {
+        toast.error(`Payment Failed: ${response.error?.description || 'Declined'}`);
+      });
+      rzp.open();
+    });
+  };
+
   // socketRef removed: using global shared socket
   const pathnameRef = useRef(location.pathname);
   useEffect(() => {
@@ -682,6 +740,84 @@ const CompanyAdminLayout = () => {
               className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shadow-lg shadow-red-200"
             >
               Yes, Clear All
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Trial Expired Modal */}
+      <Modal
+        isOpen={showTrialExpiredModal}
+        onClose={() => setShowTrialExpiredModal(false)}
+        title=""
+        maxWidth="max-w-md"
+        showCloseButton={false}
+      >
+        <div className="bg-[#141b2d] -m-6 p-6 md:p-8 rounded-3xl text-center border border-slate-700/60 shadow-2xl text-white">
+          {/* Red Lock Circle Icon */}
+          <div className="w-16 h-16 rounded-full bg-red-950/60 border-2 border-red-500/40 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-red-900/30">
+            <Lock size={28} className="text-amber-500" />
+          </div>
+
+          {/* Title */}
+          <h3 className="text-2xl font-extrabold text-white mb-2 tracking-tight">
+            Your Free Trial Has Expired
+          </h3>
+
+          {/* Subtitle */}
+          <p className="text-sm text-slate-300 leading-relaxed mb-6 px-2">
+            Your 7-day free trial has expired. Upgrade to a paid plan now to restore full access to your construction management software and data.
+          </p>
+
+          {/* Access Blocked Banner */}
+          <div className="bg-red-950/40 border border-red-900/60 rounded-2xl p-4 mb-6 text-left">
+            <div className="text-sm font-bold text-red-400 mb-1 flex items-center gap-1.5">
+              <span>⚠️</span> Access Blocked:
+            </div>
+            <p className="text-xs text-slate-300 leading-normal">
+              Dashboard, Members, Staff, Reports, Payments and all other modules will remain restricted until an active subscription plan is purchased.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            {/* Buy Plan Now -> Triggers Razorpay */}
+            <button
+              onClick={() => {
+                handleRazorpayBuyPlan(999, 'KT Construct Pro Plan');
+              }}
+              className="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-red-900/40 transition-all text-sm"
+            >
+              <span className="text-base">🛒</span> Buy Plan Now
+            </button>
+
+            {/* View Plans */}
+            <button
+              onClick={() => {
+                setShowTrialExpiredModal(false);
+                navigate('/company-admin/settings');
+              }}
+              className="w-full py-3 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-sm"
+            >
+              <span className="text-base">📋</span> View Plans
+            </button>
+
+            {/* Contact Support */}
+            <a
+              href="https://wa.me/919752100980"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-sm text-center block"
+            >
+              <span className="text-base">💬</span> Contact Support
+            </a>
+
+            {/* Logout */}
+            <button
+              onClick={logout}
+              className="text-xs text-slate-400 hover:text-white underline cursor-pointer text-center block w-full pt-2"
+            >
+              Logout
             </button>
           </div>
         </div>

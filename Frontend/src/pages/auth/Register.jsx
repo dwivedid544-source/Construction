@@ -36,10 +36,21 @@ const Register = () => {
         })();
     }, [selectedPlan]);
 
-    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const handleChange = e => {
+        let value = e.target.value;
+        if (e.target.name === 'phone') {
+            value = value.replace(/\D/g, '').slice(0, 10);
+        }
+        setFormData({ ...formData, [e.target.name]: value });
+    };
 
     const handleSubmit = async e => {
-        e.preventDefault(); setError(''); setLoading(true);
+        e.preventDefault(); setError('');
+        if (formData.phone && formData.phone.length !== 10) {
+            setError('Phone number must be exactly 10 digits.');
+            return;
+        }
+        setLoading(true);
         try {
             await api.post('/auth/register-company', formData);
             setSuccess(true);
@@ -76,7 +87,7 @@ const Register = () => {
 
     /* ══ MAIN ═════════════════════════════════════════════════════════════════ */
     return (
-        <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', fontFamily: "'DM Sans', sans-serif", position: 'relative' }}>
+        <div style={{ height: '100vh', overflow: 'hidden', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 20px', fontFamily: "'DM Sans', sans-serif", position: 'relative' }}>
             <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap');
         * { box-sizing: border-box; }
@@ -85,10 +96,10 @@ const Register = () => {
           width: 100%;
           background: #fff;
           border: 1px solid #e2e8f0;
-          border-radius: 10px;
-          padding: 12px 14px 12px 44px;
+          border-radius: 8px;
+          padding: 8px 12px 8px 38px;
           color: #0f172a;
-          font-size: 14px;
+          font-size: 13px;
           font-family: 'DM Sans', sans-serif;
           outline: none;
           transition: all 0.2s;
@@ -98,8 +109,8 @@ const Register = () => {
 
         .btn-reg {
           width: 100%; background: #155dff; color: #fff; border: none;
-          border-radius: 10px; padding: 14px;
-          font-size: 14px; font-weight: 600;
+          border-radius: 8px; padding: 10px;
+          font-size: 13.5px; font-weight: 600;
           font-family: 'DM Sans', sans-serif; cursor: pointer;
           display: flex; align-items: center; justify-content: center; gap: 8px;
           transition: all 0.22s; letter-spacing: 0.02em;
@@ -120,11 +131,11 @@ const Register = () => {
             <div style={{ position: 'absolute', top: -100, right: -100, width: 400, height: 400, borderRadius: '50%', background: 'rgba(21,93,255,0.05)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: -80, left: -80, width: 300, height: 300, borderRadius: '50%', background: 'rgba(21,93,255,0.04)', pointerEvents: 'none' }} />
 
-            <div className="fu" style={{ width: '100%', maxWidth: 960, position: 'relative', zIndex: 1 }}>
+            <div className="fu" style={{ width: '100%', maxWidth: 880, position: 'relative', zIndex: 1 }}>
 
                 {/* Logo */}
-                <div onClick={() => navigate('/')} style={{ display: 'flex', justifyContent: 'center', marginBottom: 28, cursor: 'pointer' }}>
-                    <img src={Logo} alt="KT Construct" style={{ height: 48, width: 'auto' }} />
+                <div onClick={() => navigate('/')} style={{ display: 'flex', justifyContent: 'center', marginBottom: 14, cursor: 'pointer' }}>
+                    <img src={Logo} alt="KT Construct" style={{ height: 38, width: 'auto' }} />
                 </div>
 
                 {/* Card */}
@@ -142,7 +153,7 @@ const Register = () => {
                     <div style={{
                         background: '#0f172a',
                         borderRight: '1px solid #1e293b',
-                        padding: '40px 32px',
+                        padding: '24px 24px',
                         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                         position: 'relative', overflow: 'hidden',
                     }}>
@@ -154,10 +165,10 @@ const Register = () => {
 
                         <div style={{ position: 'relative', zIndex: 1 }}>
                             <div style={{ width: 32, height: 2, background: '#155dff', borderRadius: 2, marginBottom: 16 }} />
-                            <div style={{ fontFamily: "'Bebas Neue'", fontSize: 34, color: '#fff', lineHeight: 1, marginBottom: 12 }}>
+                            <div style={{ fontFamily: "'Bebas Neue'", fontSize: 28, color: '#fff', lineHeight: 1, marginBottom: 8 }}>
                                 JOIN KT CONSTRUCT<br />CONSTRUCTIONS
                             </div>
-                            <p style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.75, marginBottom: 32 }}>
+                            <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6, marginBottom: 20 }}>
                                 The all-in-one platform for modern construction management. Built for teams that build.
                             </p>
 
@@ -174,7 +185,7 @@ const Register = () => {
                         </div>
 
                         {/* Plan box */}
-                        <div style={{ position: 'relative', zIndex: 1, marginTop: 36 }}>
+                        <div style={{ position: 'relative', zIndex: 1, marginTop: 20 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)', marginBottom: 10 }}>
                                 Selected Plan
                             </div>
@@ -183,7 +194,7 @@ const Register = () => {
                                     <div style={{ fontFamily: "'Bebas Neue'", fontSize: 20, color: '#fff', letterSpacing: '0.03em' }}>
                                         {planDetails?.name || selectedPlan}
                                     </div>
-                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)', marginTop: 2 }}>14-day free trial included</div>
+                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)', marginTop: 2 }}>7-day free trial included</div>
                                 </div>
                                 <div style={{ fontFamily: "'Bebas Neue'", fontSize: 20, color: '#155dff' }}>
                                     {planDetails ? `$${planDetails.price}/${planDetails.period}` : 'Custom'}
@@ -193,12 +204,12 @@ const Register = () => {
                     </div>
 
                     {/* ── RIGHT — Form (light) ── */}
-                    <div style={{ padding: '40px 32px', background: '#fff' }}>
-                        <div style={{ marginBottom: 26 }}>
-                            <div style={{ fontFamily: "'Bebas Neue'", fontSize: 28, color: '#0f172a', letterSpacing: '0.02em', marginBottom: 5 }}>
+                    <div style={{ padding: '24px 28px', background: '#fff' }}>
+                        <div style={{ marginBottom: 14 }}>
+                            <div style={{ fontFamily: "'Bebas Neue'", fontSize: 24, color: '#0f172a', letterSpacing: '0.02em', marginBottom: 3 }}>
                                 CREATE ACCOUNT
                             </div>
-                            <p style={{ fontSize: 13, color: '#94a3b8' }}>Fill in your details to get started</p>
+                            <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>Fill in your details to get started</p>
                         </div>
 
                         {/* Error */}
@@ -208,11 +219,11 @@ const Register = () => {
                             </div>
                         )}
 
-                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
 
                             {/* Company */}
                             <div>
-                                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 7 }}>Company</label>
+                                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Company</label>
                                 <div style={{ position: 'relative' }}>
                                     <Building size={15} color="#94a3b8" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                                     <input type="text" name="companyName" required placeholder="Your Company Name" className="ri" onChange={handleChange} />
@@ -221,7 +232,7 @@ const Register = () => {
 
                             {/* Full Name */}
                             <div>
-                                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 7 }}>Full Name</label>
+                                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Full Name</label>
                                 <div style={{ position: 'relative' }}>
                                     <User size={15} color="#94a3b8" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                                     <input type="text" name="fullName" required placeholder="Your Full Name" className="ri" onChange={handleChange} />
@@ -231,27 +242,50 @@ const Register = () => {
                             {/* Email + Phone */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 7 }}>Email</label>
+                                    <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Email</label>
                                     <div style={{ position: 'relative' }}>
                                         <Mail size={15} color="#94a3b8" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                                         <input type="email" name="email" required placeholder="Work Email" className="ri" onChange={handleChange} />
                                     </div>
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 7 }}>Phone</label>
+                                    <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Phone</label>
                                     <div style={{ position: 'relative' }}>
                                         <Phone size={15} color="#94a3b8" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                                        <input type="tel" name="phone" required placeholder="Phone Number" className="ri" onChange={handleChange} />
+                                        <input type="tel" name="phone" required placeholder="10-digit Phone Number" maxLength={10} value={formData.phone} className="ri" onChange={handleChange} />
                                     </div>
                                 </div>
                             </div>
 
                             {/* Password */}
                             <div>
-                                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 7 }}>Password</label>
+                                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Password</label>
                                 <div style={{ position: 'relative' }}>
                                     <Lock size={15} color="#94a3b8" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                                     <input type="password" name="password" required placeholder="Create a secure password" className="ri" onChange={handleChange} />
+                                </div>
+                            </div>
+
+
+                            {/* ── 7-Day Trial Warning ── */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: 10,
+                                background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+                                border: '1.5px solid #f59e0b',
+                                borderRadius: 10,
+                                padding: '11px 14px',
+                                marginTop: 4,
+                            }}>
+                                <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#92400e', letterSpacing: '0.01em' }}>
+                                        7-Day Free Trial — No Credit Card Required
+                                    </p>
+                                    <p style={{ margin: '3px 0 0', fontSize: 11.5, color: '#b45309', lineHeight: 1.5 }}>
+                                        Your free trial will <strong>expire in 7 days</strong> after registration. After that, upgrade to a paid plan to keep full access.
+                                    </p>
                                 </div>
                             </div>
 
@@ -261,6 +295,7 @@ const Register = () => {
                                     : <>Create My Account <ArrowRight size={16} /></>
                                 }
                             </button>
+
 
                             <p style={{ textAlign: 'center', fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
                                 Already have an account?{' '}
