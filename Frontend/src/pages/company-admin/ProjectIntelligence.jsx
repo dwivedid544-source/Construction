@@ -31,7 +31,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/Logo.png';
+import logo from '../../assets/images/logo.png.jpeg';
 
 const ProjectIntelligence = () => {
     const [projects, setProjects] = useState([]);
@@ -136,7 +136,7 @@ const ProjectIntelligence = () => {
 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.text(`KAAL Construction Management Systems | Chronological Audit Log`, 15, 28);
+        doc.text(`KT Construct Management Systems | Chronological Audit Log`, 15, 28);
         doc.text(`Generated: ${now} | Project: ${project.name || 'N/A'}`, 15, 33);
         doc.text(`Job Unit: ${job.jobName || 'N/A'}`, 15, 38);
 

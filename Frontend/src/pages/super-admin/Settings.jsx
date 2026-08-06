@@ -22,7 +22,7 @@ const SuperAdminSettings = () => {
     if (user) {
       setProfile({
         name: user.fullName || 'Super Admin',
-        email: user.email || 'admin@kaal.ca',
+        email: user.email || 'admin@ktconstruct.com',
         role: user.role || 'SUPER_ADMIN',
         avatar: user.avatar || null
       });

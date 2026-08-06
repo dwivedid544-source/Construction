@@ -122,7 +122,7 @@ const Invoices = () => {
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(30, 41, 59);
-            doc.text('Kaal Construction Ltd', 20, 48);
+            doc.text('KT Construct Ltd', 20, 48);
 
             doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');

@@ -99,7 +99,7 @@ const SubcontractorDashboard = () => {
                     </div>
                     <div>
                         <h1 className="text-sm font-bold text-white leading-none">Subcontractor Portal</h1>
-                        <p className="text-xs text-slate-400 mt-0.5">KAAL Construction</p>
+                        <p className="text-xs text-slate-400 mt-0.5">KT Construct</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">

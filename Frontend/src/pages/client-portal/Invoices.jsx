@@ -3,7 +3,7 @@ import { Download, CheckCircle, Clock, AlertTriangle, Loader } from 'lucide-reac
 import api from '../../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/Logo.png';
+import logo from '../../assets/images/logo.png.jpeg';
 
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
@@ -39,7 +39,7 @@ const Invoices = () => {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 41, 59);
-      doc.text('Kaal Construction Ltd', 20, 48);
+      doc.text('KT Construct Ltd', 20, 48);
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');

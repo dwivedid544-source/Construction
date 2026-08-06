@@ -285,7 +285,7 @@ const Drawings = () => {
             project_name: selectedDrawing.projectId?.name || 'Construction Project',
             title: selectedDrawing.title, // Contact Us: {{title}}
             name: user?.fullName || 'Company Admin', // Maps to {{name}} in your screenshot
-            email: user?.email || 'admin@kaal.com', // Maps to {{email}} in your screenshot
+            email: user?.email || 'admin@ktconstruct.com', // Maps to {{email}} in your screenshot
             logoUrl: publicLogoUrl, // Maps to {{logoUrl}}
             download_link: getServerUrl(selectedDrawing.versions?.[selectedDrawing.versions.length - 1]?.fileUrl),
             bid_link: `${window.location.origin}/submit-bid/${selectedDrawing._id}?vendorId=${trade._id}`

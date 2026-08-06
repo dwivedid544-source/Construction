@@ -45,7 +45,7 @@ const GlobalUsers = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-800">Global Users</h1>
-                    <p className="text-slate-500 text-sm">Monitor and manage all users across the entire KAAL network.</p>
+                    <p className="text-slate-500 text-sm">Monitor and manage all users across the entire KT Construct network.</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button onClick={fetchUsers} className="p-2 text-slate-400 hover:text-blue-600 transition-colors">

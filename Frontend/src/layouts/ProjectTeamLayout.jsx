@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Bell
 } from 'lucide-react';
 import api, { BASE_URL } from '../utils/api';
-import Logo from '../assets/images/Logo.png';
+import Logo from '../assets/images/logo.png.jpeg';
 import { playSound } from '../utils/notificationSound';
 import toast from 'react-hot-toast';
 
@@ -222,7 +222,7 @@ const ProjectTeamLayout = () => {
             <div className="relative w-12 h-12 bg-[#0f172a] border border-[#1e293b] rounded-full flex items-center justify-center overflow-hidden">
               <img
                 src={Logo}
-                alt="KAAL Logo"
+                alt="KT Construct Logo"
                 className="h-8 w-auto"
               />
             </div>

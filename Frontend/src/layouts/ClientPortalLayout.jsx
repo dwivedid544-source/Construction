@@ -7,7 +7,7 @@ import {
   Building2, LayoutDashboard, FileText, ClipboardList, Briefcase, MessageSquare, AlertCircle
 } from 'lucide-react';
 import api from '../utils/api';
-import Logo from '../assets/images/Logo.png';
+import Logo from '../assets/images/logo.png.jpeg';
 import { playSound } from '../utils/notificationSound';
 import toast from 'react-hot-toast';
 import Modal from '../components/Modal';
@@ -205,7 +205,7 @@ const ClientPortalLayout = () => {
             <div className="relative w-12 h-12 bg-[#0f172a] border border-[#1e293b] rounded-full flex items-center justify-center overflow-hidden">
               <img
                 src={Logo}
-                alt="KAAL Logo"
+                alt="KT Construct Logo"
                 className="h-8 w-auto"
               />
             </div>

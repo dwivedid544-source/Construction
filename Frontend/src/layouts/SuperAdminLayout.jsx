@@ -8,8 +8,8 @@ import {
   Bell, Search, TrendingUp, Bookmark, FileText, ChevronDown, MessageSquare, AlertCircle
 } from 'lucide-react';
 import api, { BASE_URL, getServerUrl } from '../utils/api';
-import Logo from '../assets/images/Logo.png';
-import sidebarlogo from '../assets/images/sidebarlogo.png';
+import Logo from '../assets/images/logo.png.jpeg';
+import sidebarlogo from '../assets/images/logo.png.jpeg';
 import { playSound } from '../utils/notificationSound';
 import Modal from '../components/Modal';
 
@@ -164,7 +164,7 @@ const SuperAdminLayout = () => {
             <div className="relative w-14 h-14 bg-[#0f172a] border border-[#1e293b] rounded-full flex items-center justify-center overflow-hidden">
               <img
                 src={Logo}
-                alt="KAAL Logo"
+                alt="KT Construct Logo"
                 className="h-10 w-auto"
               />
             </div>

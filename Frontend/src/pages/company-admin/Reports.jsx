@@ -12,7 +12,7 @@ import {
 import api from '../../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/Logo.png';
+import logo from '../../assets/images/logo.png.jpeg';
 import DetailedReportView from './DetailedReportView';
 
 const Reports = () => {
@@ -57,7 +57,7 @@ const Reports = () => {
         doc.text('Company Intelligence Report', 40, 21);
         doc.setFontSize(10);
         doc.setTextColor(100);
-        doc.text(`Generated on ${now} | KAAL Construction Management`, 40, 27);
+        doc.text(`Generated on ${now} | KT Construct Management`, 40, 27);
 
         doc.setLineWidth(0.5);
         doc.setDrawColor(226, 232, 240);
@@ -83,7 +83,7 @@ const Reports = () => {
             headStyles: { fillColor: [30, 58, 95] }
         });
 
-        doc.save(`KAAL_Intelligence_${now.replace(/\//g, '-')}.pdf`);
+        doc.save(`KT Construct_Intelligence_${now.replace(/\//g, '-')}.pdf`);
     };
 
     if (loading) {

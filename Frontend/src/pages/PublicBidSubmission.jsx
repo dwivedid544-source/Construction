@@ -95,7 +95,7 @@ const PublicBidSubmission = () => {
                 <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tighter">Bid Submitted!</h2>
                 <p className="text-slate-500 mt-4 font-medium">Your proposal has been successfully sent to the project management team.</p>
                 <div className="mt-8 pt-8 border-t border-slate-100">
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">KAAL Construction Management</p>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">KT Construct Management</p>
                 </div>
             </div>
         </div>

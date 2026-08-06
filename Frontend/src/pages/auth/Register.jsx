@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Building, Mail, Lock, User, Phone, ArrowRight, Loader, CheckCircle } from 'lucide-react';
-import Logo from '../../assets/images/Logo.png';
+import Logo from '../../assets/images/logo.png.jpeg';
 import api from '../../utils/api';
 
 const FEATURES = [
@@ -124,7 +124,7 @@ const Register = () => {
 
                 {/* Logo */}
                 <div onClick={() => navigate('/')} style={{ display: 'flex', justifyContent: 'center', marginBottom: 28, cursor: 'pointer' }}>
-                    <img src={Logo} alt="KAAL" style={{ height: 48, width: 'auto' }} />
+                    <img src={Logo} alt="KT Construct" style={{ height: 48, width: 'auto' }} />
                 </div>
 
                 {/* Card */}
@@ -155,7 +155,7 @@ const Register = () => {
                         <div style={{ position: 'relative', zIndex: 1 }}>
                             <div style={{ width: 32, height: 2, background: '#155dff', borderRadius: 2, marginBottom: 16 }} />
                             <div style={{ fontFamily: "'Bebas Neue'", fontSize: 34, color: '#fff', lineHeight: 1, marginBottom: 12 }}>
-                                JOIN KAAL<br />CONSTRUCTIONS
+                                JOIN KT CONSTRUCT<br />CONSTRUCTIONS
                             </div>
                             <p style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.75, marginBottom: 32 }}>
                                 The all-in-one platform for modern construction management. Built for teams that build.
@@ -275,7 +275,7 @@ const Register = () => {
                 </div>
 
                 <p style={{ textAlign: 'center', fontSize: 11, color: '#cbd5e1', marginTop: 20 }}>
-                    © {new Date().getFullYear()} KAAL Construction Enterprise. All rights reserved.
+                    © {new Date().getFullYear()} Construction ERP. Powered by Kiaan Technology. All rights reserved.
                 </p>
             </div>
         </div>

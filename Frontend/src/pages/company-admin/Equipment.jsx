@@ -12,7 +12,7 @@ import api, { getServerUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/Logo.png';
+import logo from '../../assets/images/logo.png.jpeg';
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 const StatCard = ({ title, value, sub, icon: Icon, color, trend }) => (
@@ -480,7 +480,7 @@ const Equipment = () => {
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(30, 41, 59);
-            doc.text('Kaal Construction Ltd', 20, 42);
+            doc.text('KT Construct Ltd', 20, 42);
 
             doc.setFontSize(22);
             doc.setFont('helvetica', 'bold');
@@ -560,7 +560,7 @@ const Equipment = () => {
             const pageHeight = doc.internal.pageSize.height;
             doc.setFontSize(9);
             doc.setTextColor(148, 163, 184);
-            doc.text('KAAL Construction Management System - Confidential Document', pageWidth / 2, pageHeight - 15, { align: 'center' });
+            doc.text('KT Construct Management System - Confidential Document', pageWidth / 2, pageHeight - 15, { align: 'center' });
             doc.text(`Page 1 of 1`, pageWidth - 20, pageHeight - 15, { align: 'right' });
 
             doc.save(`History_${historyItem.name.replace(/\s+/g, '_')}.pdf`);
@@ -1129,7 +1129,7 @@ const Equipment = () => {
                                                 doc.setFontSize(12);
                                                 doc.setFont('helvetica', 'bold');
                                                 doc.setTextColor(30, 41, 59);
-                                                doc.text('Kaal Construction Ltd', 20, 32);
+                                                doc.text('KT Construct Ltd', 20, 32);
 
                                                 doc.setFontSize(20);
                                                 doc.setFont('helvetica', 'bold');

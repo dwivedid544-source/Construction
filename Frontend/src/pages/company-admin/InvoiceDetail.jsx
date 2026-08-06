@@ -4,7 +4,7 @@ import { ChevronLeft, Printer, Mail, Download, DollarSign, FileText } from 'luci
 import api from '../../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/Logo.png';
+import logo from '../../assets/images/logo.png.jpeg';
 
 const InvoiceDetail = () => {
     const { id } = useParams();
@@ -74,7 +74,7 @@ const InvoiceDetail = () => {
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(30, 41, 59);
-            doc.text('Kaal Construction Ltd', 20, 48);
+            doc.text('KT Construct Ltd', 20, 48);
 
             doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
@@ -274,7 +274,7 @@ const InvoiceDetail = () => {
                                 </div>
                             </div>
                             <div className="space-y-1">
-                                <h2 className="text-xl font-black text-slate-900 leading-tight">Kaal Construction Ltd</h2>
+                                <h2 className="text-xl font-black text-slate-900 leading-tight">KT Construct Ltd</h2>
                                 <p className="text-sm text-slate-500 font-medium italic">company@gmail.com</p>
                                 <p className="text-sm text-slate-500 font-medium">1234567890</p>
                                 <p className="text-sm text-slate-500 font-medium">123 Business St</p>

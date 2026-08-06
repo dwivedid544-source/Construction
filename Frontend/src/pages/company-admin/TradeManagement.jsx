@@ -490,7 +490,7 @@ const TradeManagement = () => {
                             required
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            placeholder="e.g. KAAL Plumbing Solutions"
+                            placeholder="e.g. KT Plumbing Solutions"
                             className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
                         />
                     </div>

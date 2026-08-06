@@ -6,7 +6,7 @@ import {
   HardHat, Wrench, UserCheck, ArrowLeft, CheckCircle2, 
   Key, Sparkles, ClipboardList, User, DraftingCompass
 } from 'lucide-react';
-import Logo from '../../assets/images/Logo.png';
+import Logo from '../../assets/images/logo.png.jpeg';
 
 const DASHBOARDS = [
   {
@@ -356,13 +356,13 @@ const Login = () => {
           onClick={() => navigate('/')} 
           style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}
         >
-          <img src={Logo} alt="KAAL" style={{ height: 40, width: 'auto' }} />
+          <img src={Logo} alt="KT Construct" style={{ height: 40, width: 'auto' }} />
           <div style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: 14 }}>
             <span style={{ fontFamily: "'Bebas Neue'", fontSize: 24, letterSpacing: '0.05em', color: '#fff' }}>
-              KAAL CONSTRUCTION
+              KT CONSTRUCT
             </span>
-            <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              Enterprise Portals
+            <span style={{ display: 'block', fontSize: 11, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+              Powered by Kiaan Technology
             </span>
           </div>
         </div>
@@ -834,7 +834,7 @@ const Login = () => {
 
               <div style={{ textAlign: 'center', marginTop: 24, paddingTop: 18, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', margin: 0 }}>
-                  © {new Date().getFullYear()} KAAL Construction Enterprise. All rights reserved.
+                  © {new Date().getFullYear()} Construction ERP. Powered by Kiaan Technology. All rights reserved.
                 </p>
               </div>
 
