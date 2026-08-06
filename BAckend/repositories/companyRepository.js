@@ -23,6 +23,16 @@ class CompanyRepository {
     return await Company.findById(id).populate('subscriptionPlanId').lean();
   }
 
+  async find(query = {}) {
+    if (getDriver() === 'prisma') {
+      return await prisma.company.findMany({
+        where: query,
+        include: { subscriptionPlan: true }
+      });
+    }
+    return await Company.find(query).populate('subscriptionPlanId').lean();
+  }
+
   async create(companyData) {
     if (getDriver() === 'prisma') {
       return await prisma.company.create({
@@ -47,6 +57,15 @@ class CompanyRepository {
       });
     }
     return await Company.findByIdAndUpdate(id, updateData, { new: true });
+  }
+
+  async deleteById(id) {
+    if (getDriver() === 'prisma') {
+      return await prisma.company.delete({
+        where: { id }
+      });
+    }
+    return await Company.findByIdAndDelete(id);
   }
 }
 

@@ -24,6 +24,39 @@ class UserRepository {
     return await User.findById(id);
   }
 
+  async find(query = {}) {
+    if (getDriver() === 'prisma') {
+      const where = {};
+      if (query.companyId) where.companyId = query.companyId;
+      if (query.role) {
+        if (typeof query.role === 'object' && query.role.$in) {
+          where.role = { in: query.role.$in };
+        } else {
+          where.role = query.role;
+        }
+      }
+      if (query.isActive !== undefined) where.isActive = query.isActive;
+
+      return await prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phoneNumber: true,
+          avatar: true,
+          status: true,
+          isActive: true,
+          companyId: true,
+          roleId: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      });
+    }
+    return await User.find(query).select('-password').lean();
+  }
+
   async create(userData) {
     if (getDriver() === 'prisma') {
       return await prisma.user.create({
@@ -50,6 +83,15 @@ class UserRepository {
       });
     }
     return await User.findByIdAndUpdate(id, updateData, { new: true });
+  }
+
+  async deleteById(id) {
+    if (getDriver() === 'prisma') {
+      return await prisma.user.delete({
+        where: { id }
+      });
+    }
+    return await User.findByIdAndDelete(id);
   }
 
   async findByCompany(companyId) {

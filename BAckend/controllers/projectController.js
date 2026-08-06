@@ -1,3 +1,4 @@
+const { projectRepository, companyRepository, userRepository } = require('../repositories');
 const Project = require('../models/Project');
 const Task = require('../models/Task');
 const User = require('../models/User');
@@ -63,7 +64,7 @@ const getProjects = async (req, res, next) => {
         // Optimization: Select only necessary fields for the list view. 
         // We exclude 'image' if it's too large, but since we migrated to Cloudinary, 
         // we'll keep it but ensure old Base64 data doesn't bloat the response.
-        const projects = await Project.find(query)
+        const projects = await projectRepository.find(query)
             .select('name status pmIds pmId clientId createdAt budget currentPhase location siteLatitude siteLongitude progress image startDate endDate sortOrder')
             .populate('clientId', 'fullName email')
             .populate('pmIds', 'fullName email')
@@ -83,7 +84,7 @@ const getProjects = async (req, res, next) => {
 // @access  Private
 const getProjectById = async (req, res, next) => {
     try {
-        const project = await Project.findById(req.params.id)
+        const project = await projectRepository.findById(req.params.id)
             .populate('clientId', 'fullName email avatar')
             .populate('createdBy', 'fullName avatar')
             .populate('pmIds', 'fullName email avatar')
@@ -138,7 +139,7 @@ const createProject = async (req, res, next) => {
             // Define strict limits: Plan value > Plan model default > hard fallback
             const maxProjects = plan?.maxProjects || 5; 
 
-            const currentProjectCount = await Project.countDocuments({ companyId });
+            const currentProjectCount = await projectRepository.countDocuments({ companyId });
             if (currentProjectCount >= maxProjects) {
                 res.status(403);
                 throw new Error(`Project limit reached for your Current Plan (${currentProjectCount}/${maxProjects} projects). Please upgrade your subscription to start more projects or manage existing ones.`);
@@ -214,7 +215,7 @@ const createProject = async (req, res, next) => {
 // @access  Private (PM, COMPANY_OWNER, SUPER_ADMIN)
 const updateProject = async (req, res, next) => {
     try {
-        const project = await Project.findById(req.params.id);
+        const project = await projectRepository.findById(req.params.id);
 
         if (!project) {
             res.status(404);
@@ -299,7 +300,7 @@ const updateProject = async (req, res, next) => {
 // @access  Private (COMPANY_OWNER, PM, SUPER_ADMIN)
 const deleteProject = async (req, res, next) => {
     try {
-        const project = await Project.findById(req.params.id);
+        const project = await projectRepository.findById(req.params.id);
 
         if (!project) {
             res.status(404);
@@ -331,7 +332,7 @@ const getArchivedProjects = async (req, res, next) => {
             status: 'archived'
         };
 
-        const projects = await Project.find(query)
+        const projects = await projectRepository.find(query)
             .populate('clientId', 'fullName')
             .populate('pmIds', 'fullName')
             .populate('pmId', 'fullName')
@@ -370,7 +371,7 @@ const restoreProject = async (req, res, next) => {
 // @access  Private (COMPANY_OWNER, SUPER_ADMIN)
 const permanentlyDeleteProject = async (req, res, next) => {
     try {
-        const project = await Project.findById(req.params.id);
+        const project = await projectRepository.findById(req.params.id);
 
         if (!project) {
             res.status(404);
@@ -406,7 +407,7 @@ const permanentlyDeleteProject = async (req, res, next) => {
 // @access  Private
 const getProjectMembers = async (req, res, next) => {
     try {
-        const project = await Project.findById(req.params.id);
+        const project = await projectRepository.findById(req.params.id);
 
         if (!project) {
             res.status(404);
@@ -462,11 +463,12 @@ const getProjectMembers = async (req, res, next) => {
 // @access  Private (Client, Admin, PM)
 const getClientProgress = async (req, res, next) => {
     try {
-        const Project = require('../models/Project');
+        const { projectRepository, companyRepository, userRepository } = require('../repositories');
+const Project = require('../models/Project');
         const Job = require('../models/Job');
         const JobTask = require('../models/JobTask');
 
-        const project = await Project.findById(req.params.id);
+        const project = await projectRepository.findById(req.params.id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
         // Logic check: only assigned client or company staff
@@ -543,7 +545,8 @@ const createProjectClientUpdate = async (req, res, next) => {
     try {
         const ProjectUpdate = require('../models/ProjectUpdate');
         const Notification = require('../models/Notification');
-        const Project = require('../models/Project');
+        const { projectRepository, companyRepository, userRepository } = require('../repositories');
+const Project = require('../models/Project');
 
         // Handle images from multer (CloudinaryStorage)
         let images = [];
@@ -566,7 +569,7 @@ const createProjectClientUpdate = async (req, res, next) => {
 
         // --- Notification Logic ---
         if (isVisibleToClient) {
-            const project = await Project.findById(req.params.id);
+            const project = await projectRepository.findById(req.params.id);
             if (project && project.clientId) {
                 // Create notification for client
                 await Notification.create({
@@ -600,10 +603,11 @@ const createProjectClientUpdate = async (req, res, next) => {
 // @access  Private
 const getProjectFinancialSummary = async (req, res, next) => {
     try {
-        const Project = require('../models/Project');
+        const { projectRepository, companyRepository, userRepository } = require('../repositories');
+const Project = require('../models/Project');
         const PurchaseOrder = require('../models/purchaseOrder.model');
 
-        const project = await Project.findById(req.params.id);
+        const project = await projectRepository.findById(req.params.id);
         if (!project) return res.status(404).json({ message: 'Project not found' });
 
         // Sum non-cancelled POs

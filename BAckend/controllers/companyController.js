@@ -1,6 +1,5 @@
-const Company = require('../models/Company');
+const { companyRepository, userRepository } = require('../repositories');
 const Plan = require('../models/Plan');
-const User = require('../models/User');
 const Task = require('../models/Task');
 const Project = require('../models/Project');
 const Issue = require('../models/Issue');
@@ -38,7 +37,6 @@ const getDashboardStats = async (req, res, next) => {
             projectFilter._id = { $in: clientProjectIds };
         } else if (isStaff) {
             taskFilter.assignedTo = userId;
-            // For staff, we show projects where they have active tasks
             const staffTasks = await Task.find({ assignedTo: userId }).select('projectId');
             const projectIds = staffTasks.map(t => t.projectId).filter(id => id);
             projectFilter._id = { $in: projectIds };
@@ -64,17 +62,14 @@ const getDashboardStats = async (req, res, next) => {
             TimeLog.countDocuments({ companyId, clockOut: { $exists: false } })
         ]);
 
-        // ... outstanding invoices sum logic ...
         const unpaidInvoices = await Invoice.find({
             companyId,
             status: { $in: ['unpaid', 'partially_paid', 'overdue'] }
         });
         const outstandingAmount = unpaidInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
 
-        // Project Progress (Bar Chart Data)
         const activeProjectsList = await Project.find(projectFilter).limit(5);
 
-        // ... barData, taskStats, pieData logic ...
         const barData = await Promise.all(activeProjectsList.map(async (p) => {
             const pos = await PurchaseOrder.find({ projectId: p._id, status: 'received' });
             const spent = pos.reduce((sum, po) => sum + (po.totalAmount || 0), 0);
@@ -98,7 +93,6 @@ const getDashboardStats = async (req, res, next) => {
             { name: 'Not Started', value: taskStats.find(s => s._id === 'todo')?.count || 0, color: '#94a3b8' }
         ];
 
-        // Recent Activity (Feed)
         const [recentPhotos, recentProjects] = await Promise.all([
             Photo.find(photoFilter).populate('uploadedBy', 'fullName').populate('projectId', 'name').sort({ createdAt: -1 }).limit(3),
             Project.find(projectFilter).populate('createdBy', 'fullName').sort({ createdAt: -1 }).limit(2)
@@ -146,38 +140,34 @@ const getDashboardStats = async (req, res, next) => {
 // @access  Private/SuperAdmin
 const getCompanies = async (req, res, next) => {
     try {
-        // Fetch users who are company owners and populate company details
-        const users = await User.find({ role: 'COMPANY_OWNER' })
-            .populate({
-                path: 'companyId',
-                populate: { path: 'subscriptionPlanId' }
-            })
-            .select('-password');
+        const users = await userRepository.find({ role: 'COMPANY_OWNER' });
 
-        // Map to a structure that the frontend expects, merging user and company info
         const companies = await Promise.all(users.map(async (user) => {
-            const company = user.companyId || {};
-            const plan = company.subscriptionPlanId || {};
+            let company = null;
+            if (user.companyId) {
+                company = await companyRepository.findById(user.companyId);
+            }
+            company = company || {};
+            const plan = company.subscriptionPlan || company.subscriptionPlanId || {};
             
-            // Recalculate real counts
             const [userCount, projectCount] = await Promise.all([
-                User.countDocuments({ companyId: company._id }),
-                Project.countDocuments({ companyId: company._id })
+                userRepository.find({ companyId: company._id || company.id }),
+                Project.countDocuments({ companyId: company._id || company.id })
             ]);
 
             return {
-                ...company._doc, // Company details
-                ...user._doc,    // User details (overwrites _id with user._id)
-                id: user._id,    // Explicitly set ID to User ID for deletion
-                company_id_ref: company._id, // Keep reference to actual company ID
-                name: company.name || user.fullName, // Use company name, fallback to user name
-                ownerName: user.fullName,
-                email: user.email, // Ensure user email is used
+                ...company,
+                ...user,
+                id: user._id || user.id,
+                company_id_ref: company._id || company.id,
+                name: company.name || user.fullName || user.name,
+                ownerName: user.fullName || user.name,
+                email: user.email,
                 phone: user.phone || company.phone,
-                planName: plan.name || 'No Plan', // Include plan name
-                planDetails: plan, // Include full plan details if needed
-                users: userCount, // Real user count
-                projects: projectCount // Real project count
+                planName: plan.name || 'No Plan',
+                planDetails: plan,
+                users: Array.isArray(userCount) ? userCount.length : 1,
+                projects: projectCount
             };
         }));
 
@@ -192,15 +182,15 @@ const getCompanies = async (req, res, next) => {
 // @access  Private (Own company only unless SuperAdmin)
 const getCompanyById = async (req, res, next) => {
     try {
-        const company = await Company.findById(req.params.id);
+        const company = await companyRepository.findById(req.params.id);
 
         if (!company) {
             res.status(404);
             throw new Error('Company not found');
         }
 
-        // Authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId.toString() !== company._id.toString()) {
+        const compIdStr = company._id ? company._id.toString() : company.id;
+        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId.toString() !== compIdStr) {
             res.status(403);
             throw new Error('Not authorized to access this company');
         }
@@ -218,28 +208,26 @@ const createCompany = async (req, res, next) => {
     try {
         const { name, email, phone, address, startDate, expireDate, plan, planType, password } = req.body;
 
-        const companyExists = await Company.findOne({ name });
+        const companyExists = await companyRepository.findByName(name);
 
         if (companyExists) {
             res.status(400);
             throw new Error('Company with this name already exists');
         }
 
-        const userExists = await User.findOne({ email });
+        const userExists = await userRepository.findByEmail(email);
         if (userExists) {
             res.status(400);
             throw new Error('User with this email already exists');
         }
 
-        // --- RESOLVE PLAN IF STRING ---
         let finalPlanId = plan;
         if (plan && typeof plan === 'string' && !mongoose.Types.ObjectId.isValid(plan)) {
             const planDoc = await Plan.findOne({ name: new RegExp('^' + plan + '$', 'i') });
             finalPlanId = planDoc ? planDoc._id : null;
         }
-        // ------------------------------
 
-        const company = await Company.create({
+        const company = await companyRepository.create({
             name,
             email,
             phone,
@@ -250,8 +238,8 @@ const createCompany = async (req, res, next) => {
             planType
         });
 
-        const user = await User.create({
-            companyId: company._id,
+        const user = await userRepository.create({
+            companyId: company._id || company.id,
             fullName: name + ' Admin',
             email,
             password,
@@ -265,79 +253,60 @@ const createCompany = async (req, res, next) => {
     }
 };
 
-// @desc    Update company (accepts User ID or Company ID contextually, but usually Company ID for settings)
+// @desc    Update company
 // @route   PATCH /api/companies/:id
 // @access  Private (Company Owner or SuperAdmin)
 const updateCompany = async (req, res, next) => {
     try {
-        // Check if ID is a User ID (Super Admin editing from list) or Company ID
         let companyId = req.params.id;
         let userId = null;
 
-        const user = await User.findById(req.params.id);
+        const user = await userRepository.findById(req.params.id);
         if (user && user.role === 'COMPANY_OWNER') {
-            userId = user._id;
+            userId = user._id || user.id;
             companyId = user.companyId;
         }
 
-        const company = await Company.findById(companyId);
+        const company = await companyRepository.findById(companyId);
 
         if (!company) {
             res.status(404);
             throw new Error('Company not found');
         }
 
-        // Authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && (req.user.role !== 'COMPANY_OWNER' || req.user.companyId.toString() !== company._id.toString())) {
+        const compIdStr = company._id ? company._id.toString() : company.id;
+        if (req.user.role !== 'SUPER_ADMIN' && (req.user.role !== 'COMPANY_OWNER' || req.user.companyId.toString() !== compIdStr)) {
             res.status(403);
             throw new Error('Not authorized to update this company');
         }
 
-        // Update Company Details
         const updates = { ...req.body };
-        
-        // Remove immutable fields that cause MongoDB errors
         delete updates._id;
         delete updates.id;
         
-        // Map frontend "plan" to backend "subscriptionPlanId" 
         if (updates.plan) {
             updates.subscriptionPlanId = updates.plan;
             delete updates.plan;
         }
 
-        // If subscriptionPlanId is a string that's NOT a valid ObjectId, try to find the plan by name
         if (updates.subscriptionPlanId && typeof updates.subscriptionPlanId === 'string' && !mongoose.Types.ObjectId.isValid(updates.subscriptionPlanId)) {
             const plan = await Plan.findOne({ name: new RegExp('^' + updates.subscriptionPlanId + '$', 'i') });
             if (plan) {
                 updates.subscriptionPlanId = plan._id;
             } else {
-                // If plan not found, maybe remove it to avoid cast error, 
-                // or just let it fail if we want strict plans. 
-                // Given the legacy flow, let's just delete it to prevent the crash, 
-                // although it would be better to return a 400.
                 delete updates.subscriptionPlanId;
             }
         }
 
-        const updatedCompany = await Company.findByIdAndUpdate(company._id, updates, {
-            new: true,
-            runValidators: true
-        });
+        const updatedCompany = await companyRepository.updateById(compIdStr, updates);
 
-        // Update User Details if User ID was found (e.g. email, password from Super Admin)
         if (userId) {
             const userUpdates = {};
             if (req.body.email) userUpdates.email = req.body.email;
-            if (req.body.password) userUpdates.password = req.body.password; // Handle middleware hashing usually
-            // Note: In a real app, password should be hashed if changed. Assuming User model pre-save hook handles it.
+            if (req.body.password) userUpdates.password = req.body.password;
 
             if (Object.keys(userUpdates).length > 0) {
-                // For password hashing to work with pre-save, use findById + save, not findOneAndUpdate
-                const userToUpdate = await User.findById(userId);
-                if (req.body.email) userToUpdate.email = req.body.email;
-                if (req.body.password) userToUpdate.password = req.body.password;
-                await userToUpdate.save();
+                await userRepository.updateById(userId, userUpdates);
             }
         }
 
@@ -354,36 +323,26 @@ const deleteCompany = async (req, res, next) => {
     try {
         console.log(`Attempting to delete company/user with ID: ${req.params.id}`);
 
-        // The ID passed is now the USER ID because we list Users
-        const user = await User.findById(req.params.id);
+        const user = await userRepository.findById(req.params.id);
 
         if (!user) {
             console.log('User not found, trying company direct delete...');
-            // Fallback: try finding company by ID in case it was a direct company ID
-            const companyDirect = await Company.findById(req.params.id);
+            const companyDirect = await companyRepository.findById(req.params.id);
             if (companyDirect) {
-                await Company.findByIdAndDelete(req.params.id);
-                // Also try to find and delete the owner user if possible
-                const deletedOwner = await User.findOneAndDelete({ companyId: req.params.id, role: 'COMPANY_OWNER' });
-                console.log(`Direct company delete success. Owner deleted: ${!!deletedOwner}`);
+                const compIdStr = companyDirect._id || companyDirect.id;
+                await companyRepository.deleteById(compIdStr);
                 return res.json({ message: 'Company removed' });
             }
-            console.log('User/Company not found');
             res.status(404);
             throw new Error('User/Company not found');
         }
 
-        console.log(`User found: ${user.email}, Company ID: ${user.companyId}`);
-
-        // Delete the associated Company first
         if (user.companyId) {
-            const deletedCompany = await Company.findByIdAndDelete(user.companyId);
-            console.log(`Company document deleted: ${!!deletedCompany}`);
+            await companyRepository.deleteById(user.companyId);
         }
 
-        // Delete the User
-        await User.findByIdAndDelete(req.params.id);
-        console.log('User document deleted');
+        const userIdStr = user._id || user.id;
+        await userRepository.deleteById(userIdStr);
 
         res.json({ message: 'Company Owner and Company data removed' });
     } catch (error) {

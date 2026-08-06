@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { taskRepository, userRepository, projectRepository } = require('../repositories');
 const Task = require('../models/Task');
 const SubTask = require('../models/SubTask');
 const Job = require('../models/Job');

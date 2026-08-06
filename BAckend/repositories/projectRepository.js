@@ -14,6 +14,30 @@ class ProjectRepository {
     return await Project.findById(id).populate('pmId clientId companyId').lean();
   }
 
+  async find(query = {}) {
+    if (getDriver() === 'prisma') {
+      const where = {};
+      if (query.companyId) where.companyId = query.companyId;
+      if (query.clientId) where.clientId = query.clientId;
+      if (query.status && query.status.$ne) {
+        where.status = { not: query.status.$ne };
+      } else if (query.status) {
+        where.status = query.status;
+      }
+      return await prisma.project.findMany({
+        where,
+        orderBy: { createdAt: 'desc' }
+      });
+    }
+    return await Project.find(query)
+      .select('name status pmIds pmId clientId createdAt budget currentPhase location siteLatitude siteLongitude progress image startDate endDate sortOrder')
+      .populate('clientId', 'fullName email')
+      .populate('pmIds', 'fullName email')
+      .populate('pmId', 'fullName email')
+      .sort({ sortOrder: 1, createdAt: -1 })
+      .lean();
+  }
+
   async findByCompany(companyId, filter = {}) {
     if (getDriver() === 'prisma') {
       return await prisma.project.findMany({
@@ -51,6 +75,22 @@ class ProjectRepository {
       });
     }
     return await Project.findByIdAndUpdate(id, updateData, { new: true });
+  }
+
+  async deleteById(id) {
+    if (getDriver() === 'prisma') {
+      return await prisma.project.delete({
+        where: { id }
+      });
+    }
+    return await Project.findByIdAndDelete(id);
+  }
+
+  async countDocuments(query = {}) {
+    if (getDriver() === 'prisma') {
+      return await prisma.project.count({ where: query });
+    }
+    return await Project.countDocuments(query);
   }
 }
 
