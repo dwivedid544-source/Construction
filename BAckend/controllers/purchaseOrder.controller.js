@@ -1,64 +1,35 @@
-const PurchaseOrder = require('../models/purchaseOrder.model');
-const Project = require('../models/Project');
-const Vendor = require('../models/Vendor');
-const Counter = require('../models/Counter');
+const prisma = require('../config/prisma');
 
 // Create PO
 exports.createPO = async (req, res) => {
     try {
-        const { projectId, jobId, vendorId, vendorName, vendorEmail, items, notesToVendor, internalNotes, expectedDeliveryDate, totalAmount, subtotal, tax } = req.body;
-        
-        // Clean optional IDs
-        const cleanVendorId = vendorId || null;
-        const cleanJobId = jobId || null;
+        const { projectId, vendorId, totalAmount, status } = req.body;
 
-        // Skip strict Vendor verification if vendorName is provided
-        if (vendorId) {
-            const vendor = await Vendor.findById(vendorId);
-            if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
-        }
+        const count = await prisma.purchaseOrder.count({ where: { companyId: req.user.companyId } });
+        const poNumber = `PO-${String(count + 1).padStart(6, '0')}`;
 
-        // Auto-increment PO Number
-        const counter = await Counter.findOneAndUpdate(
-            { id: 'poNumber' },
-            { $inc: { seq: 1 } },
-            { new: true, upsert: true }
-        );
-        const poNumber = `PO-${String(counter.seq).padStart(6, '0')}`;
-
-        // Initial Status based on role
-        let status = 'Draft';
-        if (req.user.role === 'PM' || req.user.role === 'COMPANY_OWNER') {
-            status = 'Pending Approval';
-        } else if (req.user.role === 'FOREMAN') {
-            status = 'Draft';
-        }
-
-        const po = new PurchaseOrder({
-            companyId: req.user.companyId || req.user.company?._id || req.body.companyId,
-            poNumber,
-            projectId,
-            jobId: cleanJobId,
-            vendorId: cleanVendorId,
-            vendorName,
-            vendorEmail,
-            createdBy: req.user._id,
-            items,
-            notesToVendor,
-            internalNotes,
-            expectedDeliveryDate,
-            status,
-            subtotal,
-            tax,
-            totalAmount
+        const po = await prisma.purchaseOrder.create({
+            data: {
+                poNumber,
+                companyId: req.user.companyId,
+                projectId,
+                vendorId: vendorId || null,
+                totalAmount: totalAmount ? parseFloat(totalAmount) : 0,
+                status: status || 'DRAFT'
+            },
+            include: {
+                project: { select: { id: true, name: true } },
+                vendor: { select: { id: true, name: true } }
+            }
         });
 
-        await po.save();
-        res.status(201).json(po);
+        res.status(201).json({
+            ...po,
+            _id: po.id,
+            projectId: po.project ? { _id: po.project.id, name: po.project.name } : null,
+            vendorId: po.vendor ? { _id: po.vendor.id, name: po.vendor.name } : null
+        });
     } catch (error) {
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({ message: error.message });
-        }
         res.status(500).json({ message: error.message });
     }
 };
@@ -66,35 +37,28 @@ exports.createPO = async (req, res) => {
 // Get All POs with Filters
 exports.getAllPOs = async (req, res) => {
     try {
-        const { projectId, jobId, vendorId, status, startDate, endDate } = req.query;
-        let query = {};
+        const { projectId, vendorId, status } = req.query;
+        const where = { companyId: req.user.companyId };
 
-        // Security: Visibility logic
-        if (req.user.role === 'FOREMAN') {
-            query.createdBy = req.user._id;
-        }
-        // PM and Admin see everything in their company
-        query.companyId = req.user.companyId || req.user.company?._id;
+        if (projectId) where.projectId = projectId;
+        if (vendorId) where.vendorId = vendorId;
+        if (status) where.status = status;
 
-        // Apply filters
-        if (projectId) query.projectId = projectId;
-        if (jobId) query.jobId = jobId;
-        if (vendorId) query.vendorId = vendorId;
-        if (status) query.status = status;
-        if (startDate && endDate) {
-            query.createdAt = {
-                $gte: new Date(startDate),
-                $lte: new Date(endDate)
-            };
-        }
+        const pos = await prisma.purchaseOrder.findMany({
+            where,
+            include: {
+                project: { select: { id: true, name: true } },
+                vendor: { select: { id: true, name: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
 
-        const pos = await PurchaseOrder.find(query)
-            .populate('projectId', 'name')
-            .populate('vendorId', 'name')
-            .populate('createdBy', 'fullName role')
-            .sort({ createdAt: -1 });
-
-        res.json(pos);
+        res.json(pos.map(po => ({
+            ...po,
+            _id: po.id,
+            projectId: po.project ? { _id: po.project.id, name: po.project.name } : null,
+            vendorId: po.vendor ? { _id: po.vendor.id, name: po.vendor.name } : null
+        })));
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -103,109 +67,130 @@ exports.getAllPOs = async (req, res) => {
 // Get Single PO
 exports.getSinglePO = async (req, res) => {
     try {
-        const po = await PurchaseOrder.findById(req.params.id)
-            .populate('companyId')
-            .populate('projectId')
-            .populate('vendorId')
-            .populate('createdBy', 'fullName role')
-            .populate('approvedBy', 'fullName');
+        const po = await prisma.purchaseOrder.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId },
+            include: {
+                project: { select: { id: true, name: true } },
+                vendor: { select: { id: true, name: true } }
+            }
+        });
 
         if (!po) return res.status(404).json({ message: 'Purchase Order not found' });
-        res.json(po);
+        res.json({
+            ...po,
+            _id: po.id,
+            projectId: po.project ? { _id: po.project.id, name: po.project.name } : null,
+            vendorId: po.vendor ? { _id: po.vendor.id, name: po.vendor.name } : null
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// Update PO (Editing allowed only in Draft, Status updates allowed for Admins)
+// Update PO
 exports.updatePO = async (req, res) => {
     try {
-        const po = await PurchaseOrder.findById(req.params.id);
+        const po = await prisma.purchaseOrder.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!po) return res.status(404).json({ message: 'Purchase Order not found' });
 
-        const isStatusOnly = Object.keys(req.body).length === 1 && (req.body.status !== undefined);
-        const isAdminOrPM = req.user.role === 'COMPANY_OWNER' || req.user.role === 'PM';
+        const { totalAmount, status, vendorId } = req.body;
+        const updateData = {};
+        if (totalAmount !== undefined) updateData.totalAmount = parseFloat(totalAmount);
+        if (status !== undefined) updateData.status = status;
+        if (vendorId !== undefined) updateData.vendorId = vendorId;
 
-        // Content editing (line items, etc) rules:
-        // 1. Drafts can be edited by anyone with access
-        // 2. Pending Approval and Approved can be edited by Admins/PMs
-        if (!isStatusOnly) {
-            const isDraft = po.status === 'Draft';
-            const canManagerEdit = isAdminOrPM && ['Pending Approval', 'Approved'].includes(po.status);
-            
-            if (!isDraft && !canManagerEdit) {
-                return res.status(400).json({ message: `Cannot edit Purchase Order in ${po.status} status` });
+        const updated = await prisma.purchaseOrder.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: {
+                project: { select: { id: true, name: true } },
+                vendor: { select: { id: true, name: true } }
             }
-        }
+        });
 
-        // Status update logic
-        if (isStatusOnly && !isAdminOrPM && po.status !== 'Draft') {
-            return res.status(403).json({ message: 'Only Admins/PMs can change status after submission' });
-        }
-
-        // Clean optional IDs if present
-        if (req.body.vendorId === '') req.body.vendorId = null;
-        if (req.body.jobId === '') req.body.jobId = null;
-
-        Object.assign(po, req.body);
-        await po.save();
-        res.json(po);
+        res.json({
+            ...updated,
+            _id: updated.id,
+            projectId: updated.project ? { _id: updated.project.id, name: updated.project.name } : null,
+            vendorId: updated.vendor ? { _id: updated.vendor.id, name: updated.vendor.name } : null
+        });
     } catch (error) {
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({ message: error.message });
-        }
         res.status(500).json({ message: error.message });
     }
 };
 
-// Status Actions (Admin Only)
-const updateStatus = async (req, res, newStatus, additionalData = {}) => {
+// Status Actions
+exports.approvePO = async (req, res) => {
     try {
-        const po = await PurchaseOrder.findById(req.params.id);
-        if (!po) return res.status(404).json({ message: 'Purchase Order not found' });
-
-        // Admin or PM can perform status updates
-        const isAuthorized = req.user.role === 'COMPANY_OWNER' || req.user.role === 'PM';
-        if (!isAuthorized) {
-            return res.status(403).json({ message: 'Only Admin/PM can perform this action' });
-        }
-
-        // Optional Rule: Cannot approve own PO
-        if (newStatus === 'Approved' && po.createdBy.toString() === req.user._id.toString()) {
-            // Uncomment if mandatory:
-            // return res.status(400).json({ message: 'Cannot approve your own Purchase Order' });
-        }
-
-        po.status = newStatus;
-        Object.assign(po, additionalData);
-        await po.save();
-        res.json(po);
+        const updated = await prisma.purchaseOrder.update({
+            where: { id: req.params.id },
+            data: { status: 'APPROVED' }
+        });
+        res.json({ ...updated, _id: updated.id });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-exports.approvePO = (req, res) => updateStatus(req, res, 'Approved', { approvedBy: req.user._id });
-exports.sendToVendor = (req, res) => updateStatus(req, res, 'Sent');
-exports.markDelivered = (req, res) => updateStatus(req, res, 'Delivered');
-exports.closePO = (req, res) => updateStatus(req, res, 'Closed');
-exports.cancelPO = (req, res) => updateStatus(req, res, 'Cancelled');
+exports.sendToVendor = async (req, res) => {
+    try {
+        const updated = await prisma.purchaseOrder.update({
+            where: { id: req.params.id },
+            data: { status: 'SENT' }
+        });
+        res.json({ ...updated, _id: updated.id });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.markDelivered = async (req, res) => {
+    try {
+        const updated = await prisma.purchaseOrder.update({
+            where: { id: req.params.id },
+            data: { status: 'DELIVERED' }
+        });
+        res.json({ ...updated, _id: updated.id });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.closePO = async (req, res) => {
+    try {
+        const updated = await prisma.purchaseOrder.update({
+            where: { id: req.params.id },
+            data: { status: 'CLOSED' }
+        });
+        res.json({ ...updated, _id: updated.id });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.cancelPO = async (req, res) => {
+    try {
+        const updated = await prisma.purchaseOrder.update({
+            where: { id: req.params.id },
+            data: { status: 'CANCELLED' }
+        });
+        res.json({ ...updated, _id: updated.id });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 
 // Delete PO
 exports.deletePO = async (req, res) => {
     try {
-        const po = await PurchaseOrder.findById(req.params.id);
+        const po = await prisma.purchaseOrder.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!po) return res.status(404).json({ message: 'Purchase Order not found' });
 
-        // Security: Admins can delete anything; Others only their own Drafts
-        const isAdmin = req.user.role === 'COMPANY_OWNER' || req.user.role === 'PM';
-        const isOwner = po.createdBy.toString() === req.user._id.toString();
-
-        if (!isAdmin && (!isOwner || po.status !== 'Draft')) {
-            return res.status(403).json({ message: 'Not authorized to delete this Purchase Order' });
-        }
-
-        await PurchaseOrder.findByIdAndDelete(req.params.id);
+        await prisma.purchaseOrder.delete({ where: { id: req.params.id } });
         res.json({ message: 'Purchase Order deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: error.message });

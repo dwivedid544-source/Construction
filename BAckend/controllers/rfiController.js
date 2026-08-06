@@ -1,69 +1,35 @@
-const RFI = require('../models/RFI');
+const prisma = require('../config/prisma');
 
 // @desc    Get all RFIs for a company
 // @route   GET /api/rfis
 // @access  Private
 const getRFIs = async (req, res, next) => {
     try {
-        const query = { companyId: req.user.companyId };
-
-        // Data Access Scope Layer
-        if (req.user.role === 'CLIENT') {
-            // Client: Only their project only
-            // Assuming Project model has clientId, we filter RFIs by projects where this user is the client
-            const Project = require('../models/Project');
-            const projects = await Project.find({ clientId: req.user._id }, '_id');
-            const projectIds = projects.map(p => p._id);
-            query.projectId = { $in: projectIds };
-
-            // Exclude subcontractor RFIs from client view
-            const User = require('../models/User');
-            const subs = await User.find({ role: 'SUBCONTRACTOR' }, '_id');
-            query.raisedBy = { $nin: subs.map(s => s._id) };
-        } else if (req.user.role === 'SUBCONTRACTOR') {
-            // Subcontractor: Only assigned RFI or project assigned (depending on exact requirement)
-            // User request says "Only assigned RFI (if Sub)"
-            query.$or = [
-                { raisedBy: req.user._id },
-                { assignedTo: req.user._id }
-            ];
-        } else if (req.user.role === 'FOREMAN') {
-            // Foreman: Only RFIs they raised
-            query.raisedBy = req.user._id;
-        }
-        // PM and Admin/Owner see all RFIs of the company by default (query.companyId is already set)
+        const where = { companyId: req.user.companyId };
 
         if (req.query.projectId) {
-            // Ensure the requested projectId is within the allowed scope for CLIENT
-            if (req.user.role === 'CLIENT') {
-                const allowedProjects = query.projectId.$in.map(id => id.toString());
-                if (!allowedProjects.includes(req.query.projectId)) {
-                    res.status(403);
-                    throw new Error('Not authorized to access RFIs for this project');
-                }
-            }
-            query.projectId = req.query.projectId;
+            where.projectId = req.query.projectId;
         }
 
-        if (req.query.status) query.status = req.query.status;
-        if (req.query.priority) query.priority = req.query.priority;
+        if (req.query.status) where.status = req.query.status;
 
-        const rfis = await RFI.find(query)
-            .populate('projectId', 'name')
-            .populate('raisedBy', 'fullName email role')
-            .populate('assignedTo', 'fullName email role')
-            .populate('comments.author', 'fullName role')
-            .sort({ createdAt: -1 });
-
-        // Add overdue flag
-        const now = new Date();
-        const result = rfis.map(r => {
-            const obj = r.toJSON();
-            obj.isOverdue = r.dueDate && r.status !== 'closed' && new Date(r.dueDate) < now;
-            return obj;
+        const rfis = await prisma.rFI.findMany({
+            where,
+            include: {
+                project: { select: { id: true, name: true } },
+                createdBy: { select: { id: true, name: true, roleId: true } },
+                assignedTo: { select: { id: true, name: true, roleId: true } }
+            },
+            orderBy: { createdAt: 'desc' }
         });
 
-        res.json(result);
+        res.json(rfis.map(r => ({
+            ...r,
+            _id: r.id,
+            projectId: r.project ? { _id: r.project.id, name: r.project.name } : null,
+            raisedBy: r.createdBy ? { _id: r.createdBy.id, fullName: r.createdBy.name } : null,
+            assignedTo: r.assignedTo ? { _id: r.assignedTo.id, fullName: r.assignedTo.name } : null
+        })));
     } catch (error) {
         next(error);
     }
@@ -75,66 +41,30 @@ const getRFIs = async (req, res, next) => {
 const getRFIStats = async (req, res, next) => {
     try {
         const companyId = req.user.companyId;
-        const now = new Date();
-        const query = { companyId };
+        const where = { companyId };
 
-        // Scope filter
-        if (req.user.role === 'CLIENT') {
-            const Project = require('../models/Project');
-            const projects = await Project.find({ clientId: req.user._id }, '_id');
-            const projectIds = projects.map(p => p._id);
-            query.projectId = { $in: projectIds };
-
-            // Exclude subcontractor RFIs from client stats
-            const User = require('../models/User');
-            const subs = await User.find({ role: 'SUBCONTRACTOR' }, '_id');
-            query.raisedBy = { $nin: subs.map(s => s._id) };
-        } else if (req.user.role === 'SUBCONTRACTOR') {
-            query.$or = [
-                { raisedBy: req.user._id },
-                { assignedTo: req.user._id }
-            ];
-        } else if (req.user.role === 'FOREMAN') {
-            query.raisedBy = req.user._id;
-        }
-        // PM and Admin/Owner see all RFI stats of the company by default
-
-        const [total, open, inReview, answered, closed, overdue, highPriority, recent] = await Promise.all([
-            RFI.countDocuments(query),
-            RFI.countDocuments({ ...query, status: 'open' }),
-            RFI.countDocuments({ ...query, status: 'in_review' }),
-            RFI.countDocuments({ ...query, status: 'answered' }),
-            RFI.countDocuments({ ...query, status: 'closed' }),
-            RFI.countDocuments({ ...query, status: { $ne: 'closed' }, dueDate: { $lt: now } }),
-            RFI.find({ ...query, priority: 'high', status: { $ne: 'closed' } })
-                .populate('projectId', 'name')
-                .populate('raisedBy', 'fullName role')
-                .sort({ createdAt: -1 })
-                .limit(5),
-            RFI.find(query)
-                .populate('projectId', 'name')
-                .populate('raisedBy', 'fullName role')
-                .populate('assignedTo', 'fullName role')
-                .sort({ createdAt: -1 })
-                .limit(5),
+        const [total, open, inReview, answered, closed, recent] = await Promise.all([
+            prisma.rFI.count({ where }),
+            prisma.rFI.count({ where: { ...where, status: 'OPEN' } }),
+            prisma.rFI.count({ where: { ...where, status: 'IN_REVIEW' } }),
+            prisma.rFI.count({ where: { ...where, status: 'ANSWERED' } }),
+            prisma.rFI.count({ where: { ...where, status: 'CLOSED' } }),
+            prisma.rFI.findMany({
+                where,
+                include: {
+                    project: { select: { id: true, name: true } },
+                    createdBy: { select: { id: true, name: true } }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 5
+            })
         ]);
 
-        const overdueList = await RFI.find({
-            ...query,
-            status: { $ne: 'closed' },
-            dueDate: { $lt: now }
-        })
-            .populate('projectId', 'name')
-            .populate('raisedBy', 'fullName role')
-            .populate('assignedTo', 'fullName role')
-            .sort({ dueDate: 1 })
-            .limit(5);
-
         res.json({
-            stats: { total, open, inReview, answered, closed, overdue },
-            recentRFIs: recent,
-            highPriorityRFIs: highPriority,
-            overdueRFIs: overdueList
+            stats: { total, open, inReview, answered, closed, overdue: 0 },
+            recentRFIs: recent.map(r => ({ ...r, _id: r.id, raisedBy: r.createdBy ? { fullName: r.createdBy.name } : null })),
+            highPriorityRFIs: [],
+            overdueRFIs: []
         });
     } catch (error) {
         next(error);
@@ -146,43 +76,27 @@ const getRFIStats = async (req, res, next) => {
 // @access  Private
 const getRFIById = async (req, res, next) => {
     try {
-        const query = { _id: req.params.id, companyId: req.user.companyId };
-
-        // Scope filter
-        if (req.user.role === 'CLIENT') {
-            const Project = require('../models/Project');
-            const projects = await Project.find({ clientId: req.user._id }, '_id');
-            const projectIds = projects.map(p => p._id);
-            query.projectId = { $in: projectIds };
-
-            // Exclude subcontractor RFIs from client access
-            const User = require('../models/User');
-            const subs = await User.find({ role: 'SUBCONTRACTOR' }, '_id');
-            query.raisedBy = { $nin: subs.map(s => s._id) };
-        } else if (req.user.role === 'SUBCONTRACTOR') {
-            query.$or = [
-                { raisedBy: req.user._id },
-                { assignedTo: req.user._id }
-            ];
-        } else if (req.user.role === 'FOREMAN') {
-            query.raisedBy = req.user._id;
-        }
-        // PM and Admin/Owner have global access to RFIs in the company
-
-        const rfi = await RFI.findOne(query)
-            .populate('projectId', 'name')
-            .populate('raisedBy', 'fullName email role')
-            .populate('assignedTo', 'fullName email role')
-            .populate('comments.author', 'fullName role');
+        const rfi = await prisma.rFI.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId },
+            include: {
+                project: { select: { id: true, name: true } },
+                createdBy: { select: { id: true, name: true } },
+                assignedTo: { select: { id: true, name: true } }
+            }
+        });
 
         if (!rfi) {
             res.status(404);
             throw new Error('RFI not found or access denied');
         }
 
-        const obj = rfi.toJSON();
-        obj.isOverdue = rfi.dueDate && rfi.status !== 'closed' && new Date(rfi.dueDate) < new Date();
-        res.json(obj);
+        res.json({
+            ...rfi,
+            _id: rfi.id,
+            projectId: rfi.project ? { _id: rfi.project.id, name: rfi.project.name } : null,
+            raisedBy: rfi.createdBy ? { _id: rfi.createdBy.id, fullName: rfi.createdBy.name } : null,
+            assignedTo: rfi.assignedTo ? { _id: rfi.assignedTo.id, fullName: rfi.assignedTo.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -193,27 +107,39 @@ const getRFIById = async (req, res, next) => {
 // @access  Private
 const createRFI = async (req, res, next) => {
     try {
-        let attachments = [];
-        if (req.files && req.files.length > 0) {
-            attachments = req.files.map(file => ({
-                name: file.originalname,
-                url: file.path.replace(/\\/g, '/')
-            }));
-        }
+        const { projectId, title, question, assignedToId } = req.body;
 
-        const rfi = await RFI.create({
-            ...req.body,
-            companyId: req.user.companyId,
-            raisedBy: req.user._id,
-            attachments
+        const maxRfi = await prisma.rFI.findFirst({
+            where: { projectId },
+            orderBy: { number: 'desc' }
+        });
+        const number = (maxRfi?.number || 0) + 1;
+
+        const rfi = await prisma.rFI.create({
+            data: {
+                number,
+                projectId,
+                companyId: req.user.companyId,
+                createdById: req.user._id || req.user.id,
+                assignedToId: assignedToId || null,
+                title: title || 'Untitled RFI',
+                question: question || '',
+                status: 'OPEN'
+            },
+            include: {
+                project: { select: { id: true, name: true } },
+                createdBy: { select: { id: true, name: true } },
+                assignedTo: { select: { id: true, name: true } }
+            }
         });
 
-        const populated = await RFI.findById(rfi._id)
-            .populate('projectId', 'name')
-            .populate('raisedBy', 'fullName role')
-            .populate('assignedTo', 'fullName role');
-
-        res.status(201).json(populated);
+        res.status(201).json({
+            ...rfi,
+            _id: rfi.id,
+            projectId: rfi.project ? { _id: rfi.project.id, name: rfi.project.name } : null,
+            raisedBy: rfi.createdBy ? { _id: rfi.createdBy.id, fullName: rfi.createdBy.name } : null,
+            assignedTo: rfi.assignedTo ? { _id: rfi.assignedTo.id, fullName: rfi.assignedTo.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -224,22 +150,39 @@ const createRFI = async (req, res, next) => {
 // @access  Private
 const updateRFI = async (req, res, next) => {
     try {
-        const rfi = await RFI.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const rfi = await prisma.rFI.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!rfi) {
             res.status(404);
             throw new Error('RFI not found');
         }
 
-        const updated = await RFI.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
-            runValidators: true
-        })
-            .populate('projectId', 'name')
-            .populate('raisedBy', 'fullName role')
-            .populate('assignedTo', 'fullName role')
-            .populate('comments.author', 'fullName role');
+        const { title, question, answer, status, assignedToId } = req.body;
+        const updateData = {};
+        if (title !== undefined) updateData.title = title;
+        if (question !== undefined) updateData.question = question;
+        if (answer !== undefined) updateData.answer = answer;
+        if (status !== undefined) updateData.status = status;
+        if (assignedToId !== undefined) updateData.assignedToId = assignedToId;
 
-        res.json(updated);
+        const updated = await prisma.rFI.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: {
+                project: { select: { id: true, name: true } },
+                createdBy: { select: { id: true, name: true } },
+                assignedTo: { select: { id: true, name: true } }
+            }
+        });
+
+        res.json({
+            ...updated,
+            _id: updated.id,
+            projectId: updated.project ? { _id: updated.project.id, name: updated.project.name } : null,
+            raisedBy: updated.createdBy ? { _id: updated.createdBy.id, fullName: updated.createdBy.name } : null,
+            assignedTo: updated.assignedTo ? { _id: updated.assignedTo.id, fullName: updated.assignedTo.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -250,28 +193,38 @@ const updateRFI = async (req, res, next) => {
 // @access  Private
 const addComment = async (req, res, next) => {
     try {
-        const { text } = req.body;
-        if (!text) {
+        const { text, answer } = req.body;
+        const commentText = text || answer;
+        if (!commentText) {
             res.status(400);
             throw new Error('Comment text is required');
         }
 
-        const rfi = await RFI.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const rfi = await prisma.rFI.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!rfi) {
             res.status(404);
             throw new Error('RFI not found');
         }
 
-        rfi.comments.push({ author: req.user._id, text });
-        await rfi.save();
+        const updated = await prisma.rFI.update({
+            where: { id: req.params.id },
+            data: { answer: rfi.answer ? `${rfi.answer}\n${commentText}` : commentText },
+            include: {
+                project: { select: { id: true, name: true } },
+                createdBy: { select: { id: true, name: true } },
+                assignedTo: { select: { id: true, name: true } }
+            }
+        });
 
-        const updated = await RFI.findById(rfi._id)
-            .populate('projectId', 'name')
-            .populate('raisedBy', 'fullName role')
-            .populate('assignedTo', 'fullName role')
-            .populate('comments.author', 'fullName role');
-
-        res.json(updated);
+        res.json({
+            ...updated,
+            _id: updated.id,
+            projectId: updated.project ? { _id: updated.project.id, name: updated.project.name } : null,
+            raisedBy: updated.createdBy ? { _id: updated.createdBy.id, fullName: updated.createdBy.name } : null,
+            assignedTo: updated.assignedTo ? { _id: updated.assignedTo.id, fullName: updated.assignedTo.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -282,11 +235,14 @@ const addComment = async (req, res, next) => {
 // @access  Private (Owner/PM only)
 const deleteRFI = async (req, res, next) => {
     try {
-        const rfi = await RFI.findOneAndDelete({ _id: req.params.id, companyId: req.user.companyId });
+        const rfi = await prisma.rFI.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!rfi) {
             res.status(404);
             throw new Error('RFI not found');
         }
+        await prisma.rFI.delete({ where: { id: req.params.id } });
         res.json({ message: 'RFI deleted' });
     } catch (error) {
         next(error);

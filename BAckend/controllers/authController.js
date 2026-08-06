@@ -1,7 +1,5 @@
 const { userRepository, companyRepository } = require('../repositories');
-const Plan = require('../models/Plan');
-const Role = require('../models/Role');
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 const jwt = require('jsonwebtoken');
 const { fetchUserPermissions } = require('./roleController');
 
@@ -11,6 +9,11 @@ const { fetchUserPermissions } = require('./roleController');
 const registerCompany = async (req, res, next) => {
     try {
         const { companyName, fullName, email, password, phone, plan } = req.body;
+
+        if (phone && !/^\d{10}$/.test(String(phone).trim())) {
+            res.status(400);
+            throw new Error('Phone number must be exactly 10 digits');
+        }
 
         // Check if user exists via repository
         const userExists = await userRepository.findByEmail(email);
@@ -29,11 +32,12 @@ const registerCompany = async (req, res, next) => {
         // --- RESOLVE PLAN IF STRING ---
         let finalPlanId = null;
         const searchPlan = plan || 'starter';
-        if (searchPlan && typeof searchPlan === 'string' && !mongoose.Types.ObjectId.isValid(searchPlan)) {
-            const planDoc = await Plan.findOne({ name: new RegExp('^' + searchPlan + '$', 'i') });
-            finalPlanId = planDoc ? planDoc._id : null;
-        } else if (mongoose.Types.ObjectId.isValid(searchPlan)) {
-            finalPlanId = searchPlan;
+        if (searchPlan && typeof searchPlan === 'string') {
+            const planDoc = await prisma.plan.findFirst({
+                where: { name: { equals: searchPlan, mode: 'insensitive' } }
+            });
+            // If plan found use its _id, otherwise leave null (can't use a plain string as ObjectId)
+            finalPlanId = planDoc ? (planDoc.id || String(planDoc._id)) : null;
         }
         // ------------------------------
 
@@ -131,9 +135,9 @@ const loginUser = async (req, res, next) => {
                 };
 
                 const targetRole = getRoleFromEmail(normalizedEmail);
-                let roleDoc = await Role.findOne({ name: targetRole });
+                let roleDoc = await prisma.role.findFirst({ where: { name: targetRole } });
                 if (!roleDoc) {
-                    roleDoc = await Role.create({ name: targetRole, description: `${targetRole} Role` });
+                    roleDoc = await prisma.role.create({ data: { name: targetRole, description: `${targetRole} Role` } });
                 }
 
                 const displayName = normalizedEmail.split('@')[0].replace(/[^a-zA-Z]/g, ' ');
@@ -144,7 +148,7 @@ const loginUser = async (req, res, next) => {
                     email: normalizedEmail,
                     password: '123456',
                     role: targetRole,
-                    roleId: roleDoc._id,
+                    roleId: roleDoc.id,
                     companyId: company._id || company.id,
                     isActive: true
                 });

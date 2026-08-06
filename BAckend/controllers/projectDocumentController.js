@@ -1,27 +1,25 @@
-const ProjectDocument = require('../models/ProjectDocument');
+const prisma = require('../config/prisma');
 
 exports.createDocument = async (req, res) => {
     try {
-        const { projectId, title, description, uploadDate, category } = req.body;
-        const fileUrl = req.file ? req.file.path : null;
+        const { projectId, title, name, description, fileType } = req.body;
+        const fileUrl = req.file ? req.file.path : (req.body.fileUrl || null);
 
         if (!fileUrl) {
             return res.status(400).json({ message: 'File is required' });
         }
 
-        const newDoc = new ProjectDocument({
-            projectId,
-            title,
-            description,
-            category: category || 'General',
-            uploadDate: uploadDate || new Date(),
-            fileUrl,
-            uploadedBy: req.user._id,
-            companyId: req.user.companyId
+        const newDoc = await prisma.projectDocument.create({
+            data: {
+                projectId,
+                name: title || name || 'Untitled Document',
+                fileUrl,
+                fileType: fileType || null,
+                uploadedById: req.user._id || req.user.id
+            }
         });
 
-        await newDoc.save();
-        res.status(201).json(newDoc);
+        res.status(201).json({ ...newDoc, _id: newDoc.id });
     } catch (error) {
         console.error('Error creating document:', error);
         res.status(500).json({ message: error.message });
@@ -31,10 +29,16 @@ exports.createDocument = async (req, res) => {
 exports.getProjectDocuments = async (req, res) => {
     try {
         const { projectId } = req.params;
-        const documents = await ProjectDocument.find({ projectId })
-            .populate('uploadedBy', 'fullName email')
-            .sort({ createdAt: -1 });
-        res.json(documents);
+        const documents = await prisma.projectDocument.findMany({
+            where: { projectId },
+            include: { uploadedBy: { select: { id: true, name: true, email: true } } },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(documents.map(d => ({
+            ...d,
+            _id: d.id,
+            uploadedBy: d.uploadedBy ? { _id: d.uploadedBy.id, fullName: d.uploadedBy.name, email: d.uploadedBy.email } : null
+        })));
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -43,7 +47,7 @@ exports.getProjectDocuments = async (req, res) => {
 exports.deleteDocument = async (req, res) => {
     try {
         const { id } = req.params;
-        await ProjectDocument.findByIdAndDelete(id);
+        await prisma.projectDocument.delete({ where: { id } });
         res.json({ message: 'Document deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: error.message });

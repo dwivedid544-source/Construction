@@ -1,111 +1,15 @@
-const TimeLog = require('../models/TimeLog');
-const Project = require('../models/Project');
-
-// Helper to calculate distance between two GPS points (Haversine formula)
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3; // Earth radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c; // Distance in meters
-};
-
-const https = require('https');
-
-const reverseGeocode = async (lat, lng) => {
-    return new Promise((resolve) => {
-        if (!lat && lat !== 0) return resolve(null);
-        if (!lng && lng !== 0) return resolve(null);
-        
-        const options = {
-            hostname: 'nominatim.openstreetmap.org',
-            path: `/reverse?lat=${lat}&lon=${lng}&format=json`,
-            headers: {
-                'User-Agent': 'ConstructionSaaS-Backend/1.0',
-                'Accept-Language': 'en'
-            }
-        };
-
-        const req = https.get(options, (res) => {
-            if (res.statusCode !== 200) return resolve(null);
-            let data = '';
-            res.on('data', (chunk) => data += chunk);
-            res.on('end', () => {
-                try {
-                    const json = JSON.parse(data);
-                    if (json.address) {
-                        const addr = json.address;
-                        const short = [
-                            addr.road || addr.neighbourhood,
-                            addr.city || addr.town || addr.village || addr.county,
-                            addr.country
-                        ].filter(Boolean).join(', ');
-                        resolve(short || json.display_name?.split(',').slice(0, 2).join(','));
-                    } else {
-                        resolve(null);
-                    }
-                } catch (e) {
-                    resolve(null);
-                }
-            });
-        });
-        
-        req.on('error', () => resolve(null));
-        req.setTimeout(3000, () => {
-            req.destroy();
-            resolve(null);
-        });
-    });
-};
+const prisma = require('../config/prisma');
 
 // @desc    Clock In
 // @route   POST /api/timelogs/clock-in
 // @access  Private
 const clockIn = async (req, res, next) => {
     try {
-        const { projectId, jobId, taskId, latitude, longitude, accuracy, deviceInfo, userId, isManual, reason, clockIn: manualTime } = req.body;
-        const targetUserId = userId || req.user._id;
+        const { projectId, taskId, userId } = req.body;
+        const workerId = userId || req.user._id || req.user.id;
 
-        // Role-based check for manual entry
-        if (isManual) {
-            const allowedRoles = ['COMPANY_OWNER', 'PM', 'SUPER_ADMIN'];
-            if (!allowedRoles.includes(req.user.role)) {
-                res.status(403);
-                throw new Error('Only Admin and Project Managers can perform manual time entry.');
-            }
-            if (!manualTime) {
-                res.status(400);
-                throw new Error('Clock-in time is required for manual entry.');
-            }
-        }
-
-        // Validation: Mandatory GPS (Except for Admin Force Clock-in or Manual Entry)
-        if (!isManual && ((!latitude && latitude !== 0) || (!longitude && longitude !== 0))) {
-            if (!userId || userId === req.user._id.toString()) {
-                res.status(400);
-                throw new Error('Location access is required to clock in. Please enable GPS.');
-            }
-        }
-
-        // Validation: Accuracy must be reasonable (e.g., < 200m)
-        if (!isManual && accuracy && accuracy > 200) {
-            if (!userId || userId === req.user._id.toString()) {
-                res.status(400);
-                throw new Error('GPS accuracy too low ( > 200m). Please try again in an area with better signal.');
-            }
-        }
-
-        // Check if already clocked in
-        const activeLog = await TimeLog.findOne({
-            userId: targetUserId,
-            clockOut: null
+        const activeLog = await prisma.timeLog.findFirst({
+            where: { workerId, clockOut: null }
         });
 
         if (activeLog) {
@@ -113,109 +17,26 @@ const clockIn = async (req, res, next) => {
             throw new Error('User already clocked in');
         }
 
-        let geofenceStatus = 'unknown';
-        let isOutsideGeofence = false;
-
-        if (!isManual && projectId && latitude && longitude) {
-            const project = await Project.findById(projectId);
-            if (project) {
-                // Use site coordinates if available, otherwise fallback to location.latitude
-                const siteLat = project.siteLatitude || project.location?.latitude;
-                const siteLon = project.siteLongitude || project.location?.longitude;
-                const radius = project.allowedRadiusMeters || project.geofenceRadius || 100;
-
-                if (siteLat && siteLon) {
-                    const distance = calculateDistance(latitude, longitude, siteLat, siteLon);
-                    isOutsideGeofence = distance > radius;
-                    geofenceStatus = isOutsideGeofence ? 'outside' : 'inside';
-
-                    // Block if strict geofence is enabled
-                    if (isOutsideGeofence && project.strictGeofence) {
-                        res.status(403);
-                        throw new Error(`Clock-in blocked: You are ${Math.round(distance - radius)}m outside the allowed site radius.`);
-                    }
-                }
+        const log = await prisma.timeLog.create({
+            data: {
+                workerId,
+                projectId,
+                taskId: taskId || null,
+                clockIn: new Date(),
+                status: 'PENDING'
+            },
+            include: {
+                worker: { select: { id: true, name: true, roleId: true } },
+                project: { select: { id: true, name: true } }
             }
-        }
-
-        const log = await TimeLog.create({
-            companyId: req.user.companyId,
-            userId: targetUserId,
-            projectId,
-            jobId,
-            taskId,
-            taskModel: req.body.taskType || 'JobTask',
-            clockIn: isManual ? new Date(manualTime) : new Date(),
-            gpsIn: { latitude, longitude }, // compatibility
-            clockInLatitude: latitude,
-            clockInLongitude: longitude,
-            clockInAccuracy: accuracy,
-            geofenceStatus,
-            isOutsideGeofence,
-            isManual: isManual || false,
-            reason,
-            createdBy: req.user._id,
-            createdByRole: req.user.role,
-            deviceInfo: isManual ? `Manual Entry by ${req.user.role}` : deviceInfo,
-            clockOut: (isManual && req.body.clockOut) ? new Date(req.body.clockOut) : null,
-            clockInAddress: await reverseGeocode(latitude, longitude)
         });
 
-        // If taskId is provided, update task status to 'in_progress'
-        if (taskId) {
-            const taskType = req.body.taskType || 'JobTask';
-            let Model;
-            let pendingStatus = 'pending';
-            
-            if (taskType === 'Task') {
-                Model = require('../models/Task');
-                pendingStatus = 'todo';
-            } else if (taskType === 'SubTask') {
-                Model = require('../models/SubTask');
-                pendingStatus = 'todo';
-            } else {
-                Model = require('../models/JobTask');
-                pendingStatus = 'pending';
-            }
-
-            try {
-                await Model.findOneAndUpdate(
-                    { _id: taskId, status: pendingStatus },
-                    { $set: { status: 'in_progress' } }
-                );
-            } catch (err) {
-                console.error(`Error updating assignment status for ${taskType}:`, err);
-            }
-        }
-
-        // Auto-activate Job when worker clocks in
-        if (jobId) {
-            const Job = require('../models/Job');
-            await Job.findOneAndUpdate(
-                { _id: jobId, status: 'planning' },
-                { $set: { status: 'active' } }
-            );
-        }
-
-        // Emit socket event
-        const io = req.app.get('io');
-        if (io) {
-            const populatedLog = await TimeLog.findById(log._id)
-                .populate('userId', 'fullName role avatar')
-                .populate('projectId', 'name');
-
-            io.emit('attendance_update', {
-                type: log.clockOut ? 'manual-entry' : 'clock-in',
-                userId: targetUserId,
-                log: populatedLog
-            });
-            // Emit task update event to refresh UI without reload
-            if (taskId) {
-                io.emit('task_update', { taskId, status: 'in_progress' });
-            }
-        }
-
-        res.status(201).json(log);
+        res.status(201).json({
+            ...log,
+            _id: log.id,
+            userId: log.worker ? { _id: log.worker.id, fullName: log.worker.name } : null,
+            projectId: log.project ? { _id: log.project.id, name: log.project.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -223,33 +44,11 @@ const clockIn = async (req, res, next) => {
 
 const clockOut = async (req, res, next) => {
     try {
-        const { latitude, longitude, accuracy, userId, isManual, reason, clockOut: manualTime } = req.body;
-        const targetUserId = userId || req.user._id;
+        const { userId } = req.body;
+        const workerId = userId || req.user._id || req.user.id;
 
-        // Role-based check for manual entry
-        if (isManual) {
-            const allowedRoles = ['COMPANY_OWNER', 'PM', 'SUPER_ADMIN'];
-            if (!allowedRoles.includes(req.user.role)) {
-                res.status(403);
-                throw new Error('Only Admin and Project Managers can perform manual time entry.');
-            }
-            if (!manualTime) {
-                res.status(400);
-                throw new Error('Clock-out time is required for manual entry.');
-            }
-        }
-
-        // Validation: Mandatory GPS (Except for Admin/Foreman Force Clock-out or Manual Entry)
-        if (!isManual && ((!latitude && latitude !== 0) || (!longitude && longitude !== 0))) {
-            if (!userId || userId === req.user._id.toString()) {
-                res.status(400);
-                throw new Error('Location access is required to clock out. Please enable GPS.');
-            }
-        }
-
-        const log = await TimeLog.findOne({
-            userId: targetUserId,
-            clockOut: null
+        const log = await prisma.timeLog.findFirst({
+            where: { workerId, clockOut: null }
         });
 
         if (!log) {
@@ -257,69 +56,27 @@ const clockOut = async (req, res, next) => {
             throw new Error('User not clocked in');
         }
 
-        // Potential geofence check for clock-out if required
-        if (!isManual && log.projectId && latitude && longitude) {
-            const project = await Project.findById(log.projectId);
-            if (project) {
-                const siteLat = project.siteLatitude || project.location?.latitude;
-                const siteLon = project.siteLongitude || project.location?.longitude;
-                const radius = project.allowedRadiusMeters || project.geofenceRadius || 100;
+        const clockOutTime = new Date();
+        const durationMinutes = Math.max(0, Math.round((clockOutTime - new Date(log.clockIn)) / (1000 * 60)));
 
-                if (siteLat && siteLon) {
-                    const distance = calculateDistance(latitude, longitude, siteLat, siteLon);
-                    // We update the flag if they clock out outside as well, or just record it
-                    if (distance > radius) {
-                        log.isOutsideGeofence = true;
-                        log.geofenceStatus = 'outside';
-
-                        if (project.strictGeofence) {
-                            res.status(403);
-                            throw new Error(`Clock-out blocked: You must be within the project site to clock out.`);
-                        }
-                    }
-                }
+        const updated = await prisma.timeLog.update({
+            where: { id: log.id },
+            data: {
+                clockOut: clockOutTime,
+                durationMinutes
+            },
+            include: {
+                worker: { select: { id: true, name: true } },
+                project: { select: { id: true, name: true } }
             }
-        }
+        });
 
-        log.clockOut = isManual ? new Date(manualTime) : new Date();
-        log.gpsOut = { latitude, longitude }; // compatibility
-        log.clockOutLatitude = latitude;
-        log.clockOutLongitude = longitude;
-        log.clockOutAccuracy = accuracy;
-        if (isManual) {
-            log.isManual = true;
-            log.reason = reason || log.reason;
-            log.createdBy = req.user._id;
-            log.createdByRole = req.user.role;
-        }
-
-        // Resolve clock-out address
-        if (latitude && longitude) {
-            log.clockOutAddress = await reverseGeocode(latitude, longitude);
-        }
-
-        await log.save();
-
-        // Auto-set Job to 'on-hold' when worker clocks out (only if it was active)
-        if (log.jobId) {
-            const Job = require('../models/Job');
-            await Job.findOneAndUpdate(
-                { _id: log.jobId, status: 'active' },
-                { $set: { status: 'on-hold' } }
-            );
-        }
-
-        // Emit socket event
-        const io = req.app.get('io');
-        if (io) {
-            io.emit('attendance_update', {
-                type: 'clock-out',
-                userId: targetUserId,
-                logId: log._id
-            });
-        }
-
-        res.json(log);
+        res.json({
+            ...updated,
+            _id: updated.id,
+            userId: updated.worker ? { _id: updated.worker.id, fullName: updated.worker.name } : null,
+            projectId: updated.project ? { _id: updated.project.id, name: updated.project.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -330,20 +87,25 @@ const clockOut = async (req, res, next) => {
 // @access  Private
 const getTimeLogs = async (req, res, next) => {
     try {
-        const query = { companyId: req.user.companyId };
+        const where = {};
+        if (req.query.userId) where.workerId = req.query.userId;
+        if (req.query.projectId) where.projectId = req.query.projectId;
 
-        if (req.query.userId) query.userId = req.query.userId;
-        if (req.query.projectId) query.projectId = req.query.projectId;
+        const logs = await prisma.timeLog.findMany({
+            where,
+            include: {
+                worker: { select: { id: true, name: true, roleId: true } },
+                project: { select: { id: true, name: true } }
+            },
+            orderBy: { clockIn: 'desc' }
+        });
 
-        const logs = await TimeLog.find(query)
-            .populate('userId', 'fullName email role')
-            .populate('projectId', 'name')
-            .populate('jobId', 'name')
-            .populate('taskId', 'title')
-            .populate('createdBy', 'fullName role')
-            .sort({ clockIn: -1 });
-
-        res.json(logs);
+        res.json(logs.map(l => ({
+            ...l,
+            _id: l.id,
+            userId: l.worker ? { _id: l.worker.id, fullName: l.worker.name } : null,
+            projectId: l.project ? { _id: l.project.id, name: l.project.name } : null
+        })));
     } catch (error) {
         next(error);
     }
@@ -354,19 +116,34 @@ const getTimeLogs = async (req, res, next) => {
 // @access  Private (PM, COMPANY_OWNER)
 const updateTimeLog = async (req, res, next) => {
     try {
-        const log = await TimeLog.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const log = await prisma.timeLog.findUnique({ where: { id: req.params.id } });
 
         if (!log) {
             res.status(404);
             throw new Error('TimeLog not found');
         }
 
-        const updatedLog = await TimeLog.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
-            runValidators: true
-        }).populate('userId', 'fullName email role').populate('projectId', 'name');
+        const { status, durationMinutes, hourlyRate } = req.body;
+        const updateData = {};
+        if (status !== undefined) updateData.status = status;
+        if (durationMinutes !== undefined) updateData.durationMinutes = parseInt(durationMinutes);
+        if (hourlyRate !== undefined) updateData.hourlyRate = parseFloat(hourlyRate);
 
-        res.json(updatedLog);
+        const updatedLog = await prisma.timeLog.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: {
+                worker: { select: { id: true, name: true } },
+                project: { select: { id: true, name: true } }
+            }
+        });
+
+        res.json({
+            ...updatedLog,
+            _id: updatedLog.id,
+            userId: updatedLog.worker ? { _id: updatedLog.worker.id, fullName: updatedLog.worker.name } : null,
+            projectId: updatedLog.project ? { _id: updatedLog.project.id, name: updatedLog.project.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -377,15 +154,14 @@ const updateTimeLog = async (req, res, next) => {
 // @access  Private (PM, COMPANY_OWNER)
 const deleteTimeLog = async (req, res, next) => {
     try {
-        const log = await TimeLog.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const log = await prisma.timeLog.findUnique({ where: { id: req.params.id } });
 
         if (!log) {
             res.status(404);
             throw new Error('TimeLog not found');
         }
 
-        await TimeLog.findByIdAndDelete(req.params.id);
-
+        await prisma.timeLog.delete({ where: { id: req.params.id } });
         res.json({ message: 'TimeLog removed' });
     } catch (error) {
         next(error);

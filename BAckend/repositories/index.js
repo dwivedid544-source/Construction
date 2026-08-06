@@ -10,7 +10,7 @@ const projectRepository = require('./projectRepository');
 const taskRepository = require('./taskRepository');
 const dailyLogRepository = require('./dailyLogRepository');
 
-const getDriver = () => (process.env.DB_DRIVER || 'mongoose').toLowerCase();
+const getDriver = () => (process.env.DB_DRIVER || 'prisma').toLowerCase();
 
 module.exports = {
   getDriver,

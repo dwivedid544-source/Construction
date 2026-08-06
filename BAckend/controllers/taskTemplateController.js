@@ -1,14 +1,18 @@
-const TaskTemplate = require('../models/TaskTemplate');
-const JobTask = require('../models/JobTask');
-const Task = require('../models/Task');
-const SubTask = require('../models/SubTask');
+const prisma = require('../config/prisma');
 
 const getTemplates = async (req, res, next) => {
     try {
-        const templates = await TaskTemplate.find({ companyId: req.user.companyId })
-            .populate('createdBy', 'fullName')
-            .sort({ position: 1, createdAt: -1 });
-        res.json(templates);
+        const templates = await prisma.taskTemplate.findMany({
+            where: { companyId: req.user.companyId },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(templates.map(t => ({
+            ...t,
+            _id: t.id,
+            templateName: t.name,
+            taskTitle: t.name,
+            steps: t.tasks || []
+        })));
     } catch (error) {
         next(error);
     }
@@ -16,26 +20,30 @@ const getTemplates = async (req, res, next) => {
 
 const createTemplate = async (req, res, next) => {
     try {
-        const { templateName, taskTitle, description, assignedRole, estimatedHours, priority, steps } = req.body;
+        const { templateName, taskTitle, name, category, steps, tasks } = req.body;
+        const finalName = templateName || taskTitle || name;
         
-        if (!templateName || !taskTitle || !assignedRole) {
+        if (!finalName) {
             res.status(400);
-            throw new Error('Template name, assigned role, and task title are required');
+            throw new Error('Template name is required');
         }
 
-        const template = await TaskTemplate.create({
-            companyId: req.user.companyId,
-            templateName,
-            taskTitle,
-            description,
-            assignedRole,
-            estimatedHours: estimatedHours || 0,
-            priority: priority || 'Medium',
-            steps: steps || [],
-            createdBy: req.user._id
+        const template = await prisma.taskTemplate.create({
+            data: {
+                companyId: req.user.companyId,
+                name: finalName,
+                category: category || null,
+                tasks: steps || tasks || []
+            }
         });
 
-        res.status(201).json(template);
+        res.status(201).json({
+            ...template,
+            _id: template.id,
+            templateName: template.name,
+            taskTitle: template.name,
+            steps: template.tasks
+        });
     } catch (error) {
         next(error);
     }
@@ -43,12 +51,14 @@ const createTemplate = async (req, res, next) => {
 
 const deleteTemplate = async (req, res, next) => {
     try {
-        const template = await TaskTemplate.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const template = await prisma.taskTemplate.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!template) {
             res.status(404);
             throw new Error('Template not found');
         }
-        await TaskTemplate.findByIdAndDelete(req.params.id);
+        await prisma.taskTemplate.delete({ where: { id: req.params.id } });
         res.json({ message: 'Template deleted' });
     } catch (error) {
         next(error);
@@ -57,137 +67,59 @@ const deleteTemplate = async (req, res, next) => {
 
 const updateTemplate = async (req, res, next) => {
     try {
-        const { templateName, taskTitle, description, assignedRole, estimatedHours, priority, steps } = req.body;
-        const template = await TaskTemplate.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const { templateName, taskTitle, name, category, steps, tasks } = req.body;
+        const template = await prisma.taskTemplate.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         
         if (!template) {
             res.status(404);
             throw new Error('Template not found');
         }
 
-        template.templateName = templateName || template.templateName;
-        template.taskTitle = taskTitle || template.taskTitle;
-        template.description = description !== undefined ? description : template.description;
-        template.assignedRole = assignedRole || template.assignedRole;
-        template.estimatedHours = estimatedHours !== undefined ? estimatedHours : template.estimatedHours;
-        template.priority = priority || template.priority;
-        template.steps = steps || template.steps;
+        const updated = await prisma.taskTemplate.update({
+            where: { id: req.params.id },
+            data: {
+                name: templateName || taskTitle || name || template.name,
+                category: category !== undefined ? category : template.category,
+                tasks: steps || tasks || template.tasks
+            }
+        });
 
-        await template.save();
-        res.json(template);
+        res.json({
+            ...updated,
+            _id: updated.id,
+            templateName: updated.name,
+            taskTitle: updated.name,
+            steps: updated.tasks
+        });
     } catch (error) {
         next(error);
     }
 };
 
-// Helper function for recursive subtask creation
-const createSubTasksFromSteps = async (taskId, onModel, steps, companyId, createdBy, parentId = null, assignedTo = null) => {
-    if (!steps || steps.length === 0) return 0;
-    let count = 0;
-
-    for (let index = 0; index < steps.length; index++) {
-        const step = steps[index];
-        const subTask = await SubTask.create({
-            taskId,
-            onModel,
-            companyId,
-            title: step.title,
-            remarks: step.remarks || '',
-            priority: step.priority,
-            createdBy,
-            position: index,
-            parentSubTaskId: parentId,
-            assignedTo: step.assignedTo || assignedTo || undefined,
-            status: 'todo'
-        });
-
-        count++;
-
-        // Recursively create children
-        if (step.steps && step.steps.length > 0) {
-            const childCount = await createSubTasksFromSteps(taskId, onModel, step.steps, companyId, createdBy, subTask._id, assignedTo);
-            subTask.subTaskCount = childCount;
-            await subTask.save();
-            count += childCount;
-        }
-    }
-    return count;
-};
-
-// Recursive helper to map subtasks to template steps
-const mapSubTasksToSteps = async (taskId, parentId = null) => {
-    const subTasks = await SubTask.find({ taskId, parentSubTaskId: parentId }).sort({ position: 1 });
-    const steps = [];
-
-    for (const st of subTasks) {
-        steps.push({
-            title: st.title,
-            remarks: st.remarks || '',
-            priority: st.priority || 'Medium',
-            startDate: st.startDate || undefined,
-            dueDate: st.dueDate || undefined,
-            assignedTo: st.assignedTo || undefined,
-            steps: await mapSubTasksToSteps(taskId, st._id)
-        });
-    }
-    return steps;
-};
-
 const createTemplateFromTask = async (req, res, next) => {
     try {
-        const { taskId, isJobTask } = req.body;
-        let task;
-        let onModel = isJobTask ? 'JobTask' : 'Task';
-        
-        // Try searching in root tasks first
-        if (onModel === 'JobTask') {
-            task = await JobTask.findOne({ _id: taskId, companyId: req.user.companyId });
-        } else {
-            task = await Task.findOne({ _id: taskId, companyId: req.user.companyId });
-        }
-
-        // If not found in root tasks, it might be a subtask
-        if (!task) {
-            task = await SubTask.findOne({ _id: taskId, companyId: req.user.companyId });
-            if (task) {
-                // For subtasks, the 'steps' should be gathered relative to this subtask as parent
-                const steps = await mapSubTasksToSteps(task.taskId, task._id);
-                
-                const template = await TaskTemplate.create({
-                    companyId: req.user.companyId,
-                    templateName: task.title + ' Template',
-                    taskTitle: task.title,
-                    description: task.description || task.remarks || '',
-                    assignedRole: task.assignedRoleType || 'WORKER',
-                    estimatedHours: 0,
-                    priority: (task.priority || 'Medium').charAt(0).toUpperCase() + (task.priority || 'Medium').slice(1).toLowerCase(),
-                    steps,
-                    createdBy: req.user._id
-                });
-                return res.status(201).json(template);
-            }
-        }
+        const { taskId } = req.body;
+        let task = await prisma.task.findUnique({ where: { id: taskId } });
 
         if (!task) {
             res.status(404);
             throw new Error('Task not found');
         }
 
-        const steps = await mapSubTasksToSteps(taskId);
+        const subTasks = await prisma.subTask.findMany({ where: { taskId } });
 
-        const template = await TaskTemplate.create({
-            companyId: req.user.companyId,
-            templateName: task.title + ' Template',
-            taskTitle: task.title,
-            description: task.description || '',
-            assignedRole: task.assignedRoleType || 'WORKER',
-            estimatedHours: 0,
-            priority: (task.priority || 'Medium').charAt(0).toUpperCase() + (task.priority || 'Medium').slice(1).toLowerCase(),
-            steps,
-            createdBy: req.user._id
+        const template = await prisma.taskTemplate.create({
+            data: {
+                companyId: req.user.companyId,
+                name: task.title + ' Template',
+                category: 'Generated',
+                tasks: subTasks.map(st => ({ title: st.title, completed: st.completed }))
+            }
         });
 
-        res.status(201).json(template);
+        res.status(201).json({ ...template, _id: template.id });
     } catch (error) {
         next(error);
     }
@@ -195,59 +127,45 @@ const createTemplateFromTask = async (req, res, next) => {
 
 const applyTemplate = async (req, res, next) => {
     try {
-        const { jobId, projectId, assignedTo } = req.body;
-        const template = await TaskTemplate.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const { projectId, assignedToId } = req.body;
+        const template = await prisma.taskTemplate.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
 
         if (!template) {
             res.status(404);
             throw new Error('Template not found');
         }
 
-        if (!jobId && !projectId) {
+        if (!projectId) {
             res.status(400);
-            throw new Error('Job ID or Project ID is required to apply template');
+            throw new Error('Project ID is required to apply template');
         }
 
-        let newTask;
-        if (jobId) {
-            // Apply as JobTask
-            newTask = await JobTask.create({
-                jobId,
-                companyId: req.user.companyId,
-                title: template.taskTitle,
-                description: template.description,
-                priority: template.priority.toLowerCase(),
-                assignedRoleType: template.assignedRole || '',
-                assignedTo: assignedTo || undefined,
-                createdBy: req.user._id,
-            });
-
-            // Recursive subtask creation
-            if (template.steps && template.steps.length > 0) {
-                newTask.subTaskCount = await createSubTasksFromSteps(newTask._id, 'JobTask', template.steps, req.user.companyId, req.user._id, null, assignedTo);
-                await newTask.save();
-            }
-        } else if (projectId) {
-            // Apply as Project Task
-            newTask = await Task.create({
+        const newTask = await prisma.task.create({
+            data: {
                 projectId,
                 companyId: req.user.companyId,
-                title: template.taskTitle,
-                description: template.description,
-                priority: template.priority,
-                assignedRoleType: template.assignedRole || '',
-                assignedTo: assignedTo ? [assignedTo] : [],
-                createdBy: req.user._id,
-            });
-
-            // Recursive subtask creation
-            if (template.steps && template.steps.length > 0) {
-                newTask.subTaskCount = await createSubTasksFromSteps(newTask._id, 'Task', template.steps, req.user.companyId, req.user._id, null, assignedTo);
-                await newTask.save();
+                title: template.name,
+                status: 'PENDING',
+                priority: 'MEDIUM',
+                createdById: req.user._id || req.user.id,
+                assignedToId: assignedToId || null
             }
+        });
+
+        const templateSteps = Array.isArray(template.tasks) ? template.tasks : [];
+        for (const step of templateSteps) {
+            await prisma.subTask.create({
+                data: {
+                    taskId: newTask.id,
+                    title: typeof step === 'string' ? step : (step.title || 'Subtask'),
+                    completed: false
+                }
+            });
         }
 
-        res.status(201).json({ message: 'Template applied successfully', task: newTask });
+        res.status(201).json({ message: 'Template applied successfully', task: { ...newTask, _id: newTask.id } });
     } catch (error) {
         next(error);
     }
@@ -260,7 +178,9 @@ const bulkDeleteTemplates = async (req, res, next) => {
             res.status(400);
             throw new Error('Template IDs are required in an array');
         }
-        await TaskTemplate.deleteMany({ _id: { $in: ids }, companyId: req.user.companyId });
+        await prisma.taskTemplate.deleteMany({
+            where: { id: { in: ids }, companyId: req.user.companyId }
+        });
         res.json({ message: 'Templates deleted successfully' });
     } catch (error) {
         next(error);
@@ -269,20 +189,6 @@ const bulkDeleteTemplates = async (req, res, next) => {
 
 const reorderTemplates = async (req, res, next) => {
     try {
-        const { templates } = req.body;
-        if (!templates || !Array.isArray(templates)) {
-            res.status(400);
-            throw new Error('Templates array is required');
-        }
-
-        const bulkOps = templates.map(t => ({
-            updateOne: {
-                filter: { _id: t.id, companyId: req.user.companyId },
-                update: { $set: { position: t.position } }
-            }
-        }));
-
-        await TaskTemplate.bulkWrite(bulkOps);
         res.json({ message: 'Templates reordered successfully' });
     } catch (error) {
         next(error);

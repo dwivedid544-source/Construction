@@ -1,7 +1,7 @@
 const DailyLog = require('../models/DailyLog');
 const prisma = require('../config/prisma');
 
-const getDriver = () => (process.env.DB_DRIVER || 'mongoose').toLowerCase();
+const getDriver = () => (process.env.DB_DRIVER || 'prisma').toLowerCase();
 
 class DailyLogRepository {
   async findById(id) {

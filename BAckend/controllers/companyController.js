@@ -1,13 +1,5 @@
 const { companyRepository, userRepository } = require('../repositories');
-const Plan = require('../models/Plan');
-const Task = require('../models/Task');
-const Project = require('../models/Project');
-const Issue = require('../models/Issue');
-const Invoice = require('../models/Invoice');
-const Photo = require('../models/Photo');
-const PurchaseOrder = require('../models/purchaseOrder.model');
-const TimeLog = require('../models/TimeLog');
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
 // @desc    Get dashboard statistics for a company
 // @route   GET /api/companies/dashboard/stats
@@ -19,7 +11,7 @@ const getDashboardStats = async (req, res, next) => {
         const endOfToday = new Date(today.setHours(23, 59, 59, 999));
 
         const companyId = req.user.companyId;
-        const userId = req.user._id;
+        const userId = req.user._id || req.user.id;
         const role = req.user.role;
 
         const isStaff = ['WORKER', 'FOREMAN'].includes(role);
@@ -31,16 +23,22 @@ const getDashboardStats = async (req, res, next) => {
 
         const photoFilter = { companyId };
         if (role === 'CLIENT') {
-            const clientProjects = await Project.find({ companyId, clientId: userId }).select('_id').lean();
-            const clientProjectIds = clientProjects.map(p => p._id);
-            photoFilter.projectId = { $in: clientProjectIds };
-            projectFilter._id = { $in: clientProjectIds };
+            const clientProjects = await prisma.project.findMany({
+                where: { companyId, clientId: userId },
+                select: { id: true }
+            });
+            const clientProjectIds = clientProjects.map(p => p.id);
+            photoFilter.projectId = { in: clientProjectIds };
+            projectFilter.id = { in: clientProjectIds };
         } else if (isStaff) {
-            taskFilter.assignedTo = userId;
-            const staffTasks = await Task.find({ assignedTo: userId }).select('projectId');
-            const projectIds = staffTasks.map(t => t.projectId).filter(id => id);
-            projectFilter._id = { $in: projectIds };
-            photoFilter.projectId = projectFilter._id;
+            taskFilter.assignedToId = userId;
+            const staffTasks = await prisma.task.findMany({
+                where: { assignedToId: userId },
+                select: { projectId: true }
+            });
+            const projectIds = staffTasks.map(t => t.projectId).filter(Boolean);
+            projectFilter.id = { in: projectIds };
+            photoFilter.projectId = projectFilter.id;
         }
 
         // Parallel counts for cards
@@ -53,25 +51,30 @@ const getDashboardStats = async (req, res, next) => {
             totalPhotosToday,
             onSiteEmployees
         ] = await Promise.all([
-            Task.countDocuments({ ...taskFilter, dueDate: { $gte: startOfToday, $lte: endOfToday } }),
-            Task.countDocuments({ ...taskFilter, status: { $ne: 'completed' }, dueDate: { $lt: startOfToday } }),
-            Project.countDocuments(projectFilter),
-            Issue.countDocuments(issueFilter),
-            Invoice.countDocuments({ companyId, status: { $in: ['unpaid', 'partially_paid', 'overdue'] } }),
-            Photo.countDocuments({ ...photoFilter, createdAt: { $gte: startOfToday } }),
-            TimeLog.countDocuments({ companyId, clockOut: { $exists: false } })
+            prisma.task.count({ where: { ...taskFilter, dueDate: { gte: startOfToday, lte: endOfToday } } }),
+            prisma.task.count({ where: { ...taskFilter, status: { not: 'completed' }, dueDate: { lt: startOfToday } } }),
+            prisma.project.count({ where: projectFilter }),
+            prisma.issue.count({ where: issueFilter }),
+            prisma.invoice.count({ where: { companyId, status: { in: ['unpaid', 'partially_paid', 'overdue'] } } }),
+            prisma.photo.count({ where: { ...photoFilter, createdAt: { gte: startOfToday } } }),
+            prisma.timeLog.count({ where: { companyId, clockOut: null } })
         ]);
 
-        const unpaidInvoices = await Invoice.find({
-            companyId,
-            status: { $in: ['unpaid', 'partially_paid', 'overdue'] }
+        const unpaidInvoices = await prisma.invoice.findMany({
+            where: {
+                companyId,
+                status: { in: ['unpaid', 'partially_paid', 'overdue'] }
+            }
         });
-        const outstandingAmount = unpaidInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+        const outstandingAmount = unpaidInvoices.reduce((sum, inv) => sum + (inv.amount || inv.totalAmount || 0), 0);
 
-        const activeProjectsList = await Project.find(projectFilter).limit(5);
+        const activeProjectsList = await prisma.project.findMany({
+            where: projectFilter,
+            take: 5
+        });
 
         const barData = await Promise.all(activeProjectsList.map(async (p) => {
-            const pos = await PurchaseOrder.find({ projectId: p._id, status: 'received' });
+            const pos = await prisma.purchaseOrder.findMany({ where: { projectId: p.id, status: 'received' } });
             const spent = pos.reduce((sum, po) => sum + (po.totalAmount || 0), 0);
 
             return {
@@ -81,33 +84,44 @@ const getDashboardStats = async (req, res, next) => {
             };
         }));
 
-        const taskStats = await Task.aggregate([
-            { $match: taskFilter },
-            { $group: { _id: "$status", count: { $sum: 1 } } }
-        ]);
+        const taskStatsGroup = await prisma.task.groupBy({
+            by: ['status'],
+            _count: { _all: true },
+            where: taskFilter
+        });
 
         const pieData = [
-            { name: 'Completed', value: taskStats.find(s => s._id === 'completed')?.count || 0, color: '#10b981' },
-            { name: 'In Progress', value: taskStats.find(s => s._id === 'in_progress')?.count || 0, color: '#3b82f6' },
-            { name: 'Review', value: taskStats.find(s => s._id === 'review')?.count || 0, color: '#8b5cf6' },
-            { name: 'Not Started', value: taskStats.find(s => s._id === 'todo')?.count || 0, color: '#94a3b8' }
+            { name: 'Completed', value: taskStatsGroup.find(s => s.status === 'completed')?._count._all || 0, color: '#10b981' },
+            { name: 'In Progress', value: taskStatsGroup.find(s => s.status === 'in_progress')?._count._all || 0, color: '#3b82f6' },
+            { name: 'Review', value: taskStatsGroup.find(s => s.status === 'review')?._count._all || 0, color: '#8b5cf6' },
+            { name: 'Not Started', value: taskStatsGroup.find(s => s.status === 'todo' || s.status === 'PENDING')?._count._all || 0, color: '#94a3b8' }
         ];
 
         const [recentPhotos, recentProjects] = await Promise.all([
-            Photo.find(photoFilter).populate('uploadedBy', 'fullName').populate('projectId', 'name').sort({ createdAt: -1 }).limit(3),
-            Project.find(projectFilter).populate('createdBy', 'fullName').sort({ createdAt: -1 }).limit(2)
+            prisma.photo.findMany({
+                where: photoFilter,
+                include: { uploadedBy: { select: { name: true } }, project: { select: { name: true } } },
+                orderBy: { createdAt: 'desc' },
+                take: 3
+            }),
+            prisma.project.findMany({
+                where: projectFilter,
+                include: { projectManager: { select: { name: true } } },
+                orderBy: { createdAt: 'desc' },
+                take: 2
+            })
         ]);
 
         const activityFeed = [
             ...recentPhotos.map(p => ({
-                user: p.uploadedBy?.fullName || 'Member',
+                user: p.uploadedBy?.name || 'Member',
                 action: 'uploaded a site photo',
-                project: p.projectId?.name || 'Project',
+                project: p.project?.name || 'Project',
                 time: p.createdAt,
                 type: 'photo'
             })),
             ...recentProjects.map(p => ({
-                user: p.createdBy?.fullName || 'Admin',
+                user: p.projectManager?.name || 'Admin',
                 action: 'created a new project',
                 project: p.name,
                 time: p.createdAt,
@@ -152,7 +166,7 @@ const getCompanies = async (req, res, next) => {
             
             const [userCount, projectCount] = await Promise.all([
                 userRepository.find({ companyId: company._id || company.id }),
-                Project.countDocuments({ companyId: company._id || company.id })
+                prisma.project.count({ where: { companyId: company._id || company.id } })
             ]);
 
             return {
@@ -222,9 +236,11 @@ const createCompany = async (req, res, next) => {
         }
 
         let finalPlanId = plan;
-        if (plan && typeof plan === 'string' && !mongoose.Types.ObjectId.isValid(plan)) {
-            const planDoc = await Plan.findOne({ name: new RegExp('^' + plan + '$', 'i') });
-            finalPlanId = planDoc ? planDoc._id : null;
+        if (plan && typeof plan === 'string') {
+            const planDoc = await prisma.plan.findFirst({
+                where: { name: { equals: plan, mode: 'insensitive' } }
+            });
+            finalPlanId = planDoc ? planDoc.id : plan;
         }
 
         const company = await companyRepository.create({
@@ -289,10 +305,12 @@ const updateCompany = async (req, res, next) => {
             delete updates.plan;
         }
 
-        if (updates.subscriptionPlanId && typeof updates.subscriptionPlanId === 'string' && !mongoose.Types.ObjectId.isValid(updates.subscriptionPlanId)) {
-            const plan = await Plan.findOne({ name: new RegExp('^' + updates.subscriptionPlanId + '$', 'i') });
+        if (updates.subscriptionPlanId && typeof updates.subscriptionPlanId === 'string') {
+            const plan = await prisma.plan.findFirst({
+                where: { name: { equals: updates.subscriptionPlanId, mode: 'insensitive' } }
+            });
             if (plan) {
-                updates.subscriptionPlanId = plan._id;
+                updates.subscriptionPlanId = plan.id;
             } else {
                 delete updates.subscriptionPlanId;
             }

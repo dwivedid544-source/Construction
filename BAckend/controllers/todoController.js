@@ -1,22 +1,23 @@
-const mongoose = require('mongoose');
-const Todo = require('../models/Todo');
+const prisma = require('../config/prisma');
 
 // @desc    Get todos for the current user
 // @route   GET /api/todos
 // @access  Private
 const getTodos = async (req, res, next) => {
     try {
-        const { _id: userId, companyId } = req.user;
-        const query = { companyId, assignedTo: userId };
+        const userId = req.user._id || req.user.id;
 
-        if (req.query.status) query.status = req.query.status;
+        const todos = await prisma.todo.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' }
+        });
 
-        const todos = await Todo.find(query)
-            .sort({ createdAt: -1 })
-            .populate('assignedBy', 'fullName role')
-            .lean();
-
-        res.json(todos);
+        res.json(todos.map(t => ({
+            ...t,
+            _id: t.id,
+            title: t.task,
+            status: t.completed ? 'completed' : 'pending'
+        })));
     } catch (error) {
         next(error);
     }
@@ -27,15 +28,19 @@ const getTodos = async (req, res, next) => {
 // @access  Private
 const getAssignedByMeTodos = async (req, res, next) => {
     try {
-        const { _id: userId, companyId } = req.user;
-        const query = { companyId, assignedBy: userId };
+        const userId = req.user._id || req.user.id;
 
-        const todos = await Todo.find(query)
-            .sort({ createdAt: -1 })
-            .populate('assignedTo', 'fullName role')
-            .lean();
+        const todos = await prisma.todo.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' }
+        });
 
-        res.json(todos);
+        res.json(todos.map(t => ({
+            ...t,
+            _id: t.id,
+            title: t.task,
+            status: t.completed ? 'completed' : 'pending'
+        })));
     } catch (error) {
         next(error);
     }
@@ -46,38 +51,24 @@ const getAssignedByMeTodos = async (req, res, next) => {
 // @access  Private
 const createTodo = async (req, res, next) => {
     try {
-        const { title, description, assignedTo, priority } = req.body;
-        console.log('DEBUG [createTodo] received:', { title, assignedTo });
-        if (!req.user) {
-            console.error('DEBUG [createTodo]: req.user is null!');
-            return res.status(401).json({ message: 'User object missing in request' });
-        }
-        const { _id: userId, companyId, role } = req.user;
-        console.log('DEBUG [createTodo] user info:', { userId, role });
+        const { title, task, dueDate } = req.body;
+        const userId = req.user._id || req.user.id;
 
-        if (!title) {
-            return res.status(400).json({ message: 'Title is required' });
-        }
-
-        // Default to self if not provided or if worker is creating
-        let finalAssignedTo = assignedTo || userId;
-        
-        // Workers can only assign to themselves
-        if (['WORKER', 'SUBCONTRACTOR'].includes(role)) {
-            finalAssignedTo = userId;
-        }
-
-        const todo = await Todo.create({
-            companyId,
-            title,
-            description,
-            assignedTo: finalAssignedTo,
-            assignedBy: userId,
-            priority: priority || 'Medium',
-            status: 'pending'
+        const todo = await prisma.todo.create({
+            data: {
+                userId,
+                task: title || task || 'Untitled Task',
+                completed: false,
+                dueDate: dueDate ? new Date(dueDate) : null
+            }
         });
 
-        res.status(201).json(todo);
+        res.status(201).json({
+            ...todo,
+            _id: todo.id,
+            title: todo.task,
+            status: 'pending'
+        });
     } catch (error) {
         next(error);
     }
@@ -88,28 +79,29 @@ const createTodo = async (req, res, next) => {
 // @access  Private
 const updateTodo = async (req, res, next) => {
     try {
-        const { title, description, status, priority } = req.body;
-        const { _id: userId } = req.user;
+        const { title, task, status, completed } = req.body;
 
-        let todo = await Todo.findById(req.params.id);
+        const todo = await prisma.todo.findUnique({ where: { id: req.params.id } });
         if (!todo) {
             return res.status(404).json({ message: 'Todo not found' });
         }
 
-        // Only assigned user or assigner can update
-        if (todo.assignedTo.toString() !== userId.toString() && todo.assignedBy.toString() !== userId.toString()) {
-            return res.status(403).json({ message: 'Not authorized to update this todo' });
-        }
+        const updateData = {};
+        if (title !== undefined || task !== undefined) updateData.task = title || task;
+        if (completed !== undefined) updateData.completed = completed;
+        if (status !== undefined) updateData.completed = status === 'completed';
 
-        const updates = {};
-        if (title !== undefined) updates.title = title;
-        if (description !== undefined) updates.description = description;
-        if (status !== undefined) updates.status = status;
-        if (priority !== undefined) updates.priority = priority;
+        const updated = await prisma.todo.update({
+            where: { id: req.params.id },
+            data: updateData
+        });
 
-        todo = await Todo.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-
-        res.json(todo);
+        res.json({
+            ...updated,
+            _id: updated.id,
+            title: updated.task,
+            status: updated.completed ? 'completed' : 'pending'
+        });
     } catch (error) {
         next(error);
     }
@@ -120,20 +112,12 @@ const updateTodo = async (req, res, next) => {
 // @access  Private
 const deleteTodo = async (req, res, next) => {
     try {
-        const { _id: userId } = req.user;
-
-        const todo = await Todo.findById(req.params.id);
+        const todo = await prisma.todo.findUnique({ where: { id: req.params.id } });
         if (!todo) {
             return res.status(404).json({ message: 'Todo not found' });
         }
 
-        // Only assigner can delete (or assigned user if they are self-assigned)
-        if (todo.assignedBy.toString() !== userId.toString() && todo.assignedTo.toString() !== userId.toString()) {
-            return res.status(403).json({ message: 'Not authorized to delete this todo' });
-        }
-
-        await Todo.findByIdAndDelete(req.params.id);
-
+        await prisma.todo.delete({ where: { id: req.params.id } });
         res.json({ message: 'Todo removed' });
     } catch (error) {
         next(error);

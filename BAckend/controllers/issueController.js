@@ -1,34 +1,31 @@
-const Issue = require('../models/Issue');
+const prisma = require('../config/prisma');
 
 // @desc    Get all issues
 // @route   GET /api/issues
 // @access  Private
 const getIssues = async (req, res, next) => {
     try {
-        const { role, _id: userId, companyId } = req.user;
-        const query = { companyId };
+        const where = {};
+        if (req.query.projectId) where.projectId = req.query.projectId;
+        if (req.query.status) where.status = req.query.status;
 
-        // Role-based filtering
-        if (['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(role)) {
-            query.$or = [
-                { assignedTo: userId },
-                { reportedBy: userId }
-            ];
-        }
-        // PM and Admin/Owner see all issues of the company by default (query.companyId is already set)
+        const issues = await prisma.issue.findMany({
+            where,
+            include: {
+                project: { select: { id: true, name: true } },
+                reportedBy: { select: { id: true, name: true } },
+                assignedTo: { select: { id: true, name: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
 
-        if (req.query.projectId) query.projectId = req.query.projectId;
-        if (req.query.jobId) query.jobId = req.query.jobId;
-        if (req.query.status) query.status = req.query.status;
-
-        const issues = await Issue.find(query)
-            .populate('projectId', 'name')
-            .populate('assignedTo', 'fullName')
-            .populate('reportedBy', 'fullName')
-            .populate('photoIds')
-            .sort({ createdAt: -1 });
-
-        res.json(issues);
+        res.json(issues.map(i => ({
+            ...i,
+            _id: i.id,
+            projectId: i.project ? { _id: i.project.id, name: i.project.name } : null,
+            reportedBy: i.reportedBy ? { _id: i.reportedBy.id, fullName: i.reportedBy.name } : null,
+            assignedTo: i.assignedTo ? { _id: i.assignedTo.id, fullName: i.assignedTo.name } : null
+        })));
     } catch (error) {
         next(error);
     }
@@ -39,15 +36,32 @@ const getIssues = async (req, res, next) => {
 // @access  Private
 const createIssue = async (req, res, next) => {
     try {
-        const images = req.files ? req.files.map(file => file.path) : [];
+        const { projectId, title, description, severity, status, assignedToId } = req.body;
 
-        const issue = await Issue.create({
-            ...req.body,
-            images,
-            companyId: req.user.companyId,
-            reportedBy: req.user._id
+        const issue = await prisma.issue.create({
+            data: {
+                projectId,
+                reportedById: req.user._id || req.user.id,
+                assignedToId: assignedToId || null,
+                title: title || 'Untitled Issue',
+                description: description || null,
+                severity: severity || 'MEDIUM',
+                status: status || 'OPEN'
+            },
+            include: {
+                project: { select: { id: true, name: true } },
+                reportedBy: { select: { id: true, name: true } },
+                assignedTo: { select: { id: true, name: true } }
+            }
         });
-        res.status(201).json(issue);
+
+        res.status(201).json({
+            ...issue,
+            _id: issue.id,
+            projectId: issue.project ? { _id: issue.project.id, name: issue.project.name } : null,
+            reportedBy: issue.reportedBy ? { _id: issue.reportedBy.id, fullName: issue.reportedBy.name } : null,
+            assignedTo: issue.assignedTo ? { _id: issue.assignedTo.id, fullName: issue.assignedTo.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -58,45 +72,38 @@ const createIssue = async (req, res, next) => {
 // @access  Private
 const updateIssue = async (req, res, next) => {
     try {
-        const issue = await Issue.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const issue = await prisma.issue.findUnique({ where: { id: req.params.id } });
 
         if (!issue) {
             res.status(404);
             throw new Error('Issue not found');
         }
 
-        const updates = { ...req.body };
-        
-        // Handle images (existing + new)
-        let existingImages = [];
-        if (req.body.images) {
-            try {
-                existingImages = typeof req.body.images === 'string' 
-                    ? JSON.parse(req.body.images) 
-                    : req.body.images;
-            } catch (e) {
-                existingImages = [];
+        const { title, description, severity, status, assignedToId } = req.body;
+        const updateData = {};
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (severity !== undefined) updateData.severity = severity;
+        if (status !== undefined) updateData.status = status;
+        if (assignedToId !== undefined) updateData.assignedToId = assignedToId;
+
+        const updatedIssue = await prisma.issue.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: {
+                project: { select: { id: true, name: true } },
+                reportedBy: { select: { id: true, name: true } },
+                assignedTo: { select: { id: true, name: true } }
             }
-            delete updates.images; // Remove from updates to avoid conflict
-        } else {
-            // If images field is not present in req.body, it might be a simple status update
-            // so we don't want to clear the images unless explicitly requested.
-            // But for multipart form, we usually send it.
-        }
-
-        const newImages = req.files ? req.files.map(file => file.path) : [];
-        
-        // Only update images if we received the images field OR new files
-        if (req.body.images || newImages.length > 0) {
-            updates.images = [...existingImages, ...newImages];
-        }
-
-        const updatedIssue = await Issue.findByIdAndUpdate(req.params.id, updates, {
-            new: true,
-            runValidators: true
         });
 
-        res.json(updatedIssue);
+        res.json({
+            ...updatedIssue,
+            _id: updatedIssue.id,
+            projectId: updatedIssue.project ? { _id: updatedIssue.project.id, name: updatedIssue.project.name } : null,
+            reportedBy: updatedIssue.reportedBy ? { _id: updatedIssue.reportedBy.id, fullName: updatedIssue.reportedBy.name } : null,
+            assignedTo: updatedIssue.assignedTo ? { _id: updatedIssue.assignedTo.id, fullName: updatedIssue.assignedTo.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -104,11 +111,12 @@ const updateIssue = async (req, res, next) => {
 
 const deleteIssue = async (req, res, next) => {
     try {
-        const issue = await Issue.findOneAndDelete({ _id: req.params.id, companyId: req.user.companyId });
+        const issue = await prisma.issue.findUnique({ where: { id: req.params.id } });
         if (!issue) {
             res.status(404);
             throw new Error('Issue not found');
         }
+        await prisma.issue.delete({ where: { id: req.params.id } });
         res.json({ message: 'Issue removed' });
     } catch (error) {
         next(error);

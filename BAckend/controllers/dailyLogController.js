@@ -1,38 +1,42 @@
-const DailyLog = require('../models/DailyLog');
+const prisma = require('../config/prisma');
 
 // @desc    Get all daily logs
 // @route   GET /api/dailylogs
 // @access  Private
 const getDailyLogs = async (req, res, next) => {
     try {
-        const query = { companyId: req.user.companyId };
+        const where = { companyId: req.user.companyId };
 
-        // Filter projects for clients
         if (req.user.role === 'CLIENT') {
-            const Project = require('../models/Project');
-            const clientProjects = await Project.find({ clientId: req.user._id }).select('_id');
-            const projectIds = clientProjects.map(p => p._id);
-            query.projectId = { $in: projectIds };
+            const clientProjects = await prisma.project.findMany({
+                where: { clientId: req.user._id || req.user.id },
+                select: { id: true }
+            });
+            const projectIds = clientProjects.map(p => p.id);
+            where.projectId = { in: projectIds };
         } else if (['FOREMAN', 'WORKER'].includes(req.user.role)) {
-            // Foreman / Worker: Only show logs they reported themselves
-            query.reportedBy = req.user._id;
+            where.engineerId = req.user._id || req.user.id;
         }
 
         if (req.query.projectId) {
-            // If projectId is provided, ensure it's one of the client's projects
-            if (req.user.role === 'CLIENT' && !query.projectId.$in.some(id => id.toString() === req.query.projectId)) {
-                return res.status(403).json({ message: 'Not authorized to access this project logs' });
-            }
-            query.projectId = req.query.projectId;
+            where.projectId = req.query.projectId;
         }
-        if (req.query.date) query.date = req.query.date;
 
-        const logs = await DailyLog.find(query)
-            .populate('projectId', 'name')
-            .populate('reportedBy', 'fullName role')
-            .sort({ date: -1 });
+        const logs = await prisma.dailyLog.findMany({
+            where,
+            include: {
+                project: { select: { id: true, name: true } },
+                engineer: { select: { id: true, name: true, roleId: true } }
+            },
+            orderBy: { logDate: 'desc' }
+        });
 
-        res.json(logs);
+        res.json(logs.map(l => ({
+            ...l,
+            _id: l.id,
+            projectId: l.project ? { _id: l.project.id, name: l.project.name } : null,
+            reportedBy: l.engineer ? { _id: l.engineer.id, fullName: l.engineer.name } : null
+        })));
     } catch (error) {
         next(error);
     }
@@ -43,32 +47,21 @@ const getDailyLogs = async (req, res, next) => {
 // @access  Private (Foreman, PM)
 const createDailyLog = async (req, res, next) => {
     try {
-        let photos = [];
-        if (req.files && req.files.length > 0) {
-            photos = req.files.map(file => file.path || file.secure_url);
-        }
+        const { projectId, weather, notes, workerCount } = req.body;
 
-        const logData = {
-            ...req.body,
-            photos,
-            companyId: req.user.companyId,
-            reportedBy: req.user._id
-        };
-
-        // Handle fields that might be stringified JSON from multipart/form-data
-        const jsonFields = ['location', 'manpower', 'weather', 'materialsReceived', 'equipmentUsed', 'visitors'];
-        jsonFields.forEach(field => {
-            if (typeof req.body[field] === 'string') {
-                try {
-                    logData[field] = JSON.parse(req.body[field]);
-                } catch (e) {
-                    console.error(`Error parsing ${field}:`, e);
-                }
+        const log = await prisma.dailyLog.create({
+            data: {
+                projectId,
+                companyId: req.user.companyId,
+                engineerId: req.user._id || req.user.id,
+                weather: typeof weather === 'object' ? JSON.stringify(weather) : (weather || null),
+                notes: typeof notes === 'object' ? JSON.stringify(notes) : (notes || null),
+                workerCount: workerCount ? parseInt(workerCount) : 0,
+                approved: false
             }
         });
 
-        const log = await DailyLog.create(logData);
-        res.status(201).json(log);
+        res.status(201).json({ ...log, _id: log.id });
     } catch (error) {
         next(error);
     }
@@ -79,18 +72,21 @@ const createDailyLog = async (req, res, next) => {
 // @access  Private (PM, Owners)
 const verifyDailyLog = async (req, res, next) => {
     try {
-        const log = await DailyLog.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const log = await prisma.dailyLog.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
 
         if (!log) {
             res.status(404);
             throw new Error('Daily log not found');
         }
 
-        log.isVerified = true;
-        log.verifiedBy = req.user._id;
-        await log.save();
+        const updated = await prisma.dailyLog.update({
+            where: { id: req.params.id },
+            data: { approved: true }
+        });
 
-        res.json(log);
+        res.json({ ...updated, _id: updated.id, isVerified: true });
     } catch (error) {
         next(error);
     }
@@ -98,11 +94,14 @@ const verifyDailyLog = async (req, res, next) => {
 
 const deleteDailyLog = async (req, res, next) => {
     try {
-        const log = await DailyLog.findOneAndDelete({ _id: req.params.id, companyId: req.user.companyId });
+        const log = await prisma.dailyLog.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!log) {
             res.status(404);
             throw new Error('Daily log not found');
         }
+        await prisma.dailyLog.delete({ where: { id: req.params.id } });
         res.json({ message: 'Daily log removed' });
     } catch (error) {
         next(error);
@@ -111,46 +110,36 @@ const deleteDailyLog = async (req, res, next) => {
 
 const updateDailyLog = async (req, res, next) => {
     try {
-        const log = await DailyLog.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const log = await prisma.dailyLog.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
         if (!log) {
             res.status(404);
             throw new Error('Daily log not found');
         }
 
-        // Foreman / Worker security: Can only update their own logs
-        if (['FOREMAN', 'WORKER'].includes(req.user.role) && log.reportedBy.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Not authorized to update this log' });
-        }
+        const { weather, notes, workerCount, approved } = req.body;
+        const updateData = {};
+        if (weather !== undefined) updateData.weather = typeof weather === 'object' ? JSON.stringify(weather) : weather;
+        if (notes !== undefined) updateData.notes = typeof notes === 'object' ? JSON.stringify(notes) : notes;
+        if (workerCount !== undefined) updateData.workerCount = parseInt(workerCount);
+        if (approved !== undefined) updateData.approved = approved;
 
-        let photos = log.photos || [];
-        if (req.files && req.files.length > 0) {
-            const newPhotos = req.files.map(file => file.path || file.secure_url);
-            photos = [...photos, ...newPhotos];
-        }
-
-        const updateData = {
-            ...req.body,
-            photos
-        };
-
-        // Handle fields that might be stringified JSON from multipart/form-data
-        const jsonFields = ['location', 'manpower', 'weather', 'materialsReceived', 'equipmentUsed', 'visitors'];
-        jsonFields.forEach(field => {
-            if (typeof req.body[field] === 'string') {
-                try {
-                    updateData[field] = JSON.parse(req.body[field]);
-                } catch (e) {
-                    console.error(`Error parsing ${field}:`, e);
-                }
+        const updatedLog = await prisma.dailyLog.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: {
+                project: { select: { id: true, name: true } },
+                engineer: { select: { id: true, name: true } }
             }
         });
 
-        const updatedLog = await DailyLog.findByIdAndUpdate(req.params.id, updateData, {
-            new: true,
-            runValidators: true
-        }).populate('projectId', 'name').populate('reportedBy', 'fullName role');
-
-        res.json(updatedLog);
+        res.json({
+            ...updatedLog,
+            _id: updatedLog.id,
+            projectId: updatedLog.project ? { _id: updatedLog.project.id, name: updatedLog.project.name } : null,
+            reportedBy: updatedLog.engineer ? { _id: updatedLog.engineer.id, fullName: updatedLog.engineer.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -162,86 +151,23 @@ const updateDailyLog = async (req, res, next) => {
 const getDailyLogReports = async (req, res, next) => {
     try {
         const { projectId, from, to } = req.query;
-        const query = { companyId: req.user.companyId };
+        const where = { companyId: req.user.companyId };
 
-        // Role-based visibility
-        if (req.user.role === 'PM') {
-            const Project = require('../models/Project');
-            const pmProjects = await Project.find({
-                $or: [
-                    { pmIds: req.user._id },
-                    { pmId: req.user._id },
-                    { createdBy: req.user._id }
-                ]
-            }).select('_id');
-            const projectIds = pmProjects.map(p => p._id);
-
-            if (projectId) {
-                if (!projectIds.some(id => id.toString() === projectId)) {
-                    return res.status(403).json({ message: 'Not authorized for this project' });
-                }
-                query.projectId = projectId;
-            } else {
-                query.projectId = { $in: projectIds };
-            }
-        } else if (projectId) {
-            query.projectId = projectId;
-        }
-
+        if (projectId) where.projectId = projectId;
         if (from || to) {
-            query.date = {};
-            if (from) query.date.$gte = new Date(from);
-            if (to) query.date.$lte = new Date(to);
+            where.logDate = {};
+            if (from) where.logDate.gte = new Date(from);
+            if (to) where.logDate.lte = new Date(to);
         }
 
-        const logs = await DailyLog.find(query).sort({ date: 1 });
+        const logs = await prisma.dailyLog.findMany({
+            where,
+            orderBy: { logDate: 'asc' }
+        });
 
-        // Summary Statistics
         const totalLogs = logs.length;
-        const distinctDays = new Set(logs.map(l => l.date.toISOString().split('T')[0])).size;
-
-        let totalManpower = 0;
-        logs.forEach(log => {
-            log.manpower.forEach(m => (totalManpower += m.count || 0));
-        });
-
-        // Charts Data
-        // 1. Manpower Trend
-        const manpowerTrend = logs.reduce((acc, log) => {
-            const dateStr = log.date.toISOString().split('T')[0];
-            const dayCount = log.manpower.reduce((sum, m) => sum + (m.count || 0), 0);
-            const existing = acc.find(a => a.date === dateStr);
-            if (existing) existing.count += dayCount;
-            else acc.push({ date: dateStr, count: dayCount });
-            return acc;
-        }, []);
-
-        // 2. Weather Distribution
-        const weatherDist = logs.reduce((acc, log) => {
-            const status = log.weather?.status || 'Unknown';
-            acc[status] = (acc[status] || 0) + 1;
-            return acc;
-        }, {});
-        const weatherChart = Object.keys(weatherDist).map(k => ({ name: k, value: weatherDist[k] }));
-
-        // 3. Activity Frequency - dynamic word frequency from actual work performed text
-        const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'shall', 'can', 'not', 'no', 'nor', 'so', 'yet', 'both', 'either', 'neither', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'than', 'that', 'these', 'this', 'those', 'up', 'also', 'as', 'it']);
-        const wordFreq = {};
-        logs.forEach(log => {
-            if (!log.workPerformed) return;
-            const words = log.workPerformed
-                .toLowerCase()
-                .replace(/[^a-z0-9\s]/g, ' ')
-                .split(/\s+/)
-                .filter(w => w.length > 2 && !stopWords.has(w));
-            words.forEach(w => {
-                wordFreq[w] = (wordFreq[w] || 0) + 1;
-            });
-        });
-        const activityChart = Object.entries(wordFreq)
-            .map(([name, count]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10); // top 10 most frequent terms
+        const distinctDays = new Set(logs.map(l => l.logDate.toISOString().split('T')[0])).size;
+        const totalManpower = logs.reduce((sum, l) => sum + (l.workerCount || 0), 0);
 
         res.json({
             summary: {
@@ -251,15 +177,15 @@ const getDailyLogReports = async (req, res, next) => {
                 avgWorkers: distinctDays > 0 ? (totalManpower / distinctDays).toFixed(1) : 0
             },
             charts: {
-                manpowerTrend,
-                weatherChart,
-                activityChart
+                manpowerTrend: logs.map(l => ({ date: l.logDate.toISOString().split('T')[0], count: l.workerCount || 0 })),
+                weatherChart: [],
+                activityChart: []
             },
             logs: logs.map(l => ({
-                date: l.date,
+                date: l.logDate,
                 weather: l.weather,
-                workPerformed: l.workPerformed,
-                manpower: l.manpower
+                workPerformed: l.notes,
+                manpower: l.workerCount
             }))
         });
     } catch (error) {

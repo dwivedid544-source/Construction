@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const prisma = require('../config/prisma');
 
-const getDriver = () => (process.env.DB_DRIVER || 'mongoose').toLowerCase();
+const getDriver = () => (process.env.DB_DRIVER || 'prisma').toLowerCase();
 
 class UserRepository {
   async findByEmail(email) {

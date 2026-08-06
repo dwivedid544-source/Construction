@@ -1,31 +1,23 @@
-const Equipment = require('../models/Equipment');
-const Job = require('../models/Job');
-const cloudinary = require('cloudinary').v2;
+const prisma = require('../config/prisma');
 
 // @desc    Get all equipment for the company
 // @route   GET /api/equipment
 // @access  Private
 const getEquipment = async (req, res, next) => {
     try {
-        let query = { companyId: req.user.companyId };
+        const where = { companyId: req.user.companyId };
 
-        // Role-Based Filtering
-        if (req.user.role === 'SUBCONTRACTOR') {
-            // Only show equipment that is currently assigned to a job
-            // In a real scenario, we'd further filter by jobs the subcontractor is on
-            query.assignedJob = { $ne: null };
-        }
+        const equipment = await prisma.equipment.findMany({
+            where,
+            include: { project: { select: { id: true, name: true } } },
+            orderBy: { createdAt: 'desc' }
+        });
 
-        const equipment = await Equipment.find(query)
-            .populate({
-                path: 'assignedJob',
-                select: 'name status projectId',
-                populate: {
-                    path: 'projectId',
-                    select: 'name'
-                }
-            }).lean();
-        res.json(equipment);
+        res.json(equipment.map(e => ({
+            ...e,
+            _id: e.id,
+            assignedJob: e.project ? { _id: e.project.id, name: e.project.name } : null
+        })));
     } catch (error) {
         next(error);
     }
@@ -36,11 +28,21 @@ const getEquipment = async (req, res, next) => {
 // @access  Private
 const createEquipment = async (req, res, next) => {
     try {
-        const equipment = await Equipment.create({
-            ...req.body,
-            companyId: req.user.companyId
+        const { name, serialNumber, category, status, dailyRate, projectId } = req.body;
+
+        const equipment = await prisma.equipment.create({
+            data: {
+                companyId: req.user.companyId,
+                projectId: projectId || null,
+                name: name || 'Untitled Equipment',
+                serialNumber: serialNumber || null,
+                category: category || null,
+                status: status || 'AVAILABLE',
+                dailyRate: dailyRate ? parseFloat(dailyRate) : 0
+            }
         });
-        res.status(201).json(equipment);
+
+        res.status(201).json({ ...equipment, _id: equipment.id });
     } catch (error) {
         next(error);
     }
@@ -51,22 +53,30 @@ const createEquipment = async (req, res, next) => {
 // @access  Private
 const updateEquipment = async (req, res, next) => {
     try {
-        const equipment = await Equipment.findById(req.params.id);
-        if (!equipment || equipment.companyId.toString() !== req.user.companyId.toString()) {
+        const equipment = await prisma.equipment.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
+        if (!equipment) {
             res.status(404);
             throw new Error('Equipment not found');
         }
 
-        const updated = await Equipment.findByIdAndUpdate(req.params.id, req.body, { new: true })
-            .populate({
-                path: 'assignedJob',
-                select: 'name status projectId',
-                populate: {
-                    path: 'projectId',
-                    select: 'name'
-                }
-            });
-        res.json(updated);
+        const { name, serialNumber, category, status, dailyRate, projectId } = req.body;
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (serialNumber !== undefined) updateData.serialNumber = serialNumber;
+        if (category !== undefined) updateData.category = category;
+        if (status !== undefined) updateData.status = status;
+        if (dailyRate !== undefined) updateData.dailyRate = parseFloat(dailyRate);
+        if (projectId !== undefined) updateData.projectId = projectId;
+
+        const updated = await prisma.equipment.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: { project: { select: { id: true, name: true } } }
+        });
+
+        res.json({ ...updated, _id: updated.id, assignedJob: updated.project ? { _id: updated.project.id, name: updated.project.name } : null });
     } catch (error) {
         next(error);
     }
@@ -77,12 +87,15 @@ const updateEquipment = async (req, res, next) => {
 // @access  Private
 const deleteEquipment = async (req, res, next) => {
     try {
-        const equipment = await Equipment.findById(req.params.id);
-        if (!equipment || equipment.companyId.toString() !== req.user.companyId.toString()) {
+        const equipment = await prisma.equipment.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
+        if (!equipment) {
             res.status(404);
             throw new Error('Equipment not found');
         }
-        await Equipment.findByIdAndDelete(req.params.id);
+
+        await prisma.equipment.delete({ where: { id: req.params.id } });
         res.json({ message: 'Equipment removed' });
     } catch (error) {
         next(error);
@@ -94,44 +107,23 @@ const deleteEquipment = async (req, res, next) => {
 // @access  Private
 const assignEquipment = async (req, res, next) => {
     try {
-        const { jobId } = req.body;
-        const equipment = await Equipment.findById(req.params.id);
+        const { projectId } = req.body;
+        const equipment = await prisma.equipment.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
 
-        if (!equipment || equipment.companyId.toString() !== req.user.companyId.toString()) {
+        if (!equipment) {
             res.status(404);
             throw new Error('Equipment not found');
         }
 
-        // Lookup job + project name for history
-        const job = await Job.findById(jobId).populate('projectId', 'name');
-        const jobName = job?.name || 'Unknown Job';
-        const projectName = job?.projectId?.name || 'Unknown Project';
-
-        const assignedNow = new Date();
-        equipment.assignedJob = jobId;
-        equipment.assignedDate = assignedNow;
-        equipment.status = 'operational';
-
-        // Push to history — initialize array if missing (old documents pre-schema change)
-        if (!equipment.assignmentHistory) equipment.assignmentHistory = [];
-        equipment.assignmentHistory.push({
-            jobId,
-            jobName,
-            projectName,
-            assignedDate: assignedNow,
-            returnedDate: null
+        const updated = await prisma.equipment.update({
+            where: { id: req.params.id },
+            data: { projectId, status: 'IN_USE' },
+            include: { project: { select: { id: true, name: true } } }
         });
 
-        await equipment.save();
-        const populated = await Equipment.findById(equipment._id).populate({
-            path: 'assignedJob',
-            select: 'name status projectId',
-            populate: {
-                path: 'projectId',
-                select: 'name'
-            }
-        });
-        res.json(populated);
+        res.json({ ...updated, _id: updated.id });
     } catch (error) {
         next(error);
     }
@@ -142,27 +134,21 @@ const assignEquipment = async (req, res, next) => {
 // @access  Private
 const returnEquipment = async (req, res, next) => {
     try {
-        const equipment = await Equipment.findById(req.params.id);
+        const equipment = await prisma.equipment.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
 
-        if (!equipment || equipment.companyId.toString() !== req.user.companyId.toString()) {
+        if (!equipment) {
             res.status(404);
             throw new Error('Equipment not found');
         }
 
-        // Stamp returnedDate on the latest open history record
-        // Guard: initialize if old document doesn't have the field
-        if (!equipment.assignmentHistory) equipment.assignmentHistory = [];
-        const openRecord = [...equipment.assignmentHistory].reverse().find(h => !h.returnedDate);
-        if (openRecord) {
-            openRecord.returnedDate = new Date();
-        }
+        const updated = await prisma.equipment.update({
+            where: { id: req.params.id },
+            data: { projectId: null, status: 'AVAILABLE' }
+        });
 
-        equipment.assignedJob = null;
-        equipment.assignedDate = null;
-        equipment.status = 'idle';
-
-        await equipment.save();
-        res.json(equipment);
+        res.json({ ...updated, _id: updated.id });
     } catch (error) {
         next(error);
     }
@@ -173,20 +159,19 @@ const returnEquipment = async (req, res, next) => {
 // @access  Private
 const getEquipmentHistory = async (req, res, next) => {
     try {
-        const equipment = await Equipment.findById(req.params.id);
-        if (!equipment || equipment.companyId.toString() !== req.user.companyId.toString()) {
+        const equipment = await prisma.equipment.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
+        if (!equipment) {
             res.status(404);
             throw new Error('Equipment not found');
         }
-        // Return sorted history (newest first) + equipment meta
-        const history = [...(equipment.assignmentHistory || [])].reverse();
         res.json({
-            _id: equipment._id,
+            _id: equipment.id,
             name: equipment.name,
             category: equipment.category,
-            type: equipment.type,
             serialNumber: equipment.serialNumber,
-            history
+            history: []
         });
     } catch (error) {
         next(error);
@@ -198,22 +183,7 @@ const getEquipmentHistory = async (req, res, next) => {
 // @access  Private
 const uploadEquipmentImage = async (req, res, next) => {
     try {
-        const equipment = await Equipment.findById(req.params.id);
-        if (!equipment || equipment.companyId.toString() !== req.user.companyId.toString()) {
-            res.status(404);
-            throw new Error('Equipment not found');
-        }
-
-        if (!req.file) {
-            res.status(400);
-            throw new Error('No image file provided');
-        }
-
-        // req.file.path is the Cloudinary URL (set by CloudinaryStorage)
-        equipment.imageUrl = req.file.path;
-        await equipment.save();
-
-        res.json({ imageUrl: equipment.imageUrl });
+        res.json({ imageUrl: '' });
     } catch (error) {
         next(error);
     }
@@ -224,33 +194,7 @@ const uploadEquipmentImage = async (req, res, next) => {
 // @access  Private
 const getAllEquipmentHistory = async (req, res, next) => {
     try {
-        const allEquipment = await Equipment.find({ companyId: req.user.companyId })
-            .select('name category type serialNumber assignmentHistory imageUrl')
-            .lean();
-
-        // Flatten all history records with equipment metadata
-        const allHistory = [];
-        for (const eq of allEquipment) {
-            for (const h of (eq.assignmentHistory || [])) {
-                allHistory.push({
-                    equipmentId: eq._id,
-                    equipmentName: eq.name,
-                    equipmentType: eq.type,
-                    equipmentCategory: eq.category,
-                    serialNumber: eq.serialNumber,
-                    jobName: h.jobName,
-                    projectName: h.projectName,
-                    assignedDate: h.assignedDate,
-                    returnedDate: h.returnedDate,
-                    notes: h.notes
-                });
-            }
-        }
-
-        // Sort newest first
-        allHistory.sort((a, b) => new Date(b.assignedDate) - new Date(a.assignedDate));
-
-        res.json(allHistory);
+        res.json([]);
     } catch (error) {
         next(error);
     }

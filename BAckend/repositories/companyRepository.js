@@ -1,7 +1,7 @@
 const Company = require('../models/Company');
 const prisma = require('../config/prisma');
 
-const getDriver = () => (process.env.DB_DRIVER || 'mongoose').toLowerCase();
+const getDriver = () => (process.env.DB_DRIVER || 'prisma').toLowerCase();
 
 class CompanyRepository {
   async findByName(name) {

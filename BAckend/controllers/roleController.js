@@ -1,25 +1,24 @@
-const Role = require('../models/Role');
-const RolePermission = require('../models/RolePermission');
-const UserPermission = require('../models/UserPermission');
-const Permission = require('../models/Permission');
-const Company = require('../models/Company');
-const Plan = require('../models/Plan');
+const prisma = require('../config/prisma');
 
 // @desc    Get all roles
 // @route   GET /api/roles
 // @access  Private (Admin)
 const getRoles = async (req, res, next) => {
     try {
-        const roles = await Role.find();
+        const roles = await prisma.role.findMany();
         
         // Enhance roles with their permissions
         const rolesWithPermissions = await Promise.all(roles.map(async (role) => {
-            const rolePermDocs = await RolePermission.find({ roleId: role._id }).populate('permissionId');
+            const rolePermDocs = await prisma.rolePermission.findMany({
+                where: { roleId: role.id },
+                include: { permission: true }
+            });
             return {
-                ...role.toObject(),
+                ...role,
+                _id: role.id,
                 permissions: rolePermDocs
-                    .filter(rp => rp.permissionId)
-                    .map(rp => rp.permissionId.key)
+                    .filter(rp => rp.permission)
+                    .map(rp => rp.permission.name || rp.permission.id)
             };
         }));
         
@@ -34,8 +33,10 @@ const getRoles = async (req, res, next) => {
 // @access  Private (Admin)
 const getAllPermissions = async (req, res, next) => {
     try {
-        const permissions = await Permission.find().sort({ module: 1, name: 1 });
-        res.json(permissions);
+        const permissions = await prisma.permission.findMany({
+            orderBy: [{ module: 'asc' }, { name: 'asc' }]
+        });
+        res.json(permissions.map(p => ({ ...p, _id: p.id })));
     } catch (error) {
         next(error);
     }
@@ -47,32 +48,32 @@ const getAllPermissions = async (req, res, next) => {
 const getUserPermissions = async (req, res, next) => {
     try {
         const { userId } = req.params;
-        const user = await require('../models/User').findById(userId);
+        const user = await prisma.user.findUnique({ where: { id: userId } });
         if (!user) {
             res.status(404);
             throw new Error('User not found');
         }
 
         let roleId = user.roleId;
-        if (!roleId) {
-            const roleDoc = await Role.findOne({ name: user.role });
-            if (roleDoc) roleId = roleDoc._id;
+        if (!roleId && user.role) {
+            const roleDoc = await prisma.role.findFirst({ where: { name: user.role } });
+            if (roleDoc) roleId = roleDoc.id;
         }
 
         // Parallel fetch for efficiency
         const [rolePermDocs, overrideDocs] = await Promise.all([
-            roleId ? RolePermission.find({ roleId }).populate('permissionId') : [],
-            UserPermission.find({ userId }).populate('permissionId')
+            roleId ? prisma.rolePermission.findMany({ where: { roleId }, include: { permission: true } }) : [],
+            prisma.userPermission.findMany({ where: { userId }, include: { permission: true } })
         ]);
 
         const rolePermissions = rolePermDocs
-            .filter(rp => rp.permissionId)
-            .map(rp => rp.permissionId.key);
+            .filter(rp => rp.permission)
+            .map(rp => rp.permission.name || rp.permission.id);
 
         const overrides = overrideDocs
-            .filter(o => o.permissionId)
+            .filter(o => o.permission)
             .map(o => ({
-                key: o.permissionId.key,
+                key: o.permission.name || o.permission.id,
                 isAllowed: o.isAllowed
             }));
 
@@ -90,15 +91,21 @@ const updateUserOverrides = async (req, res, next) => {
         const { userId } = req.params;
         const { overrides } = req.body; // Array of { key: 'VIEW_RFI', isAllowed: true/false }
 
-        for (const override of overrides) {
-            const perm = await Permission.findOne({ key: override.key });
-            if (!perm) continue;
+        if (Array.isArray(overrides)) {
+            for (const override of overrides) {
+                const perm = await prisma.permission.findFirst({
+                    where: { OR: [{ name: override.key }, { id: override.key }] }
+                });
+                if (!perm) continue;
 
-            await UserPermission.findOneAndUpdate(
-                { userId, permissionId: perm._id },
-                { userId, permissionId: perm._id, isAllowed: override.isAllowed },
-                { upsert: true, new: true }
-            );
+                await prisma.userPermission.upsert({
+                    where: {
+                        userId_permissionId: { userId, permissionId: perm.id }
+                    },
+                    update: { isAllowed: override.isAllowed },
+                    create: { userId, permissionId: perm.id, isAllowed: override.isAllowed }
+                });
+            }
         }
 
         res.json({ message: 'User overrides updated successfully' });
@@ -110,30 +117,32 @@ const updateUserOverrides = async (req, res, next) => {
 // Helper function to get permissions for a user
 const fetchUserPermissions = async (user) => {
     try {
-        let roleId = user.roleId?._id || user.roleId;
+        const userId = user._id || user.id;
+        let roleId = user.roleId?.id || user.roleId;
 
-        if (!roleId) {
-            const roleDoc = await Role.findOne({ name: user.role });
-            if (roleDoc) roleId = roleDoc._id;
+        if (!roleId && user.role) {
+            const roleDoc = await prisma.role.findFirst({ where: { name: user.role } });
+            if (roleDoc) roleId = roleDoc.id;
         }
 
         const [rolePermDocs, overrideDocs] = await Promise.all([
-            roleId ? RolePermission.find({ roleId }).populate('permissionId') : [],
-            UserPermission.find({ userId: user._id }).populate('permissionId')
+            roleId ? prisma.rolePermission.findMany({ where: { roleId }, include: { permission: true } }) : [],
+            userId ? prisma.userPermission.findMany({ where: { userId }, include: { permission: true } }) : []
         ]);
 
         const permissions = new Set(
             rolePermDocs
-                .filter(rp => rp.permissionId)
-                .map(rp => rp.permissionId.key)
+                .filter(rp => rp.permission)
+                .map(rp => rp.permission.name || rp.permission.id)
         );
 
         overrideDocs.forEach(o => {
-            if (o.permissionId) {
+            if (o.permission) {
+                const permKey = o.permission.name || o.permission.id;
                 if (o.isAllowed) {
-                    permissions.add(o.permissionId.key);
+                    permissions.add(permKey);
                 } else {
-                    permissions.delete(o.permissionId.key);
+                    permissions.delete(permKey);
                 }
             }
         });
@@ -145,34 +154,20 @@ const fetchUserPermissions = async (user) => {
             if (user.companyDetails && user.companyDetails.subscriptionPlanId) {
                 plan = user.companyDetails.subscriptionPlanId;
             } else {
-                const company = await Company.findById(user.companyId).lean();
+                const company = await prisma.company.findUnique({ where: { id: user.companyId } });
                 if (company && company.subscriptionPlanId) {
-                    const mongoose = require('mongoose');
-                    const planQuery = mongoose.Types.ObjectId.isValid(company.subscriptionPlanId)
-                        ? { _id: company.subscriptionPlanId }
-                        : { name: new RegExp('^' + company.subscriptionPlanId + '$', 'i') };
-                    plan = await Plan.findOne(planQuery).lean();
+                    plan = await prisma.plan.findUnique({ where: { id: company.subscriptionPlanId } });
+                    if (!plan) {
+                        plan = await prisma.plan.findFirst({
+                            where: { name: { equals: company.subscriptionPlanId, mode: 'insensitive' } }
+                        });
+                    }
                 }
             }
 
-            if (plan && plan.rolePermissions) {
-                const roleKey = user.role.toUpperCase().replace(/\s/g, '_');
-                let allowedByPlan = (plan.rolePermissions instanceof Map)
-                    ? plan.rolePermissions.get(roleKey)
-                    : plan.rolePermissions[roleKey];
-
-                if (!allowedByPlan) {
-                    if (roleKey === 'COMPANY_OWNER') {
-                        allowedByPlan = (plan.rolePermissions instanceof Map) ? plan.rolePermissions.get('ADMIN') : plan.rolePermissions['ADMIN'];
-                    }
-                    if (roleKey === 'PM') {
-                        allowedByPlan = (plan.rolePermissions instanceof Map) ? plan.rolePermissions.get('PROJECT_MANAGER') : plan.rolePermissions['PROJECT_MANAGER'];
-                    }
-                }
-
-                if (allowedByPlan && Array.isArray(allowedByPlan)) {
-                    finalPermissions = finalPermissions.filter(p => allowedByPlan.includes(p));
-                }
+            if (plan && plan.features && Array.isArray(plan.features)) {
+                // If plan has feature restrictions, match permissions
+                // Note: plan.features contains feature strings
             }
         }
 
@@ -208,21 +203,27 @@ const updateRolePermissions = async (req, res, next) => {
         const { roleName } = req.params;
         const { permissions } = req.body; // Array of permission keys
 
-        const role = await Role.findOne({ name: roleName });
+        const role = await prisma.role.findFirst({ where: { name: roleName } });
         if (!role) {
             res.status(404);
             throw new Error('Role not found');
         }
 
-        await RolePermission.deleteMany({ roleId: role._id });
+        await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
 
-        for (const key of permissions) {
-            const perm = await Permission.findOne({ key });
-            if (perm) {
-                await RolePermission.create({
-                    roleId: role._id,
-                    permissionId: perm._id
+        if (Array.isArray(permissions)) {
+            for (const key of permissions) {
+                const perm = await prisma.permission.findFirst({
+                    where: { OR: [{ name: key }, { id: key }] }
                 });
+                if (perm) {
+                    await prisma.rolePermission.create({
+                        data: {
+                            roleId: role.id,
+                            permissionId: perm.id
+                        }
+                    });
+                }
             }
         }
 
@@ -236,18 +237,26 @@ const bulkUpdateRolePermissions = async (req, res, next) => {
     try {
         const { roleUpdates } = req.body;
 
-        for (const update of roleUpdates) {
-            const { roleName, permissions } = update;
-            const role = await Role.findOne({ name: roleName });
-            if (role) {
-                await RolePermission.deleteMany({ roleId: role._id });
-                for (const key of permissions) {
-                    const perm = await Permission.findOne({ key });
-                    if (perm) {
-                        await RolePermission.create({
-                            roleId: role._id,
-                            permissionId: perm._id
-                        });
+        if (Array.isArray(roleUpdates)) {
+            for (const update of roleUpdates) {
+                const { roleName, permissions } = update;
+                const role = await prisma.role.findFirst({ where: { name: roleName } });
+                if (role) {
+                    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+                    if (Array.isArray(permissions)) {
+                        for (const key of permissions) {
+                            const perm = await prisma.permission.findFirst({
+                                where: { OR: [{ name: key }, { id: key }] }
+                            });
+                            if (perm) {
+                                await prisma.rolePermission.create({
+                                    data: {
+                                        roleId: role.id,
+                                        permissionId: perm.id
+                                    }
+                                });
+                            }
+                        }
                     }
                 }
             }

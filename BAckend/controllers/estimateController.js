@@ -1,19 +1,26 @@
-const Estimate = require('../models/Estimate');
+const prisma = require('../config/prisma');
 
 // @desc    Get all estimates
 // @route   GET /api/estimates
 // @access  Private
 const getEstimates = async (req, res, next) => {
     try {
-        const query = { companyId: req.user.companyId };
-        if (req.query.projectId) query.projectId = req.query.projectId;
+        const where = { companyId: req.user.companyId };
+        if (req.query.projectId) where.projectId = req.query.projectId;
 
-        const estimates = await Estimate.find(query)
-            .populate('projectId', 'name')
-            .populate('clientId', 'fullName')
-            .populate('createdBy', 'fullName');
+        const estimates = await prisma.estimate.findMany({
+            where,
+            include: {
+                project: { select: { id: true, name: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
 
-        res.json(estimates);
+        res.json(estimates.map(e => ({
+            ...e,
+            _id: e.id,
+            projectId: e.project ? { _id: e.project.id, name: e.project.name } : null
+        })));
     } catch (error) {
         next(error);
     }
@@ -24,19 +31,26 @@ const getEstimates = async (req, res, next) => {
 // @access  Private (PM, Owners)
 const createEstimate = async (req, res, next) => {
     try {
-        const estimateData = {
-            ...req.body,
-            companyId: req.user.companyId,
-            createdBy: req.user._id
-        };
+        const { projectId, estimateNumber, totalAmount, status } = req.body;
 
-        // Generate estimate number if not provided
-        if (!estimateData.estimateNumber) {
-            estimateData.estimateNumber = `EST-${Date.now()}`;
-        }
+        const estimate = await prisma.estimate.create({
+            data: {
+                companyId: req.user.companyId,
+                projectId,
+                estimateNumber: estimateNumber || `EST-${Date.now()}`,
+                totalAmount: totalAmount ? parseFloat(totalAmount) : 0,
+                status: status || 'DRAFT'
+            },
+            include: {
+                project: { select: { id: true, name: true } }
+            }
+        });
 
-        const estimate = await Estimate.create(estimateData);
-        res.status(201).json(estimate);
+        res.status(201).json({
+            ...estimate,
+            _id: estimate.id,
+            projectId: estimate.project ? { _id: estimate.project.id, name: estimate.project.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -47,19 +61,34 @@ const createEstimate = async (req, res, next) => {
 // @access  Private
 const updateEstimate = async (req, res, next) => {
     try {
-        const estimate = await Estimate.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const estimate = await prisma.estimate.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
 
         if (!estimate) {
             res.status(404);
             throw new Error('Estimate not found');
         }
 
-        const updatedEstimate = await Estimate.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
-            runValidators: true
+        const { estimateNumber, totalAmount, status } = req.body;
+        const updateData = {};
+        if (estimateNumber !== undefined) updateData.estimateNumber = estimateNumber;
+        if (totalAmount !== undefined) updateData.totalAmount = parseFloat(totalAmount);
+        if (status !== undefined) updateData.status = status;
+
+        const updatedEstimate = await prisma.estimate.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: {
+                project: { select: { id: true, name: true } }
+            }
         });
 
-        res.json(updatedEstimate);
+        res.json({
+            ...updatedEstimate,
+            _id: updatedEstimate.id,
+            projectId: updatedEstimate.project ? { _id: updatedEstimate.project.id, name: updatedEstimate.project.name } : null
+        });
     } catch (error) {
         next(error);
     }
@@ -70,14 +99,16 @@ const updateEstimate = async (req, res, next) => {
 // @access  Private (PM, Owners)
 const deleteEstimate = async (req, res, next) => {
     try {
-        const estimate = await Estimate.findOne({ _id: req.params.id, companyId: req.user.companyId });
+        const estimate = await prisma.estimate.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
 
         if (!estimate) {
             res.status(404);
             throw new Error('Estimate not found');
         }
 
-        await Estimate.findByIdAndDelete(req.params.id);
+        await prisma.estimate.delete({ where: { id: req.params.id } });
         res.json({ message: 'Estimate deleted successfully' });
     } catch (error) {
         next(error);

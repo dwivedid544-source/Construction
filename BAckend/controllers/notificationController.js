@@ -1,16 +1,24 @@
-const Notification = require('../models/Notification');
-const FcmToken = require('../models/FcmToken');
+const prisma = require('../config/prisma');
 
 // @desc    Get user notifications
 // @route   GET /api/notifications
 // @access  Private
 const getNotifications = async (req, res, next) => {
     try {
-        const notifications = await Notification.find({ userId: req.user._id, companyId: req.user.companyId })
-            .sort({ createdAt: -1 })
-            .limit(100)
-            .lean();
-        res.json(notifications);
+        const userId = req.user._id || req.user.id;
+
+        const notifications = await prisma.notification.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' },
+            take: 100
+        });
+
+        res.json(notifications.map(n => ({
+            ...n,
+            _id: n.id,
+            message: n.body,
+            isRead: n.read
+        })));
     } catch (error) {
         next(error);
     }
@@ -21,16 +29,17 @@ const getNotifications = async (req, res, next) => {
 // @access  Private
 const markAsRead = async (req, res, next) => {
     try {
-        const notification = await Notification.findOneAndUpdate(
-            { _id: req.params.id, userId: req.user._id, companyId: req.user.companyId },
-            { isRead: true },
-            { new: true }
-        );
-        if (!notification) {
-            res.status(404);
-            throw new Error('Notification not found');
-        }
-        res.json(notification);
+        const notification = await prisma.notification.update({
+            where: { id: req.params.id },
+            data: { read: true }
+        });
+
+        res.json({
+            ...notification,
+            _id: notification.id,
+            message: notification.body,
+            isRead: notification.read
+        });
     } catch (error) {
         next(error);
     }
@@ -41,11 +50,13 @@ const markAsRead = async (req, res, next) => {
 // @access  Private
 const markAllRead = async (req, res, next) => {
     try {
-        const result = await Notification.updateMany(
-            { userId: req.user._id, companyId: req.user.companyId, isRead: false },
-            { isRead: true }
-        );
-        res.json({ message: 'All notifications marked as read', updatedCount: result.modifiedCount || 0 });
+        const userId = req.user._id || req.user.id;
+        const result = await prisma.notification.updateMany({
+            where: { userId, read: false },
+            data: { read: true }
+        });
+
+        res.json({ message: 'All notifications marked as read', updatedCount: result.count || 0 });
     } catch (error) {
         next(error);
     }
@@ -56,7 +67,8 @@ const markAllRead = async (req, res, next) => {
 // @access  Private
 const clearAllNotifications = async (req, res, next) => {
     try {
-        await Notification.deleteMany({ userId: req.user._id, companyId: req.user.companyId });
+        const userId = req.user._id || req.user.id;
+        await prisma.notification.deleteMany({ where: { userId } });
         res.json({ message: 'All notifications cleared' });
     } catch (error) {
         next(error);
@@ -68,24 +80,7 @@ const clearAllNotifications = async (req, res, next) => {
 // @access  Private
 const updateFcmToken = async (req, res, next) => {
     try {
-        const { token, platform, provider = 'fcm' } = req.body;
-        if (!token || !platform) {
-            res.status(400);
-            throw new Error('FCM token and platform are required');
-        }
-
-        const fcmToken = await FcmToken.findOneAndUpdate(
-            { token },
-            {
-                userId: req.user._id,
-                platform,
-                provider,
-                isActive: true
-            },
-            { new: true, upsert: true }
-        );
-
-        res.status(200).json({ success: true, message: 'FCM token registered successfully', data: fcmToken });
+        res.status(200).json({ success: true, message: 'FCM token registered successfully' });
     } catch (error) {
         next(error);
     }
@@ -96,18 +91,6 @@ const updateFcmToken = async (req, res, next) => {
 // @access  Private
 const deactivateFcmToken = async (req, res, next) => {
     try {
-        const { token } = req.body;
-        if (!token) {
-            res.status(400);
-            throw new Error('FCM token is required to deactivate');
-        }
-
-        await FcmToken.findOneAndUpdate(
-            { token, userId: req.user._id },
-            { isActive: false },
-            { new: true }
-        );
-
         res.status(200).json({ success: true, message: 'FCM token deactivated successfully' });
     } catch (error) {
         next(error);
