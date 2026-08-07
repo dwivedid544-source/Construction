@@ -749,14 +749,14 @@ const CompanyAdminLayout = () => {
       <Modal
         isOpen={showTrialExpiredModal}
         onClose={() => setShowTrialExpiredModal(false)}
-        title=""
         maxWidth="max-w-md"
-        showCloseButton={false}
+        hideHeader={true}
+        darkMode={true}
       >
-        <div className="bg-[#141b2d] -m-6 p-6 md:p-8 rounded-3xl text-center border border-slate-700/60 shadow-2xl text-white">
-          {/* Red Lock Circle Icon */}
-          <div className="w-16 h-16 rounded-full bg-red-950/60 border-2 border-red-500/40 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-red-900/30">
-            <Lock size={28} className="text-amber-500" />
+        <div className="bg-[#0b0f19] p-6 md:p-8 rounded-3xl text-center border border-white/[0.08] shadow-2xl text-white relative">
+          {/* Brand Lock Circle Icon */}
+          <div className="w-16 h-16 rounded-2xl bg-[#155dff]/15 border border-[#155dff]/30 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-[#155dff]/20">
+            <Lock size={28} className="text-[#155dff]" />
           </div>
 
           {/* Title */}
@@ -765,16 +765,16 @@ const CompanyAdminLayout = () => {
           </h3>
 
           {/* Subtitle */}
-          <p className="text-sm text-slate-300 leading-relaxed mb-6 px-2">
+          <p className="text-xs md:text-sm text-slate-400 leading-relaxed mb-6 px-2">
             Your 7-day free trial has expired. Upgrade to a paid plan now to restore full access to your construction management software and data.
           </p>
 
           {/* Access Blocked Banner */}
-          <div className="bg-red-950/40 border border-red-900/60 rounded-2xl p-4 mb-6 text-left">
-            <div className="text-sm font-bold text-red-400 mb-1 flex items-center gap-1.5">
-              <span>⚠️</span> Access Blocked:
+          <div className="bg-[#155dff]/10 border border-[#155dff]/25 rounded-2xl p-4 mb-6 text-left backdrop-blur-sm">
+            <div className="text-xs font-bold text-[#155dff] mb-1 flex items-center gap-1.5 uppercase tracking-wider">
+              <span>⚠️</span> Access Restricted
             </div>
-            <p className="text-xs text-slate-300 leading-normal">
+            <p className="text-xs text-slate-300 leading-relaxed">
               Dashboard, Members, Staff, Reports, Payments and all other modules will remain restricted until an active subscription plan is purchased.
             </p>
           </div>
@@ -784,11 +784,11 @@ const CompanyAdminLayout = () => {
             {/* Buy Plan Now -> Triggers Razorpay */}
             <button
               onClick={() => {
-                handleRazorpayBuyPlan(999, 'KT Construct Pro Plan');
+                handleRazorpayBuyPlan(799, 'Standard 799');
               }}
-              className="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-red-900/40 transition-all text-sm"
+              className="w-full py-3.5 bg-[#155dff] hover:bg-blue-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[#155dff]/30 transition-all text-xs uppercase tracking-wider"
             >
-              <span className="text-base">🛒</span> Buy Plan Now
+              <span className="text-sm">🛒</span> Buy Plan Now
             </button>
 
             {/* View Plans */}
@@ -797,9 +797,9 @@ const CompanyAdminLayout = () => {
                 setShowTrialExpiredModal(false);
                 navigate('/company-admin/settings');
               }}
-              className="w-full py-3 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-sm"
+              className="w-full py-3 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider"
             >
-              <span className="text-base">📋</span> View Plans
+              <span className="text-sm">📋</span> View Plans
             </button>
 
             {/* Contact Support */}
@@ -807,15 +807,15 @@ const CompanyAdminLayout = () => {
               href="https://wa.me/919752100980"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-3 bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-sm text-center block"
+              className="w-full py-3 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider text-center block"
             >
-              <span className="text-base">💬</span> Contact Support
+              <span className="text-sm">💬</span> Contact Support
             </a>
 
             {/* Logout */}
             <button
               onClick={logout}
-              className="text-xs text-slate-400 hover:text-white underline cursor-pointer text-center block w-full pt-2"
+              className="text-xs text-slate-400 hover:text-white underline cursor-pointer text-center block w-full pt-2 transition-colors"
             >
               Logout
             </button>

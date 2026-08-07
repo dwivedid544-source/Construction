@@ -94,13 +94,13 @@ const Revenue = () => {
               <tbody>
                 <tr>
                   <td>SaaS Subscription Fee</td>
-                  <td>$${tx.amount.toFixed(2)}</td>
+                  <td>₹{tx.amount.toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>
             
             <div class="total">
-              Total: $${tx.amount.toFixed(2)}
+              Total: ₹{tx.amount.toFixed(2)}
             </div>
           </div>
           
@@ -148,28 +148,28 @@ const Revenue = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
           <h3 className="text-slate-500 text-sm font-medium">Net Revenue (YTD)</h3>
-          <p className="text-3xl font-bold text-slate-900 mt-2">${stats.netRevenueYTD?.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-slate-900 mt-2">₹{stats.netRevenueYTD?.toLocaleString()}</p>
           <div className="mt-4 flex items-center text-emerald-500 text-sm font-medium bg-emerald-50 px-2 py-1 rounded w-fit">
             <ArrowUp size={16} className="mr-1" /> {stats.growthTrend}
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
           <h3 className="text-slate-500 text-sm font-medium">Monthly Recurring Revenue</h3>
-          <p className="text-3xl font-bold text-slate-900 mt-2">${stats.currentMRR?.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-slate-900 mt-2">₹{stats.currentMRR?.toLocaleString()}</p>
           <div className="mt-4 flex items-center text-blue-500 text-sm font-medium bg-blue-50 px-2 py-1 rounded w-fit">
             <TrendingUp size={16} className="mr-1" /> Active Billing
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
           <h3 className="text-slate-500 text-sm font-medium">Yearly Revenue</h3>
-          <p className="text-3xl font-bold text-slate-900 mt-2">${stats.yearlyRevenue?.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-slate-900 mt-2">₹{stats.yearlyRevenue?.toLocaleString()}</p>
           <div className="mt-4 flex items-center text-purple-500 text-sm font-medium bg-purple-50 px-2 py-1 rounded w-fit">
             <Calendar size={16} className="mr-1" /> Current Year
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
           <h3 className="text-slate-500 text-sm font-medium">Pending Invoices</h3>
-          <p className="text-3xl font-bold text-slate-900 mt-2">${stats.pendingInvoices?.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-slate-900 mt-2">₹{stats.pendingInvoices?.toLocaleString()}</p>
           <div className="mt-4 flex items-center text-slate-400 text-sm font-medium bg-slate-50 px-2 py-1 rounded w-fit">
             <Clock size={16} className="mr-1" /> Automated Retries
           </div>
@@ -257,7 +257,7 @@ const Revenue = () => {
                 <tr key={tx._id} className="hover:bg-slate-50 transition">
                   <td className="px-6 py-4 font-mono text-sm text-slate-600">{tx.displayCompanyId || tx._id.substring(0, 10)}</td>
                   <td className="px-6 py-4 font-medium text-slate-900">{tx.companyId?.name || 'N/A'}</td>
-                  <td className="px-6 py-4 font-bold text-slate-800">${tx.amount.toFixed(2)}</td>
+                  <td className="px-6 py-4 font-bold text-slate-800">₹{tx.amount.toFixed(2)}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold border uppercase ${tx.status === 'paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                       tx.status === 'refunded' ? 'bg-amber-50 text-amber-600 border-amber-100' :

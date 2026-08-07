@@ -13,8 +13,8 @@ const Subscriptions = () => {
   });
   const [loading, setLoading] = useState(true);
   const [failures, setFailures] = useState([
-    { id: 1, company: 'Urban Architects', amount: '$899.00', date: 'Feb 10, 2026', reason: 'Insufficient Funds' },
-    { id: 2, company: 'Miller Homes', amount: '$299.00', date: 'Feb 08, 2026', reason: 'Card Expired' },
+    { id: 1, company: 'Urban Architects', amount: '₹899.00', date: 'Feb 10, 2026', reason: 'Insufficient Funds' },
+    { id: 2, company: 'Miller Homes', amount: '₹299.00', date: 'Feb 08, 2026', reason: 'Card Expired' },
   ]);
 
   useEffect(() => {
@@ -137,7 +137,7 @@ const Subscriptions = () => {
             <div key={index} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col h-full">
               <div className="flex justify-between items-start mb-4">
                 <h3 className="text-lg font-bold text-slate-800">{plan.name}</h3>
-                <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold">${plan.price}/{plan.period}</span>
+                <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold">₹{plan.price}/{plan.period}</span>
               </div>
               <ul className="space-y-2 mb-6 flex-1">
                 {plan.features.map((feature, i) => (

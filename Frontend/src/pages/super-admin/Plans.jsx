@@ -164,7 +164,7 @@ const Plans = () => {
                         <div className="mb-6">
                             <h3 className="text-2xl font-bold text-slate-800">{plan.name}</h3>
                             <div className="flex items-baseline gap-1 mt-2">
-                                <span className="text-4xl font-black text-slate-900">${plan.price}</span>
+                                <span className="text-4xl font-black text-slate-900">₹{plan.price}</span>
                                 <span className="text-slate-500 font-medium">/{plan.period}</span>
                             </div>
                         </div>
@@ -240,7 +240,7 @@ const Plans = () => {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Price ($)</label>
+                            <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Price (₹)</label>
                             <input
                                 type="number"
                                 required
