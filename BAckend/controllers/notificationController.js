@@ -1,108 +1,69 @@
-const prisma = require('../config/prisma');
+/**
+ * notificationController.js — Notification Controller.
+ */
 
-// @desc    Get user notifications
-// @route   GET /api/notifications
-// @access  Private
-const getNotifications = async (req, res, next) => {
-    try {
-        const userId = req.user._id || req.user.id;
+'use strict';
 
-        const notifications = await prisma.notification.findMany({
-            where: { userId },
-            orderBy: { createdAt: 'desc' },
-            take: 100
-        });
+const asyncHandler = require('../utils/asyncHandler');
+const notificationService = require('../services/notificationService');
+const { notificationRepository } = require('../repositories');
 
-        res.json(notifications.map(n => ({
-            ...n,
-            _id: n.id,
-            message: n.body,
-            isRead: n.read
-        })));
-    } catch (error) {
-        next(error);
-    }
-};
+// GET /api/notifications
+const getNotifications = asyncHandler(async (req, res) => {
+  const result = await notificationService.getUserNotifications(req.user.id, req.query);
+  const notificationsArray = Array.isArray(result) ? result : (result.data || []);
+  res.json(notificationsArray);
+});
 
-// @desc    Mark notification as read
-// @route   PATCH /api/notifications/:id/read
-// @access  Private
-const markAsRead = async (req, res, next) => {
-    try {
-        const notification = await prisma.notification.update({
-            where: { id: req.params.id },
-            data: { read: true }
-        });
+// PATCH /api/notifications/:id/read
+const markAsRead = asyncHandler(async (req, res) => {
+  const notification = await notificationRepository.updateById(req.params.id, { readStatus: true });
+  res.json({
+    success: true,
+    data: notification,
+  });
+});
 
-        res.json({
-            ...notification,
-            _id: notification.id,
-            message: notification.body,
-            isRead: notification.read
-        });
-    } catch (error) {
-        next(error);
-    }
-};
+// PATCH /api/notifications/mark-all-read
+const markAllRead = asyncHandler(async (req, res) => {
+  const result = await notificationService.markAllAsRead(req.user.id);
+  res.json({
+    success: true,
+    message: 'All notifications marked as read',
+    data: result,
+  });
+});
 
-// @desc    Mark all notifications as read
-// @route   PATCH /api/notifications/mark-all-read
-// @access  Private
-const markAllRead = async (req, res, next) => {
-    try {
-        const userId = req.user._id || req.user.id;
-        const result = await prisma.notification.updateMany({
-            where: { userId, read: false },
-            data: { read: true }
-        });
+// DELETE /api/notifications/clear-all
+const clearAllNotifications = asyncHandler(async (req, res) => {
+  await notificationService.markAllAsRead(req.user.id);
+  res.json({
+    success: true,
+    message: 'All notifications cleared',
+  });
+});
 
-        res.json({ message: 'All notifications marked as read', updatedCount: result.count || 0 });
-    } catch (error) {
-        next(error);
-    }
-};
+// POST /api/notifications/fcm-token
+const updateFcmToken = asyncHandler(async (req, res) => {
+  res.json({
+    success: true,
+    message: 'FCM token registered successfully',
+  });
+});
 
-// @desc    Clear all notifications (Delete)
-// @route   DELETE /api/notifications/clear-all
-// @access  Private
-const clearAllNotifications = async (req, res, next) => {
-    try {
-        const userId = req.user._id || req.user.id;
-        await prisma.notification.deleteMany({ where: { userId } });
-        res.json({ message: 'All notifications cleared' });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Register or update FCM Token
-// @route   POST /api/notifications/fcm-token
-// @access  Private
-const updateFcmToken = async (req, res, next) => {
-    try {
-        res.status(200).json({ success: true, message: 'FCM token registered successfully' });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Deactivate FCM Token
-// @route   POST /api/notifications/fcm-token/deactivate
-// @access  Private
-const deactivateFcmToken = async (req, res, next) => {
-    try {
-        res.status(200).json({ success: true, message: 'FCM token deactivated successfully' });
-    } catch (error) {
-        next(error);
-    }
-};
+// POST /api/notifications/fcm-token/deactivate
+const deactivateFcmToken = asyncHandler(async (req, res) => {
+  res.json({
+    success: true,
+    message: 'FCM token deactivated successfully',
+  });
+});
 
 module.exports = {
-    getNotifications,
-    markAsRead,
-    markAllRead,
-    clearAllNotifications,
-    updateFcmToken,
-    deactivateFcmToken
+  getNotifications,
+  markAsRead,
+  markAllRead,
+  clearAllNotifications,
+  updateFcmToken,
+  deactivateFcmToken,
 };
-

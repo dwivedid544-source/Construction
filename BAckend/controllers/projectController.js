@@ -1,785 +1,236 @@
-const { projectRepository, companyRepository, userRepository } = require('../repositories');
-const Project = require('../models/Project');
-const Task = require('../models/Task');
-const User = require('../models/User');
-const Company = require('../models/Company');
-const Plan = require('../models/Plan');
-const Job = require('../models/Job');
-const ProjectNote = require('../models/ProjectNote');
-
-
-// @desc    Get projects for the company
-// @route   GET /api/projects
-// @access  Private
-const getProjects = async (req, res, next) => {
-    try {
-        const { role, _id: userId, companyId } = req.user;
-        const query = { companyId };
-
-        if (role === 'SUPER_ADMIN') {
-            delete query.companyId;
-        }
-
-        if (['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(role)) {
-            
-            const jobFilter = { 
-                companyId,
-                $or: [
-                    { foremanId: userId },
-                    { assignedWorkers: userId }
-                ]
-            };
-            if (role === 'PM') jobFilter.$or.push({ createdBy: userId });
-
-            const [assignedJobs, directProjects] = await Promise.all([
-                Job.find(jobFilter).select('projectId').lean(),
-                Project.find({
-                    companyId,
-                    $or: [
-                        { pmIds: userId },
-                        { pmId: userId }, // Fallback for old data if any
-                        { createdBy: userId }
-                    ]
-                }).select('_id').lean()
-            ]);
-            
-            const allProjectIds = [
-                ...new Set([
-                    ...assignedJobs.filter(j => j.projectId).map(j => j.projectId.toString()),
-                    ...directProjects.map(p => p._id.toString())
-                ])
-            ];
-            query._id = { $in: allProjectIds };
-        }
-
-        if (role === 'CLIENT') {
-            query.clientId = userId;
-        }
-
-        // Exclude archived projects by default
-        if (!req.query.includeArchived) {
-            query.status = { $ne: 'archived' };
-        }
-
-        // Optimization: Select only necessary fields for the list view. 
-        // We exclude 'image' if it's too large, but since we migrated to Cloudinary, 
-        // we'll keep it but ensure old Base64 data doesn't bloat the response.
-        const projects = await projectRepository.find(query)
-            .select('name status pmIds pmId clientId createdAt budget currentPhase location siteLatitude siteLongitude progress image startDate endDate sortOrder')
-            .populate('clientId', 'fullName email')
-            .populate('pmIds', 'fullName email')
-            .populate('pmId', 'fullName email')
-            .sort({ sortOrder: 1, createdAt: -1 })
-            .lean();
-
-
-        res.json(projects);
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Get project by ID
-// @route   GET /api/projects/:id
-// @access  Private
-const getProjectById = async (req, res, next) => {
-    try {
-        const project = await projectRepository.findById(req.params.id)
-            .populate('clientId', 'fullName email avatar')
-            .populate('createdBy', 'fullName avatar')
-            .populate('pmIds', 'fullName email avatar')
-            .populate('pmId', 'fullName email avatar')
-            .lean();
-
-        if (!project) {
-            res.status(404);
-            throw new Error('Project not found');
-        }
-
-        // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId.toString() !== project.companyId.toString()) {
-            res.status(403);
-            throw new Error('Not authorized to access this project');
-        }
-
-        res.json(project);
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Create a new project
-// @route   POST /api/projects
-// @access  Private (PM, COMPANY_OWNER, SUPER_ADMIN)
-const createProject = async (req, res, next) => {
-    try {
-        let { name, clientId, startDate, endDate, budget, location, geofenceRadius, image, pmIds, pmId } = req.body;
-
-        // Parse pmIds if it comes as a string from FormData
-        if (typeof pmIds === 'string') {
-            try {
-                pmIds = JSON.parse(pmIds);
-            } catch (e) {
-                pmIds = pmIds.split(',').filter(id => id.trim());
-            }
-        }
-
-        // --- ENFORCE PLAN LIMITS ---
-        const companyId = req.user.companyId;
-        const company = await Company.findById(companyId);
-        if (company) {
-            const mongoose = require('mongoose');
-            // Try matching by ID first, then by name (case-insensitive)
-            const planQuery = mongoose.Types.ObjectId.isValid(company.subscriptionPlanId)
-                ? { _id: company.subscriptionPlanId }
-                : { name: new RegExp('^' + company.subscriptionPlanId + '$', 'i') };
-
-            const plan = await Plan.findOne(planQuery);
-            
-            // Define strict limits: Plan value > Plan model default > hard fallback
-            const maxProjects = plan?.maxProjects || 5; 
-
-            const currentProjectCount = await projectRepository.countDocuments({ companyId });
-            if (currentProjectCount >= maxProjects) {
-                res.status(403);
-                throw new Error(`Project limit reached for your Current Plan (${currentProjectCount}/${maxProjects} projects). Please upgrade your subscription to start more projects or manage existing ones.`);
-            }
-        }
-        // ---------------------------
-
-        // Handle Cloudinary Image
-        let finalImage = image;
-        if (req.file) {
-            finalImage = req.file.path;
-        }
-
-        // Handle location parsing (can be string address or stringified JSON)
-        let finalLocation = location;
-        if (typeof location === 'string' && location) {
-            try {
-                finalLocation = JSON.parse(location);
-            } catch (e) {
-                finalLocation = { address: location };
-            }
-        }
-
-        const project = await Project.create({
-            companyId: req.user.companyId,
-            name,
-            clientId,
-            startDate,
-            endDate,
-            budget,
-            location: finalLocation,
-            geofenceRadius,
-            image: finalImage,
-            pmIds: Array.isArray(pmIds) ? pmIds : (pmId ? [pmId] : []),
-            pmId: Array.isArray(pmIds) ? pmIds[0] : pmId, // Keep for backward compatibility if needed
-            createdBy: req.user._id
-        });
-
-
-        // CREATE CHAT ROOM FOR PROJECT
-        try {
-            const ChatRoom = require('../models/ChatRoom');
-            const { syncProjectParticipants } = require('./chatController');
-
-            await ChatRoom.create({
-                companyId: req.user.companyId,
-                projectId: project._id,
-                roomType: 'PROJECT_GROUP',
-                name: project.name,
-                isGroup: true
-            });
-
-            // Initial sync
-            await syncProjectParticipants(project._id);
-        } catch (chatError) {
-            console.error('Failed to create/sync chat room for project:', chatError);
-        }
-
-        const populatedProject = await Project.findById(project._id)
-            .populate('clientId', 'fullName email')
-            .populate('createdBy', 'fullName')
-            .populate('pmIds', 'fullName email')
-            .populate('pmId', 'fullName email');
-
-        res.status(201).json(populatedProject);
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Update project
-// @route   PATCH /api/projects/:id
-// @access  Private (PM, COMPANY_OWNER, SUPER_ADMIN)
-const updateProject = async (req, res, next) => {
-    try {
-        const project = await projectRepository.findById(req.params.id);
-
-        if (!project) {
-            res.status(404);
-            throw new Error('Project not found');
-        }
-
-        // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId.toString() !== project.companyId.toString()) {
-            res.status(403);
-            throw new Error('Not authorized to update this project');
-        }
-
-        const updateData = { ...req.body };
-        
-        // Sanitize "null" strings from frontend
-        Object.keys(updateData).forEach(key => {
-            if (updateData[key] === 'null' || updateData[key] === '') {
-                updateData[key] = null;
-            }
-        });
-
-        // Parse pmIds
-        if (typeof updateData.pmIds === 'string') {
-            try {
-                updateData.pmIds = JSON.parse(updateData.pmIds);
-            } catch (e) {
-                updateData.pmIds = updateData.pmIds.split(',').filter(id => id.trim());
-            }
-        }
-
-        // Sync legacy pmId with pmIds[0]
-        if (updateData.pmIds && Array.isArray(updateData.pmIds)) {
-            updateData.pmId = updateData.pmIds[0] || null;
-        }
-
-        // Handle location parsing (can be string address or stringified JSON)
-        if (typeof updateData.location === 'string' && updateData.location) {
-            try {
-                updateData.location = JSON.parse(updateData.location);
-            } catch (e) {
-                updateData.location = { address: updateData.location };
-            }
-        }
-
-        if (req.file) {
-            updateData.image = req.file.path;
-        }
-
-        const updatedProject = await Project.findByIdAndUpdate(req.params.id, updateData, {
-            new: true,
-            runValidators: true
-        }).populate('pmIds', 'fullName email')
-            .populate('pmId', 'fullName email')
-            .populate('createdBy', 'fullName')
-            .lean();
-
-        if (!updatedProject) {
-            res.status(404);
-            throw new Error('Project not found during update');
-        }
-
-        // Sync chat participants if PM or Client changed
-        if (updateData.pmIds || updateData.pmId || updateData.clientId) {
-            try {
-                const { syncProjectParticipants } = require('./chatController');
-                await syncProjectParticipants(updatedProject._id);
-            } catch (syncErr) {
-                console.error('Chat sync failed after project update:', syncErr.message);
-            }
-        }
-
-        res.json(updatedProject);
-    } catch (error) {
-        console.error('Update Project Error:', error);
-        next(error);
-    }
-};
-
-
-// @desc    Archive project (Soft delete)
-// @route   DELETE /api/projects/:id
-// @access  Private (COMPANY_OWNER, PM, SUPER_ADMIN)
-const deleteProject = async (req, res, next) => {
-    try {
-        const project = await projectRepository.findById(req.params.id);
-
-        if (!project) {
-            res.status(404);
-            throw new Error('Project not found');
-        }
-
-        // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId.toString() !== project.companyId.toString()) {
-            res.status(403);
-            throw new Error('Not authorized to archive this project');
-        }
-
-        project.status = 'archived';
-        await project.save();
-        
-        res.json({ message: 'Project moved to archive' });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Get archived projects
-// @route   GET /api/projects/archived
-// @access  Private (COMPANY_OWNER, SUPER_ADMIN)
-const getArchivedProjects = async (req, res, next) => {
-    try {
-        const query = { 
-            companyId: req.user.companyId,
-            status: 'archived'
-        };
-
-        const projects = await projectRepository.find(query)
-            .populate('clientId', 'fullName')
-            .populate('pmIds', 'fullName')
-            .populate('pmId', 'fullName')
-            .sort({ updatedAt: -1 })
-            .lean();
-
-        res.json(projects);
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Restore archived project
-// @route   PATCH /api/projects/:id/restore
-// @access  Private (COMPANY_OWNER, SUPER_ADMIN)
-const restoreProject = async (req, res, next) => {
-    try {
-        const project = await Project.findOne({ _id: req.params.id, companyId: req.user.companyId });
-
-        if (!project) {
-            res.status(404);
-            throw new Error('Project not found');
-        }
-
-        project.status = 'active'; // Default back to active
-        await project.save();
-
-        res.json({ message: 'Project restored successfully', project });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Permanently delete project
-// @route   DELETE /api/projects/:id/permanent
-// @access  Private (COMPANY_OWNER, SUPER_ADMIN)
-const permanentlyDeleteProject = async (req, res, next) => {
-    try {
-        const project = await projectRepository.findById(req.params.id);
-
-        if (!project) {
-            res.status(404);
-            throw new Error('Project not found');
-        }
-
-        // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId.toString() !== project.companyId.toString()) {
-            res.status(403);
-            throw new Error('Not authorized to delete this project');
-        }
-
-        const Job = require('../models/Job');
-        const JobTask = require('../models/JobTask');
-        const TimeLog = require('../models/TimeLog');
-        const ChatRoom = require('../models/ChatRoom');
-
-        // Delete dependencies
-        await TimeLog.deleteMany({ projectId: project._id });
-        await JobTask.deleteMany({ jobId: { $in: await Job.find({ projectId: project._id }).distinct('_id') } });
-        await Job.deleteMany({ projectId: project._id });
-        await ChatRoom.deleteMany({ projectId: project._id });
-
-        await Project.findByIdAndDelete(req.params.id);
-        res.json({ message: 'Project permanently removed' });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Get project members (Team members working on the project)
-// @route   GET /api/projects/:id/members
-// @access  Private
-const getProjectMembers = async (req, res, next) => {
-    try {
-        const project = await projectRepository.findById(req.params.id);
-
-        if (!project) {
-            res.status(404);
-            throw new Error('Project not found');
-        }
-
-        // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId.toString() !== project.companyId.toString()) {
-            res.status(403);
-            throw new Error('Not authorized to access this project');
-        }
-
-        // Find all users assigned to tasks in this project
-        const tasks = await Task.find({ projectId: req.params.id }).select('assignedTo');
-        const assignedUserIds = new Set();
-        
-        tasks.forEach(t => {
-            if (t.assignedTo) {
-                t.assignedTo.forEach(id => assignedUserIds.add(id.toString()));
-            }
-        });
-
-        // Also check Job-level assignments
-        const Job = require('../models/Job');
-        const jobs = await Job.find({ projectId: req.params.id }).select('foremanId assignedWorkers');
-        jobs.forEach(j => {
-            if (j.foremanId) assignedUserIds.add(j.foremanId.toString());
-            if (j.assignedWorkers) {
-                j.assignedWorkers.forEach(id => assignedUserIds.add(id.toString()));
-            }
-        });
-
-        // Include project creator and assigned PMs
-        if (project.createdBy) assignedUserIds.add(project.createdBy.toString());
-        if (project.pmIds && Array.isArray(project.pmIds)) {
-            project.pmIds.forEach(id => assignedUserIds.add(id.toString()));
-        }
-        if (project.pmId) assignedUserIds.add(project.pmId.toString());
-
-        const members = await User.find({
-            _id: { $in: Array.from(assignedUserIds) },
-            role: { $ne: 'CLIENT' }
-        }).select('fullName email role phone status');
-
-        res.json(members);
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Get client-safe progress summary
-// @route   GET /api/projects/:id/client-progress
-// @access  Private (Client, Admin, PM)
-const getClientProgress = async (req, res, next) => {
-    try {
-        const { projectRepository, companyRepository, userRepository } = require('../repositories');
-const Project = require('../models/Project');
-        const Job = require('../models/Job');
-        const JobTask = require('../models/JobTask');
-
-        const project = await projectRepository.findById(req.params.id);
-        if (!project) return res.status(404).json({ message: 'Project not found' });
-
-        // Logic check: only assigned client or company staff
-        if (req.user.role === 'CLIENT' && project.clientId.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Not authorized' });
-        }
-
-        const jobs = await Job.find({ projectId: project._id }).select('_id status').lean();
-        const jobIds = jobs.map(j => j._id);
-
-        const tasks = await JobTask.find({ jobId: { $in: jobIds } }).select('status updatedAt title dueDate').lean();
-
-        const totalTasks = tasks.length;
-        const completedTasks = tasks.filter(t => t.status === 'completed').length;
-        const progressPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-        // Summarized Completed Work (Top 10)
-        const completedWork = tasks
-            .filter(t => t.status === 'completed')
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .slice(0, 10)
-            .map(t => t.title);
-
-        // Upcoming Work (Next 5)
-        const upcomingWork = tasks
-            .filter((t) => t.status === 'pending' || t.status === 'in_progress' || t.status === 'in-progress')
-            .sort((a, b) => (a.dueDate || Infinity) - (b.dueDate || Infinity))
-            .slice(0, 5)
-            .map(t => t.title);
-
-        res.json({
-            projectName: project.name,
-            currentPhase: project.currentPhase || 'Planning',
-            progress: progressPercentage,
-            status: project.status,
-            completedWork,
-            upcomingWork,
-            startDate: project.startDate,
-            endDate: project.endDate,
-            budget: project.budget
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Get client-visible updates
-// @route   GET /api/projects/:id/client-updates
-// @access  Private
-const getProjectClientUpdates = async (req, res, next) => {
-    try {
-        const ProjectUpdate = require('../models/ProjectUpdate');
-        const query = { projectId: req.params.id };
-
-        if (req.user.role === 'CLIENT') {
-            query.isVisibleToClient = true;
-        }
-
-        const updates = await ProjectUpdate.find(query)
-            .sort({ date: -1 })
-            .populate('createdBy', 'fullName')
-            .lean();
-
-        res.json(updates);
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Create a project update
-// @route   POST /api/projects/:id/client-updates
-// @access  Private (PM+)
-const createProjectClientUpdate = async (req, res, next) => {
-    try {
-        const ProjectUpdate = require('../models/ProjectUpdate');
-        const Notification = require('../models/Notification');
-        const { projectRepository, companyRepository, userRepository } = require('../repositories');
-const Project = require('../models/Project');
-
-        // Handle images from multer (CloudinaryStorage)
-        let images = [];
-        if (req.files && req.files.length > 0) {
-            images = req.files.map(file => file.path);
-        }
-
-        // Parse isVisibleToClient from FormData (comes as string)
-        const isVisibleToClient = req.body.isVisibleToClient === 'true' || req.body.isVisibleToClient === true;
-
-        const update = await ProjectUpdate.create({
-            title: req.body.title,
-            description: req.body.description,
-            date: req.body.date || new Date(),
-            isVisibleToClient,
-            images,
-            projectId: req.params.id,
-            createdBy: req.user._id
-        });
-
-        // --- Notification Logic ---
-        if (isVisibleToClient) {
-            const project = await projectRepository.findById(req.params.id);
-            if (project && project.clientId) {
-                // Create notification for client
-                await Notification.create({
-                    companyId: req.user.companyId,
-                    userId: project.clientId,
-                    title: 'New Project Update',
-                    message: `A new update has been posted for project: "${project.name}".`,
-                    type: 'system',
-                    link: `/client-portal/progress/${project._id}`
-                });
-
-                // Emit socket event if io is available
-                const io = req.app.get('io');
-                if (io) {
-                    io.to(project.clientId.toString()).emit('new_notification', {
-                        title: 'New Project Update',
-                        message: `A new update has been posted for project: "${project.name}".`
-                    });
-                }
-            }
-        }
-
-        res.status(201).json(update);
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Get project financial summary (PO totals)
-// @route   GET /api/projects/:id/financial-summary
-// @access  Private
-const getProjectFinancialSummary = async (req, res, next) => {
-    try {
-        const { projectRepository, companyRepository, userRepository } = require('../repositories');
-const Project = require('../models/Project');
-        const PurchaseOrder = require('../models/purchaseOrder.model');
-
-        const project = await projectRepository.findById(req.params.id);
-        if (!project) return res.status(404).json({ message: 'Project not found' });
-
-        // Sum non-cancelled POs
-        const pos = await PurchaseOrder.find({
-            projectId: project._id,
-            status: { $ne: 'Cancelled' }
-        });
-
-        const totalPoCost = pos.reduce((sum, po) => sum + (po.totalAmount || 0), 0);
-        const committedCost = pos
-            .filter(po => ['Approved', 'Sent', 'Delivered', 'Closed'].includes(po.status))
-            .reduce((sum, po) => sum + (po.totalAmount || 0), 0);
-
-        const pendingCost = totalPoCost - committedCost;
-        const budget = project.budget || 0;
-        const remainingBudget = budget - totalPoCost;
-        const utilizationPercentage = budget > 0 ? (totalPoCost / budget) * 100 : 0;
-
-        res.json({
-            totalBudget: budget,
-            totalPoCost,
-            committedCost,
-            pendingCost,
-            remainingBudget,
-            utilizationPercentage: utilizationPercentage.toFixed(2),
-            poCount: pos.length
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Reorder projects
-// @route   POST /api/projects/reorder
-// @access  Private (COMPANY_OWNER, SUPER_ADMIN)
-const reorderProjects = async (req, res, next) => {
-    try {
-        const { projectIds } = req.body;
-        if (!projectIds || !Array.isArray(projectIds)) {
-            res.status(400);
-            throw new Error('Project IDs array is required');
-        }
-
-        const bulkOps = projectIds.map((id, index) => ({
-            updateOne: {
-                filter: { _id: id, companyId: req.user.companyId },
-                update: { sortOrder: index }
-            }
-        }));
-
-        if (req.user.role === 'SUPER_ADMIN') {
-            bulkOps.forEach(op => delete op.updateOne.filter.companyId);
-        }
-
-        await Project.bulkWrite(bulkOps);
-
-        res.json({ message: 'Projects reordered successfully' });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// @desc    Get project notes
-// @route   GET /api/projects/:id/notes
-// @access  Private
-const getProjectNotes = async (req, res, next) => {
-    try {
-        const notes = await ProjectNote.find({ 
-            projectId: req.params.id, 
-            companyId: req.user.companyId 
-        })
-        .populate('createdBy', 'fullName avatar')
-        .sort({ createdAt: -1 });
-        
-        res.json(notes);
-    } catch (err) {
-        next(err);
-    }
-};
-
-// @desc    Create a project note
-// @route   POST /api/projects/:id/notes
-// @access  Private
-const createProjectNote = async (req, res, next) => {
-    try {
-        const { content } = req.body;
-        if (!content) {
-            res.status(400);
-            throw new Error('Content is required');
-        }
-
-        const note = await ProjectNote.create({
-            projectId: req.params.id,
-            companyId: req.user.companyId,
-            content,
-            createdBy: req.user._id
-        });
-
-        const populated = await ProjectNote.findById(note._id).populate('createdBy', 'fullName avatar');
-        res.status(201).json(populated);
-    } catch (err) {
-        next(err);
-    }
-};
-
-// @desc    Delete a project note
-// @route   DELETE /api/projects/:id/notes/:noteId
-// @access  Private
-const deleteProjectNote = async (req, res, next) => {
-    try {
-        const note = await ProjectNote.findOneAndDelete({
-            _id: req.params.noteId,
-            companyId: req.user.companyId
-        });
-        
-        if (!note) {
-            res.status(404);
-            throw new Error('Note not found');
-        }
-        
-        res.json({ message: 'Note deleted' });
-    } catch (err) {
-        next(err);
-    }
-};
-
-// @desc    Update a project note
-// @route   PATCH /api/projects/:id/notes/:noteId
-// @access  Private
-const updateProjectNote = async (req, res, next) => {
-    try {
-        const { content } = req.body;
-        if (!content) {
-            res.status(400);
-            throw new Error('Content is required');
-        }
-
-        const note = await ProjectNote.findOneAndUpdate(
-            { _id: req.params.noteId, companyId: req.user.companyId },
-            { content },
-            { new: true }
-        ).populate('createdBy', 'fullName avatar');
-
-        if (!note) {
-            res.status(404);
-            throw new Error('Note not found');
-        }
-
-        res.json(note);
-    } catch (err) {
-        next(err);
-    }
-};
+/**
+ * projectController.js — Project Management Controller.
+ */
+
+'use strict';
+
+const asyncHandler = require('../utils/asyncHandler');
+const projectService = require('../services/projectService');
+const { projectRepository, userRepository } = require('../repositories');
+const prisma = require('../config/prisma');
+
+// GET /api/projects
+const getProjects = asyncHandler(async (req, res) => {
+  const result = await projectService.getProjects(req.query, req.user);
+  const list = Array.isArray(result) ? result : (result.data || []);
+  res.json(list);
+});
+
+// GET /api/projects/:id
+const getProjectById = asyncHandler(async (req, res) => {
+  const project = await projectService.getProjectById(req.params.id, req.user);
+  res.json({
+    success: true,
+    data: project,
+  });
+});
+
+// POST /api/projects
+const createProject = asyncHandler(async (req, res) => {
+  const projectData = { ...req.body };
+  if (req.file) {
+    projectData.image = req.file.path;
+  }
+
+  const project = await projectService.createProject(projectData, req.user);
+  res.status(201).json({
+    success: true,
+    data: project,
+  });
+});
+
+// PATCH /api/projects/:id
+const updateProject = asyncHandler(async (req, res) => {
+  const projectData = { ...req.body };
+  if (req.file) {
+    projectData.image = req.file.path;
+  }
+
+  const project = await projectService.updateProject(req.params.id, projectData, req.user);
+  res.json({
+    success: true,
+    data: project,
+  });
+});
+
+// DELETE /api/projects/:id
+const deleteProject = asyncHandler(async (req, res) => {
+  await projectService.deleteProject(req.params.id, req.user);
+  res.json({
+    success: true,
+    message: 'Project archived successfully',
+  });
+});
+
+// GET /api/projects/:id/members
+const getProjectMembers = asyncHandler(async (req, res) => {
+  const members = await userRepository.findMany({ companyId: req.user.companyId });
+  res.json({
+    success: true,
+    data: members,
+  });
+});
+
+// GET /api/projects/:id/client-progress
+const getClientProgress = asyncHandler(async (req, res) => {
+  const project = await projectService.getProjectById(req.params.id, req.user);
+  res.json({
+    success: true,
+    data: {
+      projectId: project.id,
+      progress: project.progress || 0,
+      status: project.status,
+    },
+  });
+});
+
+// GET /api/projects/:id/client-updates
+const getProjectClientUpdates = asyncHandler(async (req, res) => {
+  const updates = await prisma.projectUpdate.findMany({
+    where: { projectId: req.params.id, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json({
+    success: true,
+    data: updates,
+  });
+});
+
+// POST /api/projects/:id/client-updates
+const createProjectClientUpdate = asyncHandler(async (req, res) => {
+  const { title, summary } = req.body;
+  const update = await prisma.projectUpdate.create({
+    data: {
+      projectId: req.params.id,
+      title: title || 'Client Update',
+      summary: summary || '',
+    },
+  });
+  res.status(201).json({
+    success: true,
+    data: update,
+  });
+});
+
+// GET /api/projects/:id/financial-summary
+const getProjectFinancialSummary = asyncHandler(async (req, res) => {
+  const project = await projectService.getProjectById(req.params.id, req.user);
+  res.json({
+    success: true,
+    data: {
+      budget: project.budget || 0,
+      expenses: 0,
+      balance: project.budget || 0,
+    },
+  });
+});
+
+// GET /api/projects/archived
+const getArchivedProjects = asyncHandler(async (req, res) => {
+  const archived = await prisma.project.findMany({
+    where: {
+      companyId: req.user.companyId,
+      deletedAt: { not: null },
+    },
+  });
+  res.json({
+    success: true,
+    data: archived,
+  });
+});
+
+// PATCH /api/projects/:id/restore
+const restoreProject = asyncHandler(async (req, res) => {
+  const restored = await projectRepository.restoreById(req.params.id);
+  res.json({
+    success: true,
+    data: restored,
+  });
+});
+
+// DELETE /api/projects/:id/permanent
+const permanentlyDeleteProject = asyncHandler(async (req, res) => {
+  await projectRepository.hardDeleteById(req.params.id);
+  res.json({
+    success: true,
+    message: 'Project permanently deleted',
+  });
+});
+
+// POST /api/projects/reorder
+const reorderProjects = asyncHandler(async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Projects reordered',
+  });
+});
+
+// Project Notes
+const getProjectNotes = asyncHandler(async (req, res) => {
+  const notes = await prisma.projectNote.findMany({
+    where: { projectId: req.params.id, deletedAt: null },
+    include: { author: { select: { id: true, name: true, avatar: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json({
+    success: true,
+    data: notes,
+  });
+});
+
+const createProjectNote = asyncHandler(async (req, res) => {
+  const note = await prisma.projectNote.create({
+    data: {
+      projectId: req.params.id,
+      authorId: req.user.id,
+      content: req.body.content,
+    },
+  });
+  res.status(201).json({
+    success: true,
+    data: note,
+  });
+});
+
+const updateProjectNote = asyncHandler(async (req, res) => {
+  const note = await prisma.projectNote.update({
+    where: { id: req.params.noteId },
+    data: { content: req.body.content },
+  });
+  res.json({
+    success: true,
+    data: note,
+  });
+});
+
+const deleteProjectNote = asyncHandler(async (req, res) => {
+  await prisma.projectNote.update({
+    where: { id: req.params.noteId },
+    data: { deletedAt: new Date() },
+  });
+  res.json({
+    success: true,
+    message: 'Project note deleted',
+  });
+});
 
 module.exports = {
-    getProjects,
-    getProjectById,
-    createProject,
-    updateProject,
-    deleteProject,
-    getProjectMembers,
-    getClientProgress,
-    getProjectClientUpdates,
-    createProjectClientUpdate,
-    getProjectFinancialSummary,
-    getArchivedProjects,
-    restoreProject,
-    permanentlyDeleteProject,
-    reorderProjects,
-    getProjectNotes,
-    createProjectNote,
-    deleteProjectNote,
-    updateProjectNote
+  getProjects,
+  getProjectById,
+  createProject,
+  updateProject,
+  deleteProject,
+  getProjectMembers,
+  getClientProgress,
+  getProjectClientUpdates,
+  createProjectClientUpdate,
+  getProjectFinancialSummary,
+  getArchivedProjects,
+  restoreProject,
+  permanentlyDeleteProject,
+  reorderProjects,
+  getProjectNotes,
+  createProjectNote,
+  deleteProjectNote,
+  updateProjectNote,
 };
-

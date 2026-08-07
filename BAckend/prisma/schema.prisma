@@ -25,6 +25,7 @@ model Company {
   maxUsers           Int              @default(10)
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
 
   users              User[]
   projects           Project[]
@@ -62,6 +63,7 @@ model Plan {
   isPopular   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
   companies   Company[]
 
@@ -135,6 +137,7 @@ model User {
   role         Role?     @relation(fields: [roleId], references: [id])
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   // Relationships
   fcmTokens            FcmToken[]
@@ -206,6 +209,7 @@ model Project {
   location       String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   tasks              Task[]
   schedules          Schedule[]
@@ -250,6 +254,7 @@ model Task {
   actualHours    Float     @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   subTasks       SubTask[]
 
@@ -267,6 +272,7 @@ model SubTask {
   dueDate      DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   @@map("sub_tasks")
 }
@@ -280,6 +286,7 @@ model TaskTemplate {
   tasks     Json     @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   @@map("task_templates")
 }
@@ -296,6 +303,7 @@ model Schedule {
   status    String    @default("PLANNED")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   @@map("schedules")
 }
@@ -310,6 +318,7 @@ model ProjectDocument {
   fileUrl      String
   fileType     String?
   createdAt    DateTime @default(now())
+  deletedAt    DateTime?
 
   @@map("project_documents")
 }
@@ -322,6 +331,7 @@ model ProjectNote {
   author    User     @relation(fields: [authorId], references: [id])
   content   String
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   @@map("project_notes")
 }
@@ -335,6 +345,7 @@ model ProjectUpdate {
   title     String
   summary   String
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   @@map("project_updates")
 }
@@ -356,6 +367,7 @@ model DailyLog {
   approved    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   @@map("daily_logs")
 }
@@ -373,6 +385,7 @@ model Photo {
   category     String?
   tags         String[] @default([])
   createdAt    DateTime @default(now())
+  deletedAt    DateTime?
 
   @@map("photos")
 }
@@ -388,6 +401,7 @@ model Drawing {
   version      String   @default("v1.0")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
 
   annotations  DrawingAnnotation[]
 
@@ -404,6 +418,7 @@ model DrawingAnnotation {
   coords    Json
   text      String?
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   @@map("drawing_annotations")
 }
@@ -425,6 +440,7 @@ model RFI {
   status       String    @default("OPEN")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   @@map("rfis")
 }
@@ -443,6 +459,7 @@ model Issue {
   status       String   @default("OPEN")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
 
   @@map("issues")
 }
@@ -458,6 +475,7 @@ model CorrectionRequest {
   status        String   @default("PENDING")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
 
   @@map("correction_requests")
 }
@@ -478,6 +496,7 @@ model TradeBid {
   proposalUrl     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
 
   @@map("trade_bids")
 }
@@ -494,6 +513,7 @@ model Vendor {
   taxId         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
 
   purchaseOrders PurchaseOrder[]
 
@@ -516,6 +536,7 @@ model PurchaseOrder {
   status       String    @default("DRAFT")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   @@map("purchase_orders")
 }
@@ -533,6 +554,7 @@ model Equipment {
   dailyRate    Float    @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
 
   @@map("equipments")
 }
@@ -554,6 +576,7 @@ model Invoice {
   items         Json     @default("[]")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
 
   @@map("invoices")
 }
@@ -569,6 +592,7 @@ model Estimate {
   status         String   @default("DRAFT")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
 
   @@map("estimates")
 }
@@ -586,6 +610,7 @@ model Payroll {
   status      String   @default("PENDING")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   @@map("payrolls")
 }
@@ -604,6 +629,7 @@ model TimeLog {
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
   @@map("time_logs")
 }
@@ -618,6 +644,7 @@ model Transaction {
   stripePaymentIntentId String?
   status                String   @default("COMPLETED")
   createdAt             DateTime @default(now())
+  deletedAt             DateTime?
 
   @@map("transactions")
 }
@@ -635,6 +662,7 @@ model Job {
   status     String   @default("IN_PROGRESS")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
 
   jobTasks      JobTask[]
   jobWorkers    JobWorker[]
@@ -654,6 +682,7 @@ model JobTask {
   assignedToId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
 
   @@map("job_tasks")
 }
@@ -666,6 +695,7 @@ model JobWorker {
   worker    User     @relation(fields: [workerId], references: [id], onDelete: Cascade)
   role      String?
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   @@map("job_workers")
 }
@@ -678,6 +708,7 @@ model JobNote {
   author    User     @relation(fields: [authorId], references: [id])
   content   String
   createdAt DateTime @default(now())
+  deletedAt DateTime?
 
   @@map("job_notes")
 }
@@ -691,6 +722,7 @@ model JobTimeLog {
   clockIn   DateTime
   clockOut  DateTime?
   createdAt DateTime  @default(now())
+  deletedAt DateTime?
 
   @@map("job_time_logs")
 }
@@ -703,6 +735,7 @@ model JobActivityLog {
   performedBy   User     @relation(fields: [performedById], references: [id])
   action        String
   createdAt     DateTime @default(now())
+  deletedAt     DateTime?
 
   @@map("job_activity_logs")
 }
@@ -720,6 +753,7 @@ model ChatRoom {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   participants ChatParticipant[]
   messages     Chat[]
@@ -749,6 +783,7 @@ model Chat {
   message     String
   attachments Json     @default("[]")
   createdAt   DateTime @default(now())
+  deletedAt   DateTime?
 
   @@map("chats")
 }
@@ -763,6 +798,7 @@ model Notification {
   readStatus  Boolean  @default(false)
   link        String?
   createdAt   DateTime @default(now())
+  deletedAt   DateTime?
 
   @@map("notifications")
 }
@@ -780,6 +816,7 @@ model SupportTicket {
   status       String   @default("OPEN")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
 
   @@map("support_tickets")
 }
@@ -818,6 +855,7 @@ model Todo {
   completed Boolean   @default(false)
   dueDate   DateTime?
   createdAt DateTime  @default(now())
+  deletedAt DateTime?
 
   @@map("todos")
 }

@@ -1,27 +1,50 @@
 const User = require('../models/User');
 const prisma = require('../config/prisma');
+const AppError = require('../utils/AppError');
 
 const getDriver = () => (process.env.DB_DRIVER || 'prisma').toLowerCase();
 
 class UserRepository {
   async findByEmail(email) {
     if (getDriver() === 'prisma') {
-      return await prisma.user.findUnique({
+      const u = await prisma.user.findUnique({
         where: { email: email.toLowerCase() },
-        include: { company: true, role: true }
+        include: { company: true, role: true },
       });
+      if (!u) return null;
+      return {
+        ...u,
+        _id: u.id,
+        role: u.role ? u.role.name : 'WORKER',
+        roleObject: u.role,
+      };
     }
     return await User.findOne({ email: email.toLowerCase() });
   }
 
   async findById(id) {
     if (getDriver() === 'prisma') {
-      return await prisma.user.findUnique({
+      const u = await prisma.user.findUnique({
         where: { id },
-        include: { company: true, role: true }
+        include: { company: true, role: true },
       });
+      if (!u) return null;
+      return {
+        ...u,
+        _id: u.id,
+        role: u.role ? u.role.name : 'WORKER',
+        roleObject: u.role,
+      };
     }
     return await User.findById(id);
+  }
+
+  async findByIdOrFail(id, entityName = 'User') {
+    const item = await this.findById(id);
+    if (!item) {
+      throw AppError.notFound(`${entityName} not found`);
+    }
+    return item;
   }
 
   async find(query = {}) {
@@ -30,31 +53,49 @@ class UserRepository {
       if (query.companyId) where.companyId = query.companyId;
       if (query.role) {
         if (typeof query.role === 'object' && query.role.$in) {
-          where.role = { in: query.role.$in };
+          where.role = { name: { in: query.role.$in } };
         } else {
-          where.role = query.role;
+          where.role = { name: query.role };
         }
       }
       if (query.isActive !== undefined) where.isActive = query.isActive;
 
-      return await prisma.user.findMany({
+      const users = await prisma.user.findMany({
         where,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phoneNumber: true,
-          avatar: true,
-          status: true,
-          isActive: true,
-          companyId: true,
-          roleId: true,
-          createdAt: true,
-          updatedAt: true
-        }
+        include: { company: true, role: true },
+        orderBy: { createdAt: 'desc' },
       });
+
+      return users.map((u) => ({
+        ...u,
+        _id: u.id,
+        fullName: u.name,
+        role: u.role ? u.role.name : 'WORKER',
+        companyId: u.company ? { _id: u.company.id, name: u.company.name } : null,
+      }));
     }
     return await User.find(query).select('-password').lean();
+  }
+
+  async findMany(query = {}, options = {}) {
+    return this.find(query);
+  }
+
+  async paginate(query = {}) {
+    const users = await this.find(query);
+    return {
+      data: users,
+      total: users.length,
+      page: 1,
+      limit: users.length,
+    };
+  }
+
+  async count(query = {}) {
+    if (getDriver() === 'prisma') {
+      return await prisma.user.count({ where: { ...query, deletedAt: null } });
+    }
+    return await User.countDocuments({ ...query, deletedAt: null });
   }
 
   async create(userData) {
@@ -68,8 +109,8 @@ class UserRepository {
           companyId: userData.companyId || null,
           phoneNumber: userData.phone || userData.phoneNumber || null,
           avatar: userData.avatar || null,
-          isActive: userData.isActive !== undefined ? userData.isActive : true
-        }
+          isActive: userData.isActive !== undefined ? userData.isActive : true,
+        },
       });
     }
     return await User.create(userData);
@@ -79,7 +120,7 @@ class UserRepository {
     if (getDriver() === 'prisma') {
       return await prisma.user.update({
         where: { id },
-        data: updateData
+        data: updateData,
       });
     }
     return await User.findByIdAndUpdate(id, updateData, { new: true });
@@ -88,7 +129,7 @@ class UserRepository {
   async deleteById(id) {
     if (getDriver() === 'prisma') {
       return await prisma.user.delete({
-        where: { id }
+        where: { id },
       });
     }
     return await User.findByIdAndDelete(id);
@@ -98,7 +139,7 @@ class UserRepository {
     if (getDriver() === 'prisma') {
       return await prisma.user.findMany({
         where: { companyId, isActive: true },
-        select: { id: true, name: true, email: true, phoneNumber: true, avatar: true }
+        select: { id: true, name: true, email: true, phoneNumber: true, avatar: true },
       });
     }
     return await User.find({ companyId, isActive: true }).select('-password').lean();

@@ -1,69 +1,49 @@
-const prisma = require('../config/prisma');
+/**
+ * planController.js — Subscription Plan Controller.
+ */
 
-// @desc    Get all active plans
-// @route   GET /api/plans
-// @access  Public
-const getPlans = async (req, res, next) => {
-    try {
-        const plans = await prisma.plan.findMany({ orderBy: { price: 'asc' } });
-        res.json(plans.map(p => ({ ...p, _id: p.id })));
-    } catch (error) {
-        next(error);
-    }
-};
+'use strict';
 
-// @desc    Create a new plan
-// @route   POST /api/plans
-// @access  Private (Super Admin)
-const createPlan = async (req, res, next) => {
-    try {
-        const plan = await prisma.plan.create({ data: req.body });
-        res.status(201).json({ ...plan, _id: plan.id });
-    } catch (error) {
-        next(error);
-    }
-};
+const asyncHandler = require('../utils/asyncHandler');
+const { planRepository } = require('../repositories');
 
-// @desc    Update a plan
-// @route   PATCH /api/plans/:id
-// @access  Private (Super Admin)
-const updatePlan = async (req, res, next) => {
-    try {
-        const plan = await prisma.plan.update({
-            where: { id: req.params.id },
-            data: req.body
-        });
-        if (!plan) {
-            res.status(404);
-            throw new Error('Plan not found');
-        }
-        res.json({ ...plan, _id: plan.id });
-    } catch (error) {
-        next(error);
-    }
-};
+// GET /api/plans
+const getPlans = asyncHandler(async (req, res) => {
+  const plans = await planRepository.findAll();
+  const list = Array.isArray(plans) ? plans : (plans.data || []);
+  res.json(list);
+});
 
-// @desc    Delete a plan
-// @route   DELETE /api/plans/:id
-// @access  Private (Super Admin)
-const deletePlan = async (req, res, next) => {
-    try {
-        const plan = await prisma.plan.delete({
-            where: { id: req.params.id }
-        });
-        if (!plan) {
-            res.status(404);
-            throw new Error('Plan not found');
-        }
-        res.json({ message: 'Plan deleted' });
-    } catch (error) {
-        next(error);
-    }
-};
+// POST /api/plans
+const createPlan = asyncHandler(async (req, res) => {
+  const plan = await planRepository.create(req.body);
+  res.status(201).json({
+    success: true,
+    data: plan,
+  });
+});
+
+// PATCH /api/plans/:id
+const updatePlan = asyncHandler(async (req, res) => {
+  const plan = await planRepository.updateById(req.params.id, req.body);
+  res.json({
+    success: true,
+    data: plan,
+  });
+});
+
+// DELETE /api/plans/:id
+const deletePlan = asyncHandler(async (req, res) => {
+  await planRepository.deleteById(req.params.id);
+  res.json({
+    success: true,
+    message: 'Subscription plan deleted',
+  });
+});
 
 module.exports = {
-    getPlans,
-    createPlan,
-    updatePlan,
-    deletePlan
+  getPlans,
+  createPlan,
+  updatePlan,
+  deletePlan,
 };
