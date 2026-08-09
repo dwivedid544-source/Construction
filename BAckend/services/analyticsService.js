@@ -11,7 +11,10 @@ class AnalyticsService {
    * Executive summary analytics for tenant company.
    */
   async getExecutiveSummary(companyId) {
-    const where = { companyId, deletedAt: null };
+    const where = { deletedAt: null };
+    if (companyId) {
+      where.companyId = companyId;
+    }
 
     const [
       totalProjects,
@@ -28,7 +31,7 @@ class AnalyticsService {
       prisma.project.count({ where: { ...where, status: 'COMPLETED' } }),
       prisma.task.count({ where }),
       prisma.task.count({ where: { ...where, status: 'COMPLETED' } }),
-      prisma.user.count({ where: { companyId, role: 'WORKER', deletedAt: null } }),
+      prisma.user.count({ where: { ...where, role: 'WORKER' } }),
       prisma.issue.count({ where: { ...where, status: 'OPEN' } }),
       prisma.invoice.aggregate({
         where,

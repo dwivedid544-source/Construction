@@ -57,12 +57,24 @@ class UserService {
       throw AppError.forbidden('Access denied to this user.');
     }
 
-    if (updateData.name || updateData.fullName) {
-      updateData.name = updateData.fullName || updateData.name;
-      delete updateData.fullName;
+    // Map field aliases
+    if (updateData.fullName) {
+      updateData.name = updateData.fullName;
+    }
+    if (updateData.phone) {
+      updateData.phoneNumber = updateData.phone;
     }
 
-    return userRepository.updateById(id, updateData);
+    // Whitelist valid Prisma User model scalar fields
+    const validFields = ['name', 'email', 'phoneNumber', 'avatar', 'status', 'isActive', 'password', 'socketId', 'lastLogin'];
+    const cleanData = {};
+    Object.keys(updateData).forEach((key) => {
+      if (validFields.includes(key) && updateData[key] !== undefined && updateData[key] !== null) {
+        cleanData[key] = updateData[key];
+      }
+    });
+
+    return userRepository.updateById(id, cleanData);
   }
 
   async deleteUser(id, requestingUser) {

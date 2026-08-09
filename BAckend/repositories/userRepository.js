@@ -118,9 +118,25 @@ class UserRepository {
 
   async updateById(id, updateData) {
     if (getDriver() === 'prisma') {
+      const validFields = [
+        'name', 'email', 'password', 'phoneNumber', 'avatar',
+        'status', 'isActive', 'lastLogin', 'socketId', 'roleId', 'companyId'
+      ];
+      const prismaData = {};
+
+      const raw = { ...updateData };
+      if (raw.fullName) raw.name = raw.fullName;
+      if (raw.phone) raw.phoneNumber = raw.phone;
+
+      Object.keys(raw).forEach((key) => {
+        if (validFields.includes(key) && raw[key] !== undefined && raw[key] !== null) {
+          prismaData[key] = raw[key];
+        }
+      });
+
       return await prisma.user.update({
         where: { id },
-        data: updateData,
+        data: prismaData,
       });
     }
     return await User.findByIdAndUpdate(id, updateData, { new: true });

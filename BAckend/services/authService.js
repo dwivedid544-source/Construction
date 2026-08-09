@@ -97,6 +97,17 @@ class AuthService {
         req,
       });
 
+      // Dispatch welcome email via Brevo API
+      const { sendWelcomeEmail } = require('../utils/emailService');
+      sendWelcomeEmail({
+        toEmail: user.email,
+        toName: user.name || fullName,
+        companyName: company.name,
+        planName: plan || '7-Day Free Trial',
+        expiryDate: '7 Days',
+        loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+      }).catch((err) => console.error('[AuthService] Welcome email error:', err));
+
       return {
         company,
         user: this.sanitizeUser(user),

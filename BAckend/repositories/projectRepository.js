@@ -88,6 +88,14 @@ class ProjectRepository {
 
   async create(projectData) {
     if (getDriver() === 'prisma') {
+      const budgetNum = typeof projectData.budget === 'number' ? projectData.budget : (parseFloat(String(projectData.budget).replace(/[^0-9.]/g, '')) || 0);
+      let statusStr = String(projectData.status || 'ACTIVE').toUpperCase();
+      if (statusStr === 'PLANNING') statusStr = 'ACTIVE';
+      if (statusStr === 'ACTIVE SITE') statusStr = 'ACTIVE';
+      if (!['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'].includes(statusStr)) statusStr = 'ACTIVE';
+
+      const locStr = typeof projectData.location === 'object' ? JSON.stringify(projectData.location) : (projectData.location || null);
+
       const p = await prisma.project.create({
         data: {
           name: projectData.name,
@@ -96,9 +104,9 @@ class ProjectRepository {
           companyId: projectData.companyId,
           pmId: projectData.pmId || null,
           clientId: projectData.clientId || null,
-          status: projectData.status || 'ACTIVE',
-          budget: projectData.budget || 0,
-          location: projectData.location || null
+          status: statusStr,
+          budget: budgetNum,
+          location: locStr
         }
       });
       return { ...p, _id: p.id };
@@ -108,9 +116,29 @@ class ProjectRepository {
 
   async updateById(id, updateData) {
     if (getDriver() === 'prisma') {
+      const sanitized = { ...updateData };
+      if (sanitized.budget !== undefined) {
+        sanitized.budget = typeof sanitized.budget === 'number' ? sanitized.budget : (parseFloat(String(sanitized.budget).replace(/[^0-9.]/g, '')) || 0);
+      }
+      if (sanitized.status) {
+        let s = String(sanitized.status).toUpperCase();
+        if (s === 'PLANNING' || s === 'ACTIVE SITE') s = 'ACTIVE';
+        if (['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'].includes(s)) {
+          sanitized.status = s;
+        } else {
+          delete sanitized.status;
+        }
+      }
+      if (sanitized.location && typeof sanitized.location === 'object') {
+        sanitized.location = JSON.stringify(sanitized.location);
+      }
+      delete sanitized._id;
+      delete sanitized.pmIds;
+      delete sanitized.imageFile;
+
       const p = await prisma.project.update({
         where: { id },
-        data: updateData
+        data: sanitized
       });
       return { ...p, _id: p.id };
     }

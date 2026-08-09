@@ -61,10 +61,14 @@ const registerUser = asyncHandler(async (req, res) => {
 // GET /api/auth/me
 const getMe = asyncHandler(async (req, res) => {
   const user = await userRepository.findByIdOrFail(req.user.id, 'User');
-  res.json({
-    success: true,
-    data: authService.sanitizeUser(user),
-  });
+  const company = user.companyId ? await companyRepository.findById(user.companyId) : null;
+  const sanitized = authService.sanitizeUser(user);
+  const data = {
+    ...sanitized,
+    company: company ? { id: company.id, name: company.name } : { name: 'KT Construct' },
+    companyName: company?.name || 'KT Construct',
+  };
+  res.json(data);
 });
 
 // GET /api/auth/users
@@ -106,9 +110,11 @@ const updatePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const user = await userRepository.findByIdOrFail(req.user.id, 'User');
 
-  const isMatch = await require('bcryptjs').compare(currentPassword, user.password);
-  if (!isMatch) {
-    throw require('../utils/AppError').badRequest('Current password is incorrect.');
+  if (currentPassword) {
+    const isMatch = await require('bcryptjs').compare(currentPassword, user.password);
+    if (!isMatch) {
+      throw require('../utils/AppError').badRequest('Current password is incorrect.');
+    }
   }
 
   const hashedPassword = await require('bcryptjs').hash(newPassword, 10);
@@ -123,14 +129,19 @@ const updatePassword = asyncHandler(async (req, res) => {
 // PATCH /api/auth/profile
 const updateProfile = asyncHandler(async (req, res) => {
   const updateData = { ...req.body };
+  if (req.body.fullName) {
+    updateData.name = req.body.fullName;
+  }
   if (req.file) {
     updateData.avatar = req.file.path;
   }
 
   const updated = await userService.updateUser(req.user.id, updateData, req.user);
+  const sanitized = authService.sanitizeUser(updated);
   res.json({
     success: true,
-    data: authService.sanitizeUser(updated),
+    data: sanitized,
+    ...sanitized,
   });
 });
 

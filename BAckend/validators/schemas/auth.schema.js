@@ -30,17 +30,20 @@ const login = Joi.object({
 
 // PUT /api/auth/profile
 const updateProfile = Joi.object({
-  fullName    : Joi.string().min(2).max(100).trim(),
+  fullName    : Joi.string().min(2).max(100).trim().optional(),
+  name        : Joi.string().min(2).max(100).trim().optional(),
+  email       : email.optional().allow('', null),
   phone       : phone.optional().allow('', null),
-  avatar      : Joi.string().uri().allow('', null),
-  address     : Joi.string().max(255).allow('', null),
-  province    : Joi.string().max(100).allow('', null),
-  hourlyRate  : Joi.number().min(0).max(9999),
-});
+  avatar      : Joi.string().allow('', null).optional(),
+  avatarFile  : Joi.any().optional(),
+  address     : Joi.string().max(255).allow('', null).optional(),
+  province    : Joi.string().max(100).allow('', null).optional(),
+  hourlyRate  : Joi.number().min(0).max(9999).optional(),
+}).unknown(true);
 
 // POST /api/auth/change-password
 const changePassword = Joi.object({
-  currentPassword : Joi.string().required(),
+  currentPassword : Joi.string().allow('', null).optional(),
   newPassword     : password.required(),
 });
 

@@ -118,10 +118,20 @@ class BillingService {
       companyId: user.companyId,
       action: 'SUBSCRIPTION_PURCHASE',
       resource: 'Company',
-      resourceId: company.id,
-      details: { planId: plan.id, razorpayOrderId, razorpayPaymentId, price: plan.price },
+      resourceId: user.companyId,
+      details: { planId: plan.id, planName: plan.name, paymentId: razorpayPaymentId },
       req,
     });
+
+    // Send email receipt via Brevo API
+    const { sendPaymentSuccessEmail } = require('../utils/emailService');
+    sendPaymentSuccessEmail({
+      toEmail: user.email,
+      toName: user.name || user.fullName,
+      amount: plan.price,
+      planName: plan.name,
+      paymentId: razorpayPaymentId,
+    }).catch((err) => console.error('[BillingService] Payment email error:', err));
 
     return {
       success: true,

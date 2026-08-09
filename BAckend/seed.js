@@ -63,12 +63,12 @@ async function main() {
 
   // 3. Seed Primary Company
   const company = await prisma.company.upsert({
-    where: { name: 'Kaal Construction Ltd' },
+    where: { name: 'KT Construct' },
     create: {
-      name: 'Kaal Construction Ltd',
-      email: 'admin@kaal.ca',
-      phone: '+1 (555) 019-2834',
-      address: '100 Construction Way, Toronto, ON',
+      name: 'KT Construct',
+      email: 'admin@kiaan.com',
+      phone: '+91 9752100980',
+      address: 'KT Construct HQ',
       subscriptionPlanId: defaultPlan?.id,
       subscriptionStatus: 'active',
       maxProjects: 50,
