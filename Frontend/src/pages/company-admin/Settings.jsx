@@ -55,26 +55,52 @@ const Settings = () => {
     e.preventDefault();
     try {
       setIsUpdating(true);
-      const data = new FormData();
-      data.append('fullName', profile.name);
-      data.append('email', profile.email);
-      data.append('phone', profile.phone);
-      data.append('address', profile.address);
+      let res;
       if (profile.avatarFile) {
+        const data = new FormData();
+        data.append('fullName', profile.name);
+        data.append('name', profile.name);
+        data.append('phone', profile.phone);
+        data.append('address', profile.address);
         data.append('avatar', profile.avatarFile);
+        res = await api.patch('/auth/profile', data, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      } else {
+        res = await api.patch('/auth/profile', {
+          fullName: profile.name,
+          name: profile.name,
+          phone: profile.phone,
+          address: profile.address,
+        });
       }
       
-      const res = await api.patch('/auth/profile', data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const rawUser = res.data?.data || res.data?.user || res.data || {};
+      const updatedUser = {
+        ...user,
+        ...rawUser,
+        name: profile.name,
+        fullName: profile.name,
+        phone: profile.phone,
+        phoneNumber: profile.phone,
+        address: profile.address,
+        avatar: rawUser.avatar || profile.avatar,
+      };
       
-      // Critical: Sync local auth context so Sidebar/Navbar update immediately
-      updateUserData(res.data);
+      updateUserData(updatedUser);
+      setProfile(prev => ({
+        ...prev,
+        name: profile.name,
+        phone: profile.phone,
+        address: profile.address,
+        avatar: rawUser.avatar || prev.avatar,
+        avatarFile: null,
+      }));
       
       toast.success("Profile details updated successfully.");
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error("Failed to update profile.");
+      toast.error(error.response?.data?.message || "Failed to update profile.");
     } finally {
       setIsUpdating(false);
     }

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Briefcase, Clock, FileText,
   Wrench, ClipboardList, BarChart2, DollarSign,
   Users, Settings, LogOut, Menu, X, Bell, MessageSquare,
-  Search, ChevronDown, RefreshCw, MapPin, Building2, PenTool, Camera, FileQuestion, AlertCircle, Activity, Lock
+  Search, ChevronDown, RefreshCw, MapPin, Building2, PenTool, Camera, FileQuestion, AlertCircle, Activity, Lock, CheckCircle
 } from 'lucide-react';
 import api, { BASE_URL } from '../utils/api';
 import Logo from '../assets/images/logo.png.jpeg';
@@ -35,9 +35,24 @@ const CompanyAdminLayout = () => {
   const [issueCount, setIssueCount] = useState(0);
   const [poCount, setPoCount] = useState(0);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showPlansModal, setShowPlansModal] = useState(false);
+  const [plansList, setPlansList] = useState([]);
   const [showTrialExpiredModal, setShowTrialExpiredModal] = useState(() => {
     return localStorage.getItem('isTrialActive') === 'true' || localStorage.getItem('subscriptionStatus') === 'expired';
   });
+
+  const fetchPlans = async () => {
+    try {
+      const res = await api.get('/plans');
+      setPlansList(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Failed to fetch plans:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlans();
+  }, []);
 
   const handleRazorpayBuyPlan = (amountInRupees = 999, planName = 'KT Construct Pro Plan') => {
     const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TMRyc8lDjomNTV';
@@ -155,7 +170,19 @@ const CompanyAdminLayout = () => {
     }
   };
 
+  const fetchUserProfile = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      if (res.data) {
+        updateUserData(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to sync profile:', err);
+    }
+  };
+
   useEffect(() => {
+    fetchUserProfile();
     if (user && socket) {
       fetchSidebarMetrics();
       fetchNotifications();
@@ -506,7 +533,7 @@ const CompanyAdminLayout = () => {
             <div className="text-right hidden md:block">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Organization</span>
               <div className="text-sm font-black text-slate-900 leading-none">
-                {user?.company?.name || ''}
+                {user?.company?.name || user?.companyName || 'KT Construct'}
               </div>
             </div>
 
@@ -795,7 +822,7 @@ const CompanyAdminLayout = () => {
             <button
               onClick={() => {
                 setShowTrialExpiredModal(false);
-                navigate('/company-admin/settings');
+                setShowPlansModal(true);
               }}
               className="w-full py-3 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider"
             >
@@ -819,6 +846,80 @@ const CompanyAdminLayout = () => {
             >
               Logout
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Subscription Plans Modal */}
+      <Modal
+        isOpen={showPlansModal}
+        onClose={() => setShowPlansModal(false)}
+        maxWidth="max-w-4xl"
+        darkMode={true}
+        hideHeader={false}
+        title="Choose a Subscription Plan"
+      >
+        <div className="bg-[#0b0f19] p-4 md:p-6 rounded-3xl text-white space-y-6">
+          <div className="text-center max-w-lg mx-auto">
+            <h3 className="text-xl md:text-2xl font-black tracking-tight text-white">Available SaaS Subscription Plans</h3>
+            <p className="text-xs text-slate-400 mt-1">Select a plan to restore full access to your construction software and data.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {(plansList && plansList.length > 0 ? plansList : [
+              { id: 'starter', name: 'Starter 599', price: 599, period: 'Month', isPopular: false, features: ['Core Project Tracking', 'Up to 5 Users', 'Standard Support'] },
+              { id: 'standard', name: 'Standard 799', price: 799, period: 'Month', isPopular: true, features: ['Field Operations & RFIs', 'Up to 15 Users', 'Priority Support'] },
+              { id: 'pro', name: 'Pro 1299', price: 1299, period: 'Month', isPopular: false, features: ['Unlimited Projects', 'Unlimited Users', 'Dedicated 24/7 Support'] },
+            ])
+            .filter(plan => plan.price > 0 && !plan.name.toLowerCase().includes('free') && !plan.name.toLowerCase().includes('trial'))
+            .map((plan) => (
+              <div
+                key={plan._id || plan.id}
+                className={`bg-[#141b2d] rounded-2xl p-5 border flex flex-col justify-between relative transition-all hover:scale-[1.02] ${
+                  plan.isPopular ? 'border-[#155dff] shadow-lg shadow-[#155dff]/20' : 'border-slate-800'
+                }`}
+              >
+                {plan.isPopular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#155dff] text-white text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest">
+                    Popular
+                  </div>
+                )}
+                <div>
+                  <h4 className="font-bold text-lg text-white mb-1">{plan.name}</h4>
+                  <div className="flex items-baseline gap-1 my-3">
+                    <span className="text-3xl font-black text-white">₹{plan.price}</span>
+                    <span className="text-xs text-slate-400 font-medium">/{plan.period}</span>
+                  </div>
+                  <ul className="space-y-2 mb-6">
+                    {(Array.isArray(plan.features)
+                      ? plan.features
+                      : (plan.features && typeof plan.features === 'object'
+                          ? Object.keys(plan.features)
+                          : ['Full Modules Access', '24/7 Priority Support'])
+                    ).map((feat, i) => (
+                      <li key={i} className="flex items-center gap-2 text-xs text-slate-300">
+                        <CheckCircle size={14} className="text-[#155dff] shrink-0" />
+                        <span>{typeof feat === 'string' ? feat.replace(/_/g, ' ') : String(feat)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowPlansModal(false);
+                    handleRazorpayBuyPlan(plan.price, plan.name);
+                  }}
+                  className={`w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                    plan.isPopular
+                      ? 'bg-[#155dff] hover:bg-blue-600 text-white shadow-lg shadow-[#155dff]/30'
+                      : 'bg-white/10 hover:bg-white/20 text-white border border-white/10'
+                  }`}
+                >
+                  {plan.price === 0 ? 'Start Trial' : 'Buy Now'}
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       </Modal>
