@@ -494,7 +494,11 @@ const Projects = () => {
             data.append(key, formData[key]);
           }
         });
-      data.append('companyId', user?.companyId);
+      const rawCompId = user?.companyId;
+      const compId = typeof rawCompId === 'object' ? (rawCompId?._id || rawCompId?.id) : rawCompId;
+      if (compId && typeof compId === 'string' && compId !== '[object Object]') {
+        data.set('companyId', compId);
+      }
 
       await api.post('/projects', data, {
         headers: { 'Content-Type': 'multipart/form-data' }

@@ -167,60 +167,12 @@ const LandingPage = () => {
         if (numericAmount === 0 || amountInRupees === 0 || amountInRupees === '₹0' || String(planName).toLowerCase().includes('free')) {
             localStorage.setItem('selectedPlan', 'Free Trial (7 Days)');
             localStorage.setItem('isTrialActive', 'true');
-            navigate('/register');
+            navigate('/register?plan=free');
             return;
         }
 
-        const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TMRyc8lDjomNTV';
-
-        const loadScript = (src) => {
-            return new Promise((resolve) => {
-                if (window.Razorpay) {
-                    resolve(true);
-                    return;
-                }
-                const script = document.createElement('script');
-                script.src = src;
-                script.onload = () => resolve(true);
-                script.onerror = () => resolve(false);
-                document.body.appendChild(script);
-            });
-        };
-
-        loadScript('https://checkout.razorpay.com/v1/checkout.js').then((res) => {
-            if (!res) {
-                alert('Razorpay SDK failed to load. Please check your internet connection.');
-                return;
-            }
-
-            const options = {
-                key: key,
-                amount: numericAmount * 100, // Amount in paise
-                currency: 'INR',
-                name: 'Kiaan Technology',
-                description: planName,
-                image: Logo,
-                handler: function (response) {
-                    alert(`Payment Successful!\nPayment ID: ${response.razorpay_payment_id}`);
-                    localStorage.setItem('subscriptionStatus', 'active');
-                    navigate('/login');
-                },
-                prefill: {
-                    name: 'Customer',
-                    email: 'info@kiaantechnology.com',
-                    contact: '9752100980'
-                },
-                theme: {
-                    color: '#3b82f6'
-                }
-            };
-
-            const rzp = new window.Razorpay(options);
-            rzp.on('payment.failed', function (response) {
-                alert(`Payment Failed: ${response.error?.description || 'Transaction declined'}`);
-            });
-            rzp.open();
-        });
+        // Redirect directly to register so they pay securely inside the dashboard after registration
+        navigate(`/register?plan=${encodeURIComponent(planName)}`);
     };
 
     const navLinks = [

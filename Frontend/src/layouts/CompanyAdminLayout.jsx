@@ -54,24 +54,54 @@ const CompanyAdminLayout = () => {
     fetchPlans();
   }, []);
 
-  const handleRazorpayBuyPlan = (amountInRupees = 999, planName = 'KT Construct Pro Plan') => {
-    const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TMRyc8lDjomNTV';
+  const handleRazorpayBuyPlan = async (amountInRupees = 999, planName = 'KT Construct Pro Plan', planId = null) => {
+    try {
+      let targetPlanId = planId;
+      if (!targetPlanId && plansList.length > 0) {
+        const matched = plansList.find(p => p.price === amountInRupees || p.name === planName) || plansList[0];
+        targetPlanId = matched?.id || matched?._id;
+      }
+      if (!targetPlanId) {
+        toast.error('Unable to determine selected plan ID.');
+        return;
+      }
 
-    const loadScript = (src) => {
-      return new Promise((resolve) => {
-        if (window.Razorpay) {
-          resolve(true);
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = src;
-        script.onload = () => resolve(true);
-        script.onerror = () => resolve(false);
-        document.body.appendChild(script);
-      });
-    };
+      // 1. Create order on the backend
+      const orderRes = await api.post('/billing/create-order', { planId: targetPlanId });
+      const orderResult = orderRes.data?.data;
+      if (!orderResult) {
+        toast.error('Failed to initiate subscription order.');
+        return;
+      }
 
-    loadScript('https://checkout.razorpay.com/v1/checkout.js').then((res) => {
+      if (orderResult.isFreePlan) {
+        toast.success(orderResult.message || 'Free plan activated successfully!');
+        setShowTrialExpiredModal(false);
+        fetchUserProfile();
+        return;
+      }
+
+      const key = orderResult.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+      if (!key) {
+        toast.error('Razorpay public key ID is not configured.');
+        return;
+      }
+
+      const loadScript = (src) => {
+        return new Promise((resolve) => {
+          if (window.Razorpay) {
+            resolve(true);
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = () => resolve(true);
+          script.onerror = () => resolve(false);
+          document.body.appendChild(script);
+        });
+      };
+
+      const res = await loadScript('https://checkout.razorpay.com/v1/checkout.js');
       if (!res) {
         toast.error('Razorpay SDK failed to load. Please check your internet connection.');
         return;
@@ -79,16 +109,36 @@ const CompanyAdminLayout = () => {
 
       const options = {
         key: key,
-        amount: (amountInRupees || 999) * 100, // Amount in paise
-        currency: 'INR',
+        amount: orderResult.amount,
+        currency: orderResult.currency || 'INR',
         name: 'Kiaan Technology',
-        description: planName,
+        description: orderResult.planName || planName,
+        order_id: orderResult.orderId,
         image: Logo,
-        handler: function (response) {
-          toast.success(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
-          setShowTrialExpiredModal(false);
-          localStorage.setItem('subscriptionStatus', 'active');
-          localStorage.removeItem('isTrialActive');
+        handler: async function (response) {
+          try {
+            toast.loading('Verifying payment...');
+            const verifyRes = await api.post('/billing/verify-payment', {
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              planId: targetPlanId
+            });
+
+            toast.dismiss();
+            if (verifyRes.data?.success) {
+              toast.success('Subscription activated successfully!');
+              setShowTrialExpiredModal(false);
+              localStorage.setItem('subscriptionStatus', 'active');
+              localStorage.removeItem('isTrialActive');
+              fetchUserProfile();
+            } else {
+              toast.error('Payment verification failed.');
+            }
+          } catch (err) {
+            toast.dismiss();
+            toast.error(err.response?.data?.message || 'Payment verification failed.');
+          }
         },
         prefill: {
           name: user?.name || 'Customer',
@@ -96,7 +146,7 @@ const CompanyAdminLayout = () => {
           contact: '9752100980'
         },
         theme: {
-          color: '#ef4444'
+          color: '#3b82f6'
         }
       };
 
@@ -105,7 +155,9 @@ const CompanyAdminLayout = () => {
         toast.error(`Payment Failed: ${response.error?.description || 'Declined'}`);
       });
       rzp.open();
-    });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Order creation failed.');
+    }
   };
 
   // socketRef removed: using global shared socket
