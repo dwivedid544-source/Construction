@@ -186,11 +186,11 @@ const LandingPage = () => {
         setSubscriptionModalOpen(true);
     };
 
-    // ── STEP 1: Form submit → show QR code screen ────────────────────────────
+    // ── Payment Handler: Launch Official Razorpay Payment Gateway (Live API) ────
     const handleModalPaymentSubmit = async (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
         if (!formData.companyName || !formData.city || !formData.email || !formData.phone || !formData.password) {
-            alert('Please fill in all required fields.');
+            alert('Please fill in all required fields (Company Name, City, Email Address, Mobile Number, Password).');
             return;
         }
 
@@ -203,11 +203,11 @@ const LandingPage = () => {
             numericAmount = planPriceStr;
         } else if (typeof planPriceStr === 'string') {
             const cleaned = planPriceStr.replace(/[^0-9.]/g, '');
-            numericAmount = cleaned === '' ? 0 : parseFloat(cleaned);
+            numericAmount = cleaned === '' ? 1 : parseFloat(cleaned);
         }
 
         // FREE plan → skip payment, go straight to register
-        if (numericAmount === 0) {
+        if (numericAmount === 0 || String(planName).toLowerCase().includes('free')) {
             setSubmittingPayment(true);
             try {
                 await api.post('/auth/register-subscription', {
@@ -230,47 +230,8 @@ const LandingPage = () => {
             return;
         }
 
-        // PAID plan → Build UPI QR and show QR step
-        const MERCHANT_UPI_ID = import.meta.env.VITE_MERCHANT_UPI_ID || 'kiaantechnology@upi';
-        const MERCHANT_NAME = 'Kiaan+Technology';
-        const upiString = `upi://pay?pa=${MERCHANT_UPI_ID}&pn=${MERCHANT_NAME}&am=${numericAmount}&cu=INR&tn=${encodeURIComponent('KT Construct ' + planName)}`;
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&qzone=1&color=0f172a&bgcolor=ffffff&data=${encodeURIComponent(upiString)}`;
-
-        setQrPaymentData({ planName, priceStr: planPriceStr, amount: numericAmount, qrUrl, upiString });
-        setShowQRStep(true);
-    };
-
-    // ── STEP 2a: User confirms QR payment done → register account ────────────
-    const handleQRPaymentConfirmed = async () => {
-        if (!qrPaymentData) return;
-        setSubmittingPayment(true);
-        try {
-            await api.post('/auth/register-subscription', {
-                companyName: formData.companyName, city: formData.city,
-                email: formData.email, phone: formData.phone,
-                password: formData.password, planName: qrPaymentData.planName,
-                price: qrPaymentData.priceStr, startDate: formData.startDate,
-                paymentId: 'upi_qr_confirmed'
-            });
-            alert(`✅ Payment Confirmed!\n\nYour KT Construct account is now active. Activation email sent to ${formData.email}.`);
-            setShowQRStep(false);
-            setSubscriptionModalOpen(false);
-            navigate('/login');
-        } catch (err) {
-            alert(err.response?.data?.message || 'Account activated! Please login.');
-            setShowQRStep(false);
-            setSubscriptionModalOpen(false);
-            navigate('/login');
-        } finally {
-            setSubmittingPayment(false);
-        }
-    };
-
-    // ── STEP 2b: User picks Razorpay (Cards / Netbanking / Wallet / UPI App) ─
-    const openRazorpayCheckout = async () => {
-        if (!qrPaymentData) return;
-        const { planName, priceStr, amount } = qrPaymentData;
-        const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TMRyc8lDjomNTV';
+        // Live Razorpay Key
+        const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_T2CGGz8NLUuopj';
 
         const loadScript = (src) => new Promise((resolve) => {
             if (window.Razorpay) { resolve(true); return; }
@@ -290,40 +251,51 @@ const LandingPage = () => {
         }
 
         const options = {
-            key,
-            amount: Math.round(amount * 100),
+            key: key,
+            amount: Math.round(numericAmount * 100), // Amount in paise
             currency: 'INR',
-            name: 'Kiaan Technology',
-            description: `${planName} Subscription`,
+            name: 'Kiaan Technology Pvt Ltd',
+            description: `KT Construct - ${planName} Subscription`,
             image: Logo,
             handler: async function (response) {
                 try {
+                    // Send registration & trigger welcome email matching Screenshot 2
                     await api.post('/auth/register-subscription', {
-                        companyName: formData.companyName, city: formData.city,
-                        email: formData.email, phone: formData.phone,
-                        password: formData.password, planName: planName,
-                        price: priceStr, startDate: formData.startDate,
+                        companyName: formData.companyName,
+                        city: formData.city,
+                        email: formData.email,
+                        phone: formData.phone,
+                        password: formData.password,
+                        planName: planName,
+                        price: planPriceStr,
+                        startDate: formData.startDate,
                         paymentId: response.razorpay_payment_id || 'pay_success'
                     });
-                    alert(`✅ Payment Successful!\nID: ${response.razorpay_payment_id || 'Success'}\n\nAccount activated. Email sent to ${formData.email}.`);
-                    setShowQRStep(false);
+
+                    alert(`✅ Payment Successful!\nPayment ID: ${response.razorpay_payment_id || 'Success'}\n\nYour account has been successfully activated! An official activation email has been sent to ${formData.email}.`);
                     setSubscriptionModalOpen(false);
                     navigate('/login');
                 } catch (err) {
-                    alert(err.response?.data?.message || 'Payment done! Redirecting...');
-                    setShowQRStep(false);
+                    console.error('[Subscription error]', err);
+                    alert(err.response?.data?.message || 'Payment processed successfully! Redirecting to login...');
                     setSubscriptionModalOpen(false);
                     navigate('/login');
                 } finally {
                     setSubmittingPayment(false);
                 }
             },
-            prefill: { name: formData.companyName, email: formData.email, contact: formData.phone },
-            theme: { color: '#3b82f6' }
+            prefill: {
+                name: formData.companyName,
+                email: formData.email,
+                contact: formData.phone
+            },
+            theme: {
+                color: '#3b82f6'
+            }
         };
 
         const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', (resp) => {
+        rzp.on('payment.failed', function (resp) {
             alert(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
             setSubmittingPayment(false);
         });
@@ -2123,144 +2095,7 @@ const LandingPage = () => {
         </div>
     );
 
-    // ══ QR CODE PAYMENT STEP MODAL ═══════════════════════════════════════════
-    return (
-        <>
-            {mainContent}
-
-            {/* ── QR CODE PAYMENT SCREEN ──────────────────────────────── */}
-            {showQRStep && qrPaymentData && (
-                <div style={{
-                    position: 'fixed', inset: 0, zIndex: 10000,
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: isMobile ? 16 : 24
-                }}>
-                    <div style={{
-                        background: '#ffffff', borderRadius: 28, width: '100%',
-                        maxWidth: 440, padding: isMobile ? 24 : 36,
-                        boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
-                        position: 'relative', textAlign: 'center'
-                    }}>
-                        {/* Close */}
-                        <button onClick={() => setShowQRStep(false)} style={{
-                            position: 'absolute', top: 16, right: 16,
-                            background: '#f1f5f9', border: 'none', borderRadius: '50%',
-                            width: 32, height: 32, cursor: 'pointer', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center'
-                        }}>
-                            <X size={16} color="#64748b" />
-                        </button>
-
-                        {/* Header */}
-                        <div style={{
-                            background: 'linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)',
-                            borderRadius: 18, padding: '16px 20px', marginBottom: 24,
-                            color: '#fff'
-                        }}>
-                            <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 4 }}>
-                                📋 {qrPaymentData.planName}
-                            </div>
-                            <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-1px' }}>
-                                ₹{qrPaymentData.amount}
-                            </div>
-                            <div style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>
-                                Kiaan Technology Pvt Ltd
-                            </div>
-                        </div>
-
-                        {/* QR Code */}
-                        <div style={{
-                            background: '#f8fafc', borderRadius: 20, padding: 18,
-                            display: 'inline-block', marginBottom: 16,
-                            border: '2px dashed #cbd5e1'
-                        }}>
-                            <img
-                                src={qrPaymentData.qrUrl}
-                                alt="UPI Payment QR Code"
-                                width={200}
-                                height={200}
-                                style={{ display: 'block', borderRadius: 8 }}
-                            />
-                        </div>
-
-                        {/* Instruction */}
-                        <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 8px', fontWeight: 500 }}>
-                            📱 Scan with <strong>Google Pay, PhonePe, Paytm</strong> or any UPI app
-                        </p>
-                        <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 20px' }}>
-                            Pay exactly <strong style={{ color: '#0f172a' }}>₹{qrPaymentData.amount}</strong> to activate your plan
-                        </p>
-
-                        {/* After QR scan — confirm payment done */}
-                        <button
-                            onClick={handleQRPaymentConfirmed}
-                            disabled={submittingPayment}
-                            style={{
-                                width: '100%', padding: '13px 20px', borderRadius: 14,
-                                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                                color: '#fff', border: 'none', fontSize: 15, fontWeight: 700,
-                                cursor: submittingPayment ? 'not-allowed' : 'pointer',
-                                boxShadow: '0 4px 16px rgba(34,197,94,0.35)',
-                                marginBottom: 12, opacity: submittingPayment ? 0.7 : 1
-                            }}
-                        >
-                            {submittingPayment ? 'Activating Account...' : '✅ I\'ve Completed Payment'}
-                        </button>
-
-                        {/* Divider */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 12px' }}>
-                            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-                            <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>OR</span>
-                            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-                        </div>
-
-                        {/* Razorpay fallback — Cards / Netbanking / Wallet / Pay Later */}
-                        <button
-                            onClick={openRazorpayCheckout}
-                            disabled={submittingPayment}
-                            style={{
-                                width: '100%', padding: '13px 20px', borderRadius: 14,
-                                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-                                color: '#fff', border: 'none', fontSize: 14, fontWeight: 700,
-                                cursor: submittingPayment ? 'not-allowed' : 'pointer',
-                                boxShadow: '0 4px 16px rgba(59,130,246,0.35)',
-                                marginBottom: 12, opacity: submittingPayment ? 0.7 : 1,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
-                            }}
-                        >
-                            <span style={{ fontSize: 16 }}>💳</span>
-                            Pay via Card / Net Banking / Wallet / UPI App
-                        </button>
-
-                        {/* Back to form */}
-                        <button
-                            onClick={() => setShowQRStep(false)}
-                            style={{
-                                width: '100%', padding: '10px', background: 'transparent',
-                                border: '1px solid #e2e8f0', borderRadius: 12,
-                                color: '#64748b', fontSize: 13, cursor: 'pointer', fontWeight: 500
-                            }}
-                        >
-                            ← Go Back to Form
-                        </button>
-
-                        {/* Security badge */}
-                        <div style={{
-                            marginTop: 16, display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', gap: 6
-                        }}>
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>🔒 Secured by</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#3b82f6' }}>Razorpay</span>
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>· UPI · SSL Encrypted</span>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </>
-    );
+    return mainContent;
 };
 
 export default LandingPage;
