@@ -54,8 +54,8 @@ async function main() {
       ]
     },
     {
-      name: 'Starter 599',
-      price: 599,
+      name: 'Starter 1',
+      price: 1,
       period: 'month',
       maxUsers: 10,
       maxProjects: 3,

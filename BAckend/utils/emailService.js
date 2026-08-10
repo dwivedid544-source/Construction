@@ -344,6 +344,106 @@ async function sendAdminNotificationEmail({ toEmail, toName, title, message }) {
   });
 }
 
+/**
+ * 9. Subscription Welcome & Activation Notification Email (Matching User Specification)
+ */
+async function sendSubscriptionWelcomeEmail({
+  toEmail,
+  companyName,
+  plainPassword,
+  planName = 'Starter 1',
+  price = '1.00',
+  duration = 'Monthly',
+  startDate,
+  expiryDate,
+  loginUrl,
+}) {
+  const formattedPrice = typeof price === 'number' ? price.toFixed(2) : (String(price).replace(/[^0-9.]/g, '') || '1.00');
+  const appLoginUrl = loginUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; background-color: #fdf2f8; padding: 20px; color: #1e293b;">
+      <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
+        
+        <!-- Header Banner matching Screenshot 2 -->
+        <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 24px 28px; color: #ffffff;">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; margin-bottom: 4px;">
+            ⚡ KT Construct
+          </div>
+          <div style="font-size: 11px; opacity: 0.85; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.05em;">
+            Official Notification
+          </div>
+          <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #ffffff; line-height: 1.3;">
+            Welcome to KT Construct - Your Account is Ready
+          </h2>
+        </div>
+
+        <!-- Body Content -->
+        <div style="padding: 24px 28px; line-height: 1.6; font-size: 14px; color: #334155;">
+          <p style="margin: 0 0 10px 0;">Hello <strong>${companyName || 'Valued Customer'}</strong> ,</p>
+          <p style="margin: 0 0 10px 0;">Welcome to KT Construct .</p>
+          <p style="margin: 0 0 20px 0;">Your account and plan subscription have been successfully activated.</p>
+
+          <!-- Account Details Section -->
+          <div style="margin-bottom: 20px;">
+            <p style="margin: 0 0 6px 0; font-weight: bold; color: #1e293b;">Account Details:</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Name: ${companyName || 'KT Construct Member'}</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Email / Login ID: <a href="mailto:${toEmail}" style="color: #2563eb; text-decoration: none;">${toEmail}</a></p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Password: ${plainPassword || '******'}</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Software: KT Construct</p>
+          </div>
+
+          <!-- Plan Details Section -->
+          <div style="margin-bottom: 20px;">
+            <p style="margin: 0 0 6px 0; font-weight: bold; color: #1e293b;">Plan Details:</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Plan: ${planName}</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Price: ₹${formattedPrice}</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Duration: ${duration}</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Start Date: ${startDate || new Date().toLocaleDateString('en-GB')}</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Expiry Date: ${expiryDate || '30 Days Active'}</p>
+          </div>
+
+          <!-- Login Link -->
+          <div style="margin-bottom: 20px;">
+            <p style="margin: 0 0 4px 0; color: #1e293b;">Login:</p>
+            <a href="${appLoginUrl}" style="color: #2563eb; font-size: 14px; text-decoration: underline; word-break: break-all;">
+              ${appLoginUrl}
+            </a>
+          </div>
+
+          <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px;">Please keep your login credentials secure.</p>
+          
+          <p style="margin: 0; color: #334155;">Thank you,</p>
+          <p style="margin: 2px 0 20px 0; font-weight: bold; color: #0f172a;">Kiaan Technology Pvt Ltd</p>
+
+          <div style="border-top: 1px solid #f1f5f9; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center;">
+            This is an automated message from KT Construct . Please do not reply.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const userResult = await sendEmail({
+    toEmail,
+    toName: companyName,
+    subject: `Welcome to KT Construct - Your Account is Ready`,
+    htmlContent: html,
+  });
+
+  const adminEmail = process.env.SENDER_EMAIL || 'lightlabcreation@gmail.com';
+  if (adminEmail && adminEmail !== toEmail) {
+    sendEmail({
+      toEmail: adminEmail,
+      toName: 'Admin Copy',
+      subject: `[New Subscription Alert] ${companyName} (${planName})`,
+      htmlContent: html,
+    }).catch(err => console.error('[EmailService] Admin copy email error:', err));
+  }
+
+  return userResult;
+}
+
 module.exports = {
   sendEmail,
   sendWelcomeEmail,
@@ -354,5 +454,6 @@ module.exports = {
   sendMembershipEmail,
   sendBookingNotificationEmail,
   sendAdminNotificationEmail,
+  sendSubscriptionWelcomeEmail,
 };
 

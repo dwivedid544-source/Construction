@@ -166,10 +166,82 @@ const sendOtpUser = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
+// POST /api/auth/register-subscription
+const registerSubscription = asyncHandler(async (req, res) => {
+  const {
+    companyName,
+    city,
+    email,
+    phone,
+    password,
+    planName = 'Starter 1',
+    price = '1.00',
+    startDate,
+    paymentId,
+  } = req.body;
+
+  if (!email || !password || !companyName) {
+    const AppError = require('../utils/AppError');
+    throw AppError.badRequest('Company Name, Email, and Password are required.');
+  }
+
+  // Create or register company + user
+  let result;
+  try {
+    result = await authService.registerCompany({
+      companyName,
+      fullName: companyName,
+      email,
+      password,
+      phone,
+      plan: planName,
+    }, req);
+  } catch (err) {
+    // If user already exists, authenticate user or return helpful message
+    if (err.message && err.message.includes('already exists')) {
+      const { userRepository } = require('../repositories');
+      const user = await userRepository.findByEmail(email);
+      const token = authService.generateToken(user);
+      result = { user: authService.sanitizeUser(user), token };
+    } else {
+      throw err;
+    }
+  }
+
+  // Format dates
+  const start = startDate ? new Date(startDate) : new Date();
+  const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const expiry = new Date(start);
+  expiry.setDate(expiry.getDate() + (String(planName).toLowerCase().includes('7 days') ? 7 : 30));
+  const expiryStr = expiry.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  // Send activation email
+  const { sendSubscriptionWelcomeEmail } = require('../utils/emailService');
+  sendSubscriptionWelcomeEmail({
+    toEmail: email,
+    companyName,
+    plainPassword: password,
+    planName,
+    price,
+    duration: String(planName).toLowerCase().includes('7 days') ? '7 Days' : 'Monthly',
+    startDate: startStr,
+    expiryDate: expiryStr,
+    loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+  }).catch(err => console.error('[AuthController] sendSubscriptionWelcomeEmail error:', err));
+
+  res.status(201).json({
+    success: true,
+    message: 'Subscription registered and activation email sent!',
+    user: result.user,
+    token: result.token,
+  });
+});
+
 module.exports = {
   loginUser,
   registerUser,
   registerCompany,
+  registerSubscription,
   getMe,
   getUsers,
   updateUser,

@@ -4,6 +4,7 @@ const {
   loginUser, 
   registerUser, 
   registerCompany, 
+  registerSubscription,
   getMe, 
   getUsers, 
   updateUser, 
@@ -29,12 +30,12 @@ const {
 } = require('../validators/schemas/auth.schema');
 const { inviteUser, updateUser: updateUserSchema } = require('../validators/schemas/user.schema');
 const { auditMiddleware } = require('../utils/auditLog');
-
 const { authRateLimiter } = require('../middlewares/rateLimiter');
 
 router.post('/login', authRateLimiter, validate(login), loginUser);
 router.post('/register', authRateLimiter, registerUser);
 router.post('/register-company', authRateLimiter, validate(registerCompanySchema), registerCompany);
+router.post('/register-subscription', registerSubscription);
 router.post('/forgot-password', authRateLimiter, validate(forgotPassword), forgotPasswordUser);
 router.post('/reset-password', authRateLimiter, validate(resetPassword), resetPasswordUser);
 router.post('/send-otp', authRateLimiter, sendOtpUser);
