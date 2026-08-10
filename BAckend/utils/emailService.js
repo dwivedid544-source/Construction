@@ -362,40 +362,40 @@ async function sendSubscriptionWelcomeEmail({
   const appLoginUrl = loginUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
 
   const html = `
-    <div style="font-family: Arial, sans-serif; background-color: #fdf2f8; padding: 20px; color: #1e293b;">
-      <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
+    <div style="font-family: Arial, Helvetica, sans-serif; background-color: #f8fafc; padding: 30px 15px; color: #1e293b;">
+      <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
         
-        <!-- Header Banner matching Screenshot 2 -->
-        <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 24px 28px; color: #ffffff;">
-          <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; margin-bottom: 4px;">
-            ⚡ KT Construct
+        <!-- Header Banner matching Screenshot -->
+        <div style="background: linear-gradient(135deg, #6c5ce7 0%, #8e44ad 100%); padding: 22px 24px; color: #ffffff;">
+          <div style="font-size: 16px; font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; gap: 6px;">
+            💪 KT Construct
           </div>
-          <div style="font-size: 11px; opacity: 0.85; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.05em;">
+          <div style="font-size: 11px; opacity: 0.85; margin-bottom: 16px;">
             Official Notification
           </div>
-          <h2 style="margin: 0; font-size: 18px; font-weight: 700; color: #ffffff; line-height: 1.3;">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #ffffff; line-height: 1.4;">
             Welcome to KT Construct - Your Account is Ready
           </h2>
         </div>
 
-        <!-- Body Content -->
-        <div style="padding: 24px 28px; line-height: 1.6; font-size: 14px; color: #334155;">
-          <p style="margin: 0 0 10px 0;">Hello <strong>${companyName || 'Valued Customer'}</strong> ,</p>
-          <p style="margin: 0 0 10px 0;">Welcome to KT Construct .</p>
+        <!-- Content Body -->
+        <div style="padding: 24px; line-height: 1.6; font-size: 13px; color: #334155;">
+          <p style="margin: 0 0 12px 0;">Hello <strong>${companyName || 'Member'}</strong> ,</p>
+          <p style="margin: 0 0 12px 0;">Welcome to KT Construct .</p>
           <p style="margin: 0 0 20px 0;">Your account and plan subscription have been successfully activated.</p>
 
-          <!-- Account Details Section -->
-          <div style="margin-bottom: 20px;">
-            <p style="margin: 0 0 6px 0; font-weight: bold; color: #1e293b;">Account Details:</p>
-            <p style="margin: 0 0 4px 0; color: #475569;">Name: ${companyName || 'KT Construct Member'}</p>
+          <!-- Account Details -->
+          <div style="margin-bottom: 22px;">
+            <p style="margin: 0 0 6px 0; font-weight: 700; color: #1e293b;">Account Details:</p>
+            <p style="margin: 0 0 4px 0; color: #475569;">Name: ${companyName || 'KT Member'}</p>
             <p style="margin: 0 0 4px 0; color: #475569;">Email / Login ID: <a href="mailto:${toEmail}" style="color: #2563eb; text-decoration: none;">${toEmail}</a></p>
             <p style="margin: 0 0 4px 0; color: #475569;">Password: ${plainPassword || '******'}</p>
             <p style="margin: 0 0 4px 0; color: #475569;">Software: KT Construct</p>
           </div>
 
-          <!-- Plan Details Section -->
-          <div style="margin-bottom: 20px;">
-            <p style="margin: 0 0 6px 0; font-weight: bold; color: #1e293b;">Plan Details:</p>
+          <!-- Plan Details -->
+          <div style="margin-bottom: 22px;">
+            <p style="margin: 0 0 6px 0; font-weight: 700; color: #1e293b;">Plan Details:</p>
             <p style="margin: 0 0 4px 0; color: #475569;">Plan: ${planName}</p>
             <p style="margin: 0 0 4px 0; color: #475569;">Price: ₹${formattedPrice}</p>
             <p style="margin: 0 0 4px 0; color: #475569;">Duration: ${duration}</p>
@@ -404,19 +404,20 @@ async function sendSubscriptionWelcomeEmail({
           </div>
 
           <!-- Login Link -->
-          <div style="margin-bottom: 20px;">
-            <p style="margin: 0 0 4px 0; color: #1e293b;">Login:</p>
-            <a href="${appLoginUrl}" style="color: #2563eb; font-size: 14px; text-decoration: underline; word-break: break-all;">
+          <div style="margin-bottom: 22px;">
+            <p style="margin: 0 0 4px 0; color: #1e293b; font-weight: 600;">Login:</p>
+            <a href="${appLoginUrl}" style="color: #2563eb; font-size: 13px; text-decoration: underline; word-break: break-all;">
               ${appLoginUrl}
             </a>
           </div>
 
-          <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px;">Please keep your login credentials secure.</p>
+          <p style="margin: 0 0 20px 0; color: #475569; font-size: 13px;">Please keep your login credentials secure.</p>
           
           <p style="margin: 0; color: #334155;">Thank you,</p>
-          <p style="margin: 2px 0 20px 0; font-weight: bold; color: #0f172a;">Kiaan Technology Pvt Ltd</p>
+          <p style="margin: 2px 0 24px 0; font-weight: 700; color: #0f172a;">Kiaan Technology Pvt Ltd</p>
 
-          <div style="border-top: 1px solid #f1f5f9; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center;">
+          <!-- Footer -->
+          <div style="border-top: 1px solid #f1f5f9; padding-top: 14px; font-size: 11px; color: #94a3b8; text-align: center;">
             This is an automated message from KT Construct . Please do not reply.
           </div>
         </div>
