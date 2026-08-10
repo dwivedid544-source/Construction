@@ -215,19 +215,24 @@ const registerSubscription = asyncHandler(async (req, res) => {
   expiry.setDate(expiry.getDate() + (String(planName).toLowerCase().includes('7 days') ? 7 : 30));
   const expiryStr = expiry.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  // Send activation email
+  // Send activation email via Brevo
   const { sendSubscriptionWelcomeEmail } = require('../utils/emailService');
-  sendSubscriptionWelcomeEmail({
-    toEmail: email,
-    companyName,
-    plainPassword: password,
-    planName,
-    price,
-    duration: String(planName).toLowerCase().includes('7 days') ? '7 Days' : 'Monthly',
-    startDate: startStr,
-    expiryDate: expiryStr,
-    loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
-  }).catch(err => console.error('[AuthController] sendSubscriptionWelcomeEmail error:', err));
+  try {
+    await sendSubscriptionWelcomeEmail({
+      toEmail: email,
+      companyName,
+      plainPassword: password,
+      planName,
+      price,
+      duration: String(planName).toLowerCase().includes('7 days') ? '7 Days' : 'Monthly',
+      startDate: startStr,
+      expiryDate: expiryStr,
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+    });
+    console.log(`[AuthController] Subscription welcome email successfully delivered to ${email}`);
+  } catch (emailErr) {
+    console.error('[AuthController] Error delivering subscription welcome email:', emailErr);
+  }
 
   res.status(201).json({
     success: true,

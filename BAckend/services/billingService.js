@@ -185,15 +185,25 @@ class BillingService {
       req,
     });
 
-    // Send email receipt via Brevo API outside the transaction
-    const { sendPaymentSuccessEmail } = require('../utils/emailService');
-    sendPaymentSuccessEmail({
+    // Send email activation via Brevo API outside the transaction
+    const { sendSubscriptionWelcomeEmail } = require('../utils/emailService');
+    const start = new Date();
+    const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const expiry = new Date(start);
+    expiry.setDate(expiry.getDate() + (String(txResult.planName).toLowerCase().includes('7 days') ? 7 : 30));
+    const expiryStr = expiry.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    sendSubscriptionWelcomeEmail({
       toEmail: user.email,
-      toName: user.name || user.fullName,
-      amount: txResult.planPrice,
+      companyName: txResult.company?.name || user.name || 'Valued Customer',
+      plainPassword: 'Saved during registration',
       planName: txResult.planName,
-      paymentId: razorpayPaymentId,
-    }).catch((err) => console.error('[BillingService] Payment email error:', err));
+      price: txResult.planPrice,
+      duration: String(txResult.planName).toLowerCase().includes('7 days') ? '7 Days' : 'Monthly',
+      startDate: startStr,
+      expiryDate: expiryStr,
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+    }).catch((err) => console.error('[BillingService] Subscription activation email error:', err));
 
     return {
       success: true,
