@@ -859,3 +859,28 @@ model Todo {
 
   @@map("todos")
 }
+
+model ProcessedWebhookEvent {
+  id        String   @id @default(uuid())
+  eventId   String   @unique
+  status    String   @default("PROCESSING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("processed_webhook_events")
+}
+
+model SubscriptionOrder {
+  id          String   @id @default(uuid())
+  orderId     String   @unique
+  companyId   String
+  planId      String
+  userId      String
+  amountPaise Int
+  currency    String   @default("INR")
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("subscription_orders")
+}

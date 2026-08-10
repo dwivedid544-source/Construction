@@ -145,6 +145,27 @@ const updateProfile = asyncHandler(async (req, res) => {
   });
 });
 
+// POST /api/auth/forgot-password
+const forgotPasswordUser = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const result = await authService.forgotPassword(email);
+  res.json(result);
+});
+
+// POST /api/auth/reset-password
+const resetPasswordUser = asyncHandler(async (req, res) => {
+  const { token, newPassword } = req.body;
+  const result = await authService.resetPassword(token, newPassword);
+  res.json(result);
+});
+
+// POST /api/auth/send-otp
+const sendOtpUser = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const result = await authService.sendOtp(email, req.user);
+  res.json(result);
+});
+
 module.exports = {
   loginUser,
   registerUser,
@@ -156,4 +177,7 @@ module.exports = {
   createUser,
   updatePassword,
   updateProfile,
+  forgotPasswordUser,
+  resetPasswordUser,
+  sendOtpUser,
 };

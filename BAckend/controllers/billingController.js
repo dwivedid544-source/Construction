@@ -35,8 +35,42 @@ const getUsageStats = asyncHandler(async (req, res) => {
   });
 });
 
+const crypto = require('crypto');
+
+// POST /api/billing/webhook
+const handleWebhook = async (req, res, next) => {
+  try {
+    const signature = req.headers['x-razorpay-signature'];
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    if (!signature || !secret) {
+      return res.status(400).json({ success: false, message: 'Missing signature or webhook secret.' });
+    }
+
+    // Verify signature using raw body
+    const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(rawBody)
+      .digest('hex');
+
+    if (expectedSignature !== signature) {
+      return res.status(400).json({ success: false, message: 'Invalid signature.' });
+    }
+
+    const event = req.body;
+    const eventId = req.headers['x-razorpay-event-id'] || event.created_at;
+
+    const result = await billingService.processWebhookEvent(event, eventId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   createOrder,
   verifyPayment,
   getUsageStats,
+  handleWebhook,
 };

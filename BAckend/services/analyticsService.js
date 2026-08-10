@@ -16,6 +16,8 @@ class AnalyticsService {
       where.companyId = companyId;
     }
 
+    const issueWhere = { deletedAt: null, status: 'OPEN', ...(companyId ? { project: { companyId } } : {}) };
+
     const [
       totalProjects,
       activeProjects,
@@ -31,8 +33,8 @@ class AnalyticsService {
       prisma.project.count({ where: { ...where, status: 'COMPLETED' } }),
       prisma.task.count({ where }),
       prisma.task.count({ where: { ...where, status: 'COMPLETED' } }),
-      prisma.user.count({ where: { ...where, role: 'WORKER' } }),
-      prisma.issue.count({ where: { ...where, status: 'OPEN' } }),
+      prisma.user.count({ where: { ...where, role: { name: 'WORKER' } } }),
+      prisma.issue.count({ where: issueWhere }),
       prisma.invoice.aggregate({
         where,
         _sum: { amount: true },

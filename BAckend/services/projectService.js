@@ -25,9 +25,28 @@ class ProjectService {
   }
 
   async createProject(data, user) {
-    if (user.companyId) {
-      const company = await companyRepository.findById(user.companyId);
-      const currentCount = await projectRepository.count({ companyId: user.companyId });
+    const extractId = (val) => {
+      if (!val) return null;
+      if (Array.isArray(val)) {
+        for (const item of val) {
+          const res = extractId(item);
+          if (res) return res;
+        }
+        return null;
+      }
+      if (typeof val === 'object') return val._id || val.id || null;
+      if (typeof val === 'string') {
+        if (val === '[object Object]' || val === 'undefined' || val === 'null' || !val.trim()) return null;
+        return val.trim();
+      }
+      return String(val);
+    };
+
+    const companyId = extractId(data.companyId) || extractId(user.companyId);
+
+    if (companyId) {
+      const company = await companyRepository.findById(companyId);
+      const currentCount = await projectRepository.count({ companyId });
       if (company && currentCount >= company.maxProjects) {
         throw AppError.forbidden(`Project limit of ${company.maxProjects} reached for your company plan.`);
       }
@@ -35,7 +54,7 @@ class ProjectService {
 
     return projectRepository.create({
       ...data,
-      companyId: user.companyId,
+      companyId,
     });
   }
 

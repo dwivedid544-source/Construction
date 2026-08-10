@@ -75,6 +75,19 @@ class BillingService {
 
     const orderData = await response.json();
 
+    // Persist order in DB to secure signature reconciliation later
+    await prisma.subscriptionOrder.create({
+      data: {
+        orderId: orderData.id,
+        companyId: user.companyId,
+        planId: plan.id,
+        userId: user.id,
+        amountPaise: amountInPaise,
+        currency: orderData.currency || 'INR',
+        status: 'PENDING',
+      }
+    });
+
     return {
       isFreePlan: false,
       keyId,
@@ -102,15 +115,64 @@ class BillingService {
       throw AppError.badRequest('Invalid Razorpay payment signature.');
     }
 
-    const plan = await planRepository.findByIdOrFail(planId, 'Subscription Plan');
+    let txResult;
+    try {
+      txResult = await prisma.$transaction(async (tx) => {
+        // Verify against existing DB/Razorpay order details
+        const dbOrder = await tx.subscriptionOrder.findUnique({
+          where: { orderId: razorpayOrderId }
+        });
 
-    // Update Company tenant subscription limits
-    const company = await companyRepository.updateById(user.companyId, {
-      subscriptionPlanId: plan.id,
-      subscriptionStatus: 'active',
-      maxProjects: plan.maxProjects,
-      maxUsers: plan.maxUsers,
-    });
+        if (!dbOrder) {
+          throw new Error('Razorpay order not found in our database.');
+        }
+
+        if (dbOrder.companyId !== user.companyId || dbOrder.planId !== planId) {
+          throw new Error('Order details mismatch.');
+        }
+
+        const plan = await planRepository.findByIdOrFail(planId, 'Subscription Plan');
+        const expectedAmountInPaise = Math.round(plan.price * 100);
+        if (dbOrder.amountPaise !== expectedAmountInPaise) {
+          throw new Error('Plan price mismatch.');
+        }
+
+        if (dbOrder.status === 'PAID') {
+          return { alreadyPaid: true, planName: plan.name, planPrice: plan.price };
+        }
+
+        // Conditional update to prevent race conditions with webhook execution
+        const updateResult = await tx.subscriptionOrder.updateMany({
+          where: { id: dbOrder.id, status: 'PENDING' },
+          data: { status: 'PAID' }
+        });
+
+        if (updateResult.count === 0) {
+          throw new Error('Order already paid or processed.');
+        }
+
+        // Update Company tenant subscription limits
+        const company = await companyRepository.updateById(user.companyId, {
+          subscriptionPlanId: plan.id,
+          subscriptionStatus: 'active',
+          maxProjects: plan.maxProjects,
+          maxUsers: plan.maxUsers,
+        });
+
+        return { success: true, company, planName: plan.name, planPrice: plan.price };
+      });
+    } catch (txErr) {
+      throw AppError.badRequest(txErr.message || 'Payment verification failed.');
+    }
+
+    if (txResult.alreadyPaid) {
+      const company = await companyRepository.findById(user.companyId);
+      return {
+        success: true,
+        message: 'Subscription already active.',
+        company
+      };
+    }
 
     // Record audit log
     await logAction({
@@ -119,24 +181,24 @@ class BillingService {
       action: 'SUBSCRIPTION_PURCHASE',
       resource: 'Company',
       resourceId: user.companyId,
-      details: { planId: plan.id, planName: plan.name, paymentId: razorpayPaymentId },
+      details: { planId, planName: txResult.planName, paymentId: razorpayPaymentId },
       req,
     });
 
-    // Send email receipt via Brevo API
+    // Send email receipt via Brevo API outside the transaction
     const { sendPaymentSuccessEmail } = require('../utils/emailService');
     sendPaymentSuccessEmail({
       toEmail: user.email,
       toName: user.name || user.fullName,
-      amount: plan.price,
-      planName: plan.name,
+      amount: txResult.planPrice,
+      planName: txResult.planName,
       paymentId: razorpayPaymentId,
     }).catch((err) => console.error('[BillingService] Payment email error:', err));
 
     return {
       success: true,
       message: 'Subscription activated successfully.',
-      company,
+      company: txResult.company,
     };
   }
 
@@ -147,7 +209,7 @@ class BillingService {
     const company = await companyRepository.findByIdOrFail(companyId, 'Company');
     const [projectCount, userCount] = await Promise.all([
       prisma.project.count({ where: { companyId, deletedAt: null } }),
-      prisma.user.count({ where: { companyId, role: { not: 'CLIENT' }, deletedAt: null } }),
+      prisma.user.count({ where: { companyId, role: { isNot: { name: 'CLIENT' } }, deletedAt: null } }),
     ]);
 
     return {
@@ -160,6 +222,194 @@ class BillingService {
       hasProjectCapacity: projectCount < company.maxProjects,
       hasUserCapacity: userCount < company.maxUsers,
     };
+  }
+  async processWebhookEvent(event, eventId) {
+    let eventRecord;
+    try {
+      eventRecord = await prisma.processedWebhookEvent.create({
+        data: { eventId, status: 'PROCESSING' }
+      });
+    } catch (err) {
+      if (err.code === 'P2002') {
+        const existing = await prisma.processedWebhookEvent.findUnique({
+          where: { eventId }
+        });
+        if (existing) {
+          if (existing.status === 'PROCESSED') {
+            console.log(`[Webhook] Event ${eventId} already processed. Skipping duplicate.`);
+            return { duplicate: true };
+          }
+          if (existing.status === 'PROCESSING') {
+            // Check for stale PROCESSING state (longer than 5 minutes) for crash recovery
+            const staleTime = 5 * 60 * 1000;
+            const isStale = (Date.now() - new Date(existing.updatedAt).getTime()) > staleTime;
+            if (!isStale) {
+              console.log(`[Webhook] Event ${eventId} is currently being processed. Skipping duplicate.`);
+              return { duplicate: true };
+            }
+            console.warn(`[Webhook] Event ${eventId} was stuck in PROCESSING since ${existing.updatedAt}. Recovering and retrying...`);
+            eventRecord = await prisma.processedWebhookEvent.update({
+              where: { id: existing.id },
+              data: { status: 'PROCESSING' }
+            });
+          } else if (existing.status === 'FAILED') {
+            // Allow retrying failed webhook execution
+            eventRecord = await prisma.processedWebhookEvent.update({
+              where: { id: existing.id },
+              data: { status: 'PROCESSING' }
+            });
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
+
+    const eventName = event.event;
+    const payload = event.payload?.payment?.entity;
+
+    if (!payload) {
+      if (eventRecord) {
+        await prisma.processedWebhookEvent.update({
+          where: { id: eventRecord.id },
+          data: { status: 'FAILED' }
+        });
+      }
+      return { success: false, reason: 'Invalid payload structure' };
+    }
+
+    console.log(`[Webhook] Processing event: ${eventName}, payment ID: ${payload.id}`);
+
+    if (eventName === 'payment.captured') {
+      const orderId = payload.order_id;
+      let txResult;
+
+      try {
+        txResult = await prisma.$transaction(async (tx) => {
+          // Find corresponding database subscription order inside the transaction
+          const dbOrder = await tx.subscriptionOrder.findUnique({
+            where: { orderId }
+          });
+
+          if (!dbOrder) {
+            throw new Error('Order not found');
+          }
+
+          // If already processed, skip activation
+          if (dbOrder.status === 'PAID') {
+            return { alreadyPaid: true, companyId: dbOrder.companyId };
+          }
+
+          const notes = payload.notes || {};
+          const webhookCompanyId = notes.companyId || dbOrder.companyId;
+          const webhookPlanId = notes.planId || dbOrder.planId;
+          const webhookUserId = notes.userId || dbOrder.userId;
+
+          // Strict validation of webhook values against original database order details
+          if (
+            dbOrder.companyId !== webhookCompanyId ||
+            dbOrder.planId !== webhookPlanId ||
+            dbOrder.amountPaise !== payload.amount ||
+            dbOrder.currency.toUpperCase() !== payload.currency.toUpperCase() ||
+            payload.status !== 'captured'
+          ) {
+            throw new Error('Reconciliation details mismatch');
+          }
+
+          const user = await tx.user.findUnique({ where: { id: webhookUserId } });
+          const plan = await tx.plan.findUnique({ where: { id: webhookPlanId } });
+
+          if (!user || !plan) {
+            throw new Error('Associated User or Plan not found');
+          }
+
+          // Conditional update to prevent race conditions with simultaneous browser callback
+          const updateResult = await tx.subscriptionOrder.updateMany({
+            where: { id: dbOrder.id, status: 'PENDING' },
+            data: { status: 'PAID' }
+          });
+
+          if (updateResult.count === 0) {
+            throw new Error('Order already paid or processed');
+          }
+
+          // Update company subscription limits inside transaction
+          await tx.company.update({
+            where: { id: dbOrder.companyId },
+            data: {
+              subscriptionPlanId: plan.id,
+              subscriptionStatus: 'active',
+              maxProjects: plan.maxProjects,
+              maxUsers: plan.maxUsers,
+            }
+          });
+
+          // Mark webhook event status as PROCESSED inside transaction
+          await tx.processedWebhookEvent.update({
+            where: { id: eventRecord.id },
+            data: { status: 'PROCESSED' }
+          });
+
+          return {
+            success: true,
+            action: 'activated',
+            companyId: dbOrder.companyId,
+            userEmail: user.email,
+            userName: user.name || user.fullName,
+            planName: plan.name,
+            planPrice: plan.price,
+            paymentId: payload.id
+          };
+        });
+      } catch (txErr) {
+        // If the transaction fails, update the event status to FAILED so it remains retryable
+        await prisma.processedWebhookEvent.update({
+          where: { id: eventRecord.id },
+          data: { status: 'FAILED' }
+        });
+        console.warn(`[Webhook] Transaction failed for order ${orderId}:`, txErr.message);
+        return { success: false, reason: txErr.message };
+      }
+
+      if (txResult.alreadyPaid) {
+        // Mark webhook event status as PROCESSED if order was already paid
+        await prisma.processedWebhookEvent.update({
+          where: { id: eventRecord.id },
+          data: { status: 'PROCESSED' }
+        });
+        return { success: true, action: 'already_paid', companyId: txResult.companyId };
+      }
+
+      // Dispatch mail outside the transaction so it cannot cause a database rollback
+      if (txResult.success) {
+        const { sendPaymentSuccessEmail } = require('../utils/emailService');
+        sendPaymentSuccessEmail({
+          toEmail: txResult.userEmail,
+          toName: txResult.userName,
+          amount: txResult.planPrice,
+          planName: txResult.planName,
+          paymentId: txResult.paymentId,
+        }).catch((err) => console.error('[Webhook] Success email sending error:', err));
+
+        return { success: true, action: 'activated', companyId: txResult.companyId };
+      }
+    } else if (eventName === 'payment.failed') {
+      console.log(`[Webhook] Payment failed event received for order: ${payload.order_id}`);
+      await prisma.processedWebhookEvent.update({
+        where: { id: eventRecord.id },
+        data: { status: 'PROCESSED' }
+      });
+      return { success: true, action: 'logged_failure' };
+    }
+
+    // Mark unhandled webhook events as processed
+    if (eventRecord) {
+      await prisma.processedWebhookEvent.update({
+        where: { id: eventRecord.id },
+        data: { status: 'PROCESSED' }
+      });
+    }
+    return { success: true, action: 'unhandled_event' };
   }
 }
 

@@ -5,7 +5,7 @@
 'use strict';
 
 const apiKey = () => process.env.BREVO_API_KEY;
-const senderEmail = () => process.env.SENDER_EMAIL || 'lightlabcreation@gmail.com';
+const senderEmail = () => process.env.SENDER_EMAIL || process.env.MAIL_FROM_EMAIL || process.env.MAIL_FROM || 'info@kiaantechnology.com';
 const senderName = () => process.env.SENDER_NAME || 'Kiaan Technology Pvt Ltd';
 
 /**

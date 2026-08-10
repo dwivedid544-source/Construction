@@ -197,6 +197,107 @@ async function main() {
   }
 
   console.log(`[Seed] Seeded ${usersData.length} demo users successfully with password "123456".`);
+
+  // 5. Seed Demo Projects & Tasks
+  const pmUser = await prisma.user.findUnique({ where: { email: 'pm@gmail.com' } });
+  const clientUser = await prisma.user.findUnique({ where: { email: 'client@gmail.com' } });
+  const workerUser = await prisma.user.findUnique({ where: { email: 'worker@gmail.com' } });
+
+  const projectsData = [
+    {
+      name: 'Skyline Commercial Complex',
+      code: 'PRJ-001',
+      description: 'Multi-story commercial office building with subterranean parking',
+      companyId: company.id,
+      pmId: pmUser?.id || null,
+      clientId: clientUser?.id || null,
+      status: 'ACTIVE',
+      budget: 1500000,
+      location: '123 Construction Way, New York, NY',
+    },
+    {
+      name: 'Metro Residential Towers',
+      code: 'PRJ-002',
+      description: 'Luxury twin residential towers with modern amenities',
+      companyId: company.id,
+      pmId: pmUser?.id || null,
+      clientId: clientUser?.id || null,
+      status: 'ACTIVE',
+      budget: 2800000,
+      location: '456 Metro Ave, Chicago, IL',
+    },
+    {
+      name: 'Harbor View Plaza',
+      code: 'PRJ-003',
+      description: 'Waterfront commercial retail & dining complex',
+      companyId: company.id,
+      pmId: pmUser?.id || null,
+      clientId: clientUser?.id || null,
+      status: 'PLANNING',
+      budget: 950000,
+      location: '789 Ocean Blvd, Miami, FL',
+    },
+  ];
+
+  const projectMap = {};
+  for (const p of projectsData) {
+    const existingProject = await prisma.project.findFirst({
+      where: { companyId: p.companyId, name: p.name, deletedAt: null }
+    });
+
+    let project;
+    if (existingProject) {
+      project = await prisma.project.update({
+        where: { id: existingProject.id },
+        data: p,
+      });
+    } else {
+      project = await prisma.project.create({
+        data: p,
+      });
+    }
+    projectMap[p.code] = project;
+  }
+  console.log(`[Seed] Seeded ${Object.keys(projectMap).length} demo projects.`);
+
+  // 6. Seed Demo Tasks
+  if (projectMap['PRJ-001']) {
+    const prj1 = projectMap['PRJ-001'];
+    const tasksData = [
+      {
+        title: 'Site Excavation & Foundation',
+        description: 'Deep excavation, shoring, and concrete foundation pour',
+        projectId: prj1.id,
+        companyId: company.id,
+        assignedToId: workerUser?.id || null,
+        createdById: pmUser?.id || null,
+        status: 'IN_PROGRESS',
+        priority: 'HIGH',
+        estimatedHours: 120,
+      },
+      {
+        title: 'Structural Steel Framing',
+        description: 'Erection of structural steel beams and columns',
+        projectId: prj1.id,
+        companyId: company.id,
+        assignedToId: workerUser?.id || null,
+        createdById: pmUser?.id || null,
+        status: 'PENDING',
+        priority: 'MEDIUM',
+        estimatedHours: 80,
+      },
+    ];
+
+    for (const t of tasksData) {
+      const existingTask = await prisma.task.findFirst({
+        where: { projectId: t.projectId, title: t.title, deletedAt: null }
+      });
+      if (!existingTask) {
+        await prisma.task.create({ data: t });
+      }
+    }
+    console.log(`[Seed] Seeded demo tasks for ${prj1.name}.`);
+  }
 }
 
 main()

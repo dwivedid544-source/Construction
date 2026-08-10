@@ -81,7 +81,7 @@ async function checkUserLimit(req, res, next) {
     const currentUserCount = await prisma.user.count({
       where: {
         companyId,
-        role: { not: 'CLIENT' },
+        role: { isNot: { name: 'CLIENT' } },
         deletedAt: null,
       },
     });

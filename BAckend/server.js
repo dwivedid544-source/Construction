@@ -42,6 +42,7 @@ const jobTaskRoutes = require('./routes/jobTaskRoutes');
 const taskTemplateRoutes = require('./routes/taskTemplateRoutes');
 const todoRoutes = require('./routes/todoRoutes');
 const projectDocumentRoutes = require('./routes/projectDocumentRoutes');
+const prisma = require('./config/prisma');
 
 const app = express();
 const server = http.createServer(app);
@@ -81,7 +82,12 @@ app.use(cors({
     },
     credentials: true
 }));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ 
+    limit: '50mb',
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(morgan('dev'));
 
@@ -154,35 +160,41 @@ io.use((socket, next) => {
 
 // Socket.io Connection
 io.on('connection', async (socket) => {
-    if (!socket.user || !socket.user.userId) {
-        console.log('New client connected without authentication:', socket.id);
+    const userId = socket.user?.id || socket.user?.userId;
+    if (!userId) {
+        console.log('New client connected without valid user ID:', socket.id);
         return;
     }
-    const userId = socket.user.userId;
     console.log('New client connected:', socket.id, 'User:', userId);
 
     // Join personal room
     socket.join(userId.toString());
 
-
     // Join all chat rooms this user participates in (required for io.to(roomId).emit('new_message'))
     try {
-        const ChatParticipant = require('./models/ChatParticipant');
-        const participants = await ChatParticipant.find({ userId });
-        participants.forEach(p => {
-            socket.join(p.roomId.toString());
-            console.log(`User ${userId} joined room ${p.roomId}`);
+        const participants = await prisma.chatParticipant.findMany({
+            where: { userId: userId.toString() }
         });
+        if (Array.isArray(participants)) {
+            participants.forEach(p => {
+                const roomId = p.roomId || p.room;
+                if (roomId) {
+                    socket.join(roomId.toString());
+                    console.log(`User ${userId} joined room ${roomId}`);
+                }
+            });
+        }
     } catch (err) {
-        console.error('Error joining rooms on connect:', err);
+        console.error('Error joining rooms on connect:', err.message);
     }
 
     // Register User (Keep for legacy or extra metadata if needed, but token is primary)
     socket.on('register_user', (userData) => {
-        if (userData && userData._id) {
+        if (userData && (userData._id || userData.id)) {
+            const uId = userData._id || userData.id;
             onlineUsers.set(socket.id, {
-                userId: userData._id,
-                fullName: userData.fullName,
+                userId: uId,
+                fullName: userData.fullName || userData.name,
                 role: userData.role,
                 companyId: userData.companyId,
                 lat: userData.lat || null,
@@ -191,15 +203,15 @@ io.on('connection', async (socket) => {
 
             // Update every client with new online count
             io.emit('online_users_count', onlineUsers.size);
-            io.emit('user_status_change', { userId: userData._id, status: 'online' });
+            io.emit('user_status_change', { userId: uId, status: 'online' });
         }
     });
 
     // Handle room joining dynamically (e.g. when a new room is created)
     socket.on('join_room', (roomId) => {
         if (!roomId) return;
-        socket.join(roomId);
-        console.log(`User ${socket.user.userId} joined room manually: ${roomId}`);
+        socket.join(roomId.toString());
+        console.log(`User ${userId} joined room manually: ${roomId}`);
     });
 
     socket.on('disconnect', () => {
@@ -220,8 +232,6 @@ app.set('io', io);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
-
-const prisma = require('./config/prisma');
 
 // Connect to Database and Start Server
 const startServer = () => {
@@ -246,6 +256,15 @@ if (prisma && typeof prisma.$connect === 'function') {
 } else {
     startServer();
 }
+
+// Process Unhandled Error Safety
+process.on('uncaughtException', (err) => {
+    console.error('[Uncaught Exception]:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Unhandled Rejection]:', reason);
+});
 
 // Graceful Shutdown for Nodemon and manual restarts
 const gracefulShutdown = () => {

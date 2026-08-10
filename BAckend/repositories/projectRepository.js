@@ -96,14 +96,29 @@ class ProjectRepository {
 
       const locStr = typeof projectData.location === 'object' ? JSON.stringify(projectData.location) : (projectData.location || null);
 
+      let targetPmId = projectData.pmId || null;
+      if (!targetPmId && projectData.pmIds) {
+        try {
+          const parsed = typeof projectData.pmIds === 'string' ? JSON.parse(projectData.pmIds) : projectData.pmIds;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            targetPmId = typeof parsed[0] === 'object' ? parsed[0]._id || parsed[0].id : parsed[0];
+          }
+        } catch (e) {}
+      }
+
+      let targetClientId = projectData.clientId || null;
+      if (typeof targetClientId === 'object' && targetClientId !== null) {
+        targetClientId = targetClientId._id || targetClientId.id || null;
+      }
+
       const p = await prisma.project.create({
         data: {
           name: projectData.name,
           code: projectData.code || null,
           description: projectData.description || null,
           companyId: projectData.companyId,
-          pmId: projectData.pmId || null,
-          clientId: projectData.clientId || null,
+          pmId: targetPmId || null,
+          clientId: targetClientId || null,
           status: statusStr,
           budget: budgetNum,
           location: locStr

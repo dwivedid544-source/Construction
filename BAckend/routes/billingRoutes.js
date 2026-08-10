@@ -6,8 +6,10 @@
 
 const express = require('express');
 const router = express.Router();
-const { createOrder, verifyPayment, getUsageStats } = require('../controllers/billingController');
+const { createOrder, verifyPayment, getUsageStats, handleWebhook } = require('../controllers/billingController');
 const { protect } = require('../middlewares/authMiddleware');
+
+router.post('/webhook', handleWebhook);
 
 router.use(protect);
 

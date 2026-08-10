@@ -117,6 +117,89 @@ class AuthService {
   }
 
   /**
+   * Request a password reset email.
+   */
+  async forgotPassword(email) {
+    const user = await userRepository.findByEmail(email);
+    if (!user) {
+      // Return success to avoid user enumeration, but don't send email
+      return { success: true, message: 'If that email exists, a reset link has been sent.' };
+    }
+
+    // Generate a stateless token containing userId and password hash signature
+    const token = jwt.sign(
+      { id: user.id, sig: user.password.slice(-10) },
+      process.env.JWT_SECRET || 'kaal_construction_management_secret_key_2026',
+      { expiresIn: '15m' }
+    );
+
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
+
+    const { sendPasswordResetEmail } = require('../utils/emailService');
+    await sendPasswordResetEmail({
+      toEmail: user.email,
+      toName: user.name,
+      resetUrl,
+    });
+
+    return { success: true, message: 'Password reset email sent.' };
+  }
+
+  /**
+   * Reset password using a valid token.
+   */
+  async resetPassword(token, newPassword) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'kaal_construction_management_secret_key_2026');
+      const user = await userRepository.findById(decoded.id);
+      if (!user) {
+        throw AppError.notFound('User not found.');
+      }
+
+      // Check if signature matches to prevent token reuse after password change
+      if (user.password.slice(-10) !== decoded.sig) {
+        throw AppError.badRequest('This token is invalid or has already been used.');
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword }
+      });
+
+      return { success: true, message: 'Password has been reset successfully.' };
+    } catch (err) {
+      if (err.name === 'TokenExpiredError') {
+        throw AppError.badRequest('Token has expired.');
+      }
+      throw AppError.badRequest(err.message || 'Invalid token.');
+    }
+  }
+
+  /**
+   * Send OTP code for verification.
+   */
+  async sendOtp(email, user = null) {
+    const targetEmail = email || user?.email;
+    const targetName = user?.name || 'User';
+
+    if (!targetEmail) {
+      throw AppError.badRequest('Email is required.');
+    }
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const { sendOtpEmail } = require('../utils/emailService');
+    await sendOtpEmail({
+      toEmail: targetEmail,
+      toName: targetName,
+      otpCode,
+    });
+
+    return { success: true, message: 'OTP sent successfully.', otp: otpCode };
+  }
+
+  /**
    * Generate JWT for user.
    */
   generateToken(user) {

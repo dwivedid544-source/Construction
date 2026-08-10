@@ -1,5 +1,5 @@
 const admin = require('firebase-admin');
-const FcmToken = require('../models/FcmToken');
+const prisma = require('../config/prisma');
 
 let firebaseApp = null;
 let messaging = null;
@@ -51,13 +51,14 @@ try {
  */
 const sendPushNotification = async (userIds, title, body, extraData = {}, io = null) => {
     try {
-        const ids = Array.isArray(userIds) ? userIds : [userIds];
+        const ids = Array.isArray(userIds) ? userIds.map(i => typeof i === 'object' ? (i._id || i.id) : String(i)) : [typeof userIds === 'object' ? (userIds._id || userIds.id) : String(userIds)];
         if (ids.length === 0) return;
 
-        // Find active tokens for these users
-        const tokensDoc = await FcmToken.find({
-            userId: { $in: ids },
-            isActive: true
+        // Find active tokens for these users via Prisma
+        const tokensDoc = await prisma.fcmToken.findMany({
+            where: {
+                userId: { in: ids }
+            }
         });
 
         if (tokensDoc.length === 0) {
@@ -65,7 +66,7 @@ const sendPushNotification = async (userIds, title, body, extraData = {}, io = n
             return;
         }
 
-        console.log(`[FCM] Saved device tokens in database for users ${ids.join(', ')}:`, tokensDoc.map(d => ({ token: d.token, platform: d.platform })));
+        console.log(`[FCM] Saved device tokens in database for users ${ids.join(', ')}:`, tokensDoc.map(d => ({ token: d.token, device: d.device })));
 
         // Group tokens by userId to check online status per user
         const tokensByUser = {};
@@ -187,10 +188,9 @@ const sendPushNotification = async (userIds, title, body, extraData = {}, io = n
 
             if (invalidTokens.length > 0) {
                 console.log(`[FCM] Deactivating ${invalidTokens.length} invalid/expired tokens.`);
-                await FcmToken.updateMany(
-                    { token: { $in: invalidTokens } },
-                    { isActive: false }
-                );
+                await prisma.fcmToken.deleteMany({
+                    where: { token: { in: invalidTokens } }
+                });
             }
         }
 
