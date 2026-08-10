@@ -224,18 +224,28 @@ const PORT = process.env.PORT || 3001;
 const prisma = require('./config/prisma');
 
 // Connect to Database and Start Server
-prisma.$connect()
-  .then(() => {
-    console.log('[Database] PostgreSQL connected via Prisma Client singleton 🚀');
+const startServer = () => {
     server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log('[Chat policy] PM may initiate direct messages with clients (assertDirectMessagingAllowed in chatController.js)');
+        console.log(`Server running on port ${PORT}`);
+        console.log('[Chat policy] PM may initiate direct messages with clients (assertDirectMessagingAllowed in chatController.js)');
     });
-  })
-  .catch(err => {
-    console.error('Failed to connect to PostgreSQL via Prisma', err);
-    process.exit(1);
-  });
+};
+
+if (prisma && typeof prisma.$connect === 'function') {
+    prisma.$connect()
+        .then(() => {
+            console.log('[Database] PostgreSQL connected via Prisma Client singleton 🚀');
+            startServer();
+        })
+        .catch(err => {
+            console.error('⚠️ [Database Warning] Failed to connect to PostgreSQL via Prisma:', err.message);
+            console.error('⚠️ Please verify your PostgreSQL password/credentials in BAckend/.env (DATABASE_URL)');
+            console.log('[Server] Starting HTTP server in fallback mode...');
+            startServer();
+        });
+} else {
+    startServer();
+}
 
 // Graceful Shutdown for Nodemon and manual restarts
 const gracefulShutdown = () => {
