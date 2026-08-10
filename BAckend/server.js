@@ -31,6 +31,7 @@ const reportRoutes = require('./routes/reportRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
 const planRoutes = require('./routes/planRoutes');
+const billingRoutes = require('./routes/billingRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const equipmentRoutes = require('./routes/equipmentRoutes');
 const rfiRoutes = require('./routes/rfiRoutes');
@@ -84,8 +85,14 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(morgan('dev'));
 
+const healthRoutes = require('./routes/healthRoutes');
+const { authRateLimiter, apiRateLimiter } = require('./middlewares/rateLimiter');
+
 // Static files
 app.use('/uploads', cors(), express.static(path.join(__dirname, 'uploads')));
+
+// Health Check
+app.use('/health', healthRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -107,6 +114,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/plans', planRoutes);
+app.use('/api/billing', billingRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/rfis', rfiRoutes);
@@ -213,17 +221,21 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 
+const prisma = require('./config/prisma');
+
 // Connect to Database and Start Server
-connectDB().then(() => {
+prisma.$connect()
+  .then(() => {
+    console.log('[Database] PostgreSQL connected via Prisma Client singleton 🚀');
     server.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        // If logs do not show this line after deploy, the running container is not on the latest build.
-        console.log('[Chat policy] PM may initiate direct messages with clients (assertDirectMessagingAllowed in chatController.js)');
+      console.log(`Server running on port ${PORT}`);
+      console.log('[Chat policy] PM may initiate direct messages with clients (assertDirectMessagingAllowed in chatController.js)');
     });
-}).catch(err => {
-    console.error('Failed to connect to MongoDB', err);
+  })
+  .catch(err => {
+    console.error('Failed to connect to PostgreSQL via Prisma', err);
     process.exit(1);
-});
+  });
 
 // Graceful Shutdown for Nodemon and manual restarts
 const gracefulShutdown = () => {

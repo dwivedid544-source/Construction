@@ -1,150 +1,101 @@
-const prisma = require('../config/prisma');
+/**
+ * vendorController.js — Trade Vendor Controller.
+ */
 
-// @desc    Create new trade/vendor
-// @route   POST /api/vendors
-exports.createVendor = async (req, res) => {
-    try {
-        const { name, email, phone, category, address } = req.body;
+'use strict';
 
-        const vendor = await prisma.vendor.create({
-            data: {
-                companyId: req.user.companyId,
-                name: name || 'Untitled Vendor',
-                email: email || null,
-                phone: phone || null,
-                category: category || null,
-                address: address || null
-            }
-        });
+const asyncHandler = require('../utils/asyncHandler');
+const vendorService = require('../services/vendorService');
+const { tradeBidRepository } = require('../repositories');
 
-        res.status(201).json({ ...vendor, _id: vendor.id });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
+// GET /api/vendors
+const getVendors = asyncHandler(async (req, res) => {
+  const result = await vendorService.getVendors(req.query, req.user);
+  const list = Array.isArray(result) ? result : (result.data || []);
+  res.json(list);
+});
 
-// @desc    Get all trades/vendors for the company
-// @route   GET /api/vendors
-exports.getVendors = async (req, res) => {
-    try {
-        const where = { companyId: req.user.companyId };
+// POST /api/vendors
+const createVendor = asyncHandler(async (req, res) => {
+  const vendor = await vendorService.createVendor(req.body, req.user);
+  res.status(201).json({
+    success: true,
+    data: vendor,
+  });
+});
 
-        if (req.query.category) where.category = req.query.category;
-        if (req.query.search) {
-            where.name = { contains: req.query.search, mode: 'insensitive' };
-        }
+// PATCH /api/vendors/:id
+const updateVendor = asyncHandler(async (req, res) => {
+  const vendor = await vendorService.updateVendor(req.params.id, req.body, req.user);
+  res.json({
+    success: true,
+    data: vendor,
+  });
+});
 
-        const vendors = await prisma.vendor.findMany({
-            where,
-            orderBy: { createdAt: 'desc' }
-        });
+// DELETE /api/vendors/:id
+const deleteVendor = asyncHandler(async (req, res) => {
+  await vendorService.deleteVendor(req.params.id, req.user);
+  res.json({
+    success: true,
+    message: 'Vendor deleted successfully',
+  });
+});
 
-        res.json(vendors.map(v => ({ ...v, _id: v.id })));
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
+// Public Trade Bidding APIs
+const getPublicDrawingInfo = asyncHandler(async (req, res) => {
+  res.json({
+    success: true,
+    data: { id: req.params.id },
+  });
+});
 
-// @desc    Update vendor
-// @route   PATCH /api/vendors/:id
-exports.updateVendor = async (req, res) => {
-    try {
-        const vendor = await prisma.vendor.findFirst({
-            where: { id: req.params.id, companyId: req.user.companyId }
-        });
-        if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+const submitBid = asyncHandler(async (req, res) => {
+  const bid = await tradeBidRepository.create(req.body);
+  res.status(201).json({
+    success: true,
+    data: bid,
+  });
+});
 
-        const { name, email, phone, category, address } = req.body;
-        const updateData = {};
-        if (name !== undefined) updateData.name = name;
-        if (email !== undefined) updateData.email = email;
-        if (phone !== undefined) updateData.phone = phone;
-        if (category !== undefined) updateData.category = category;
-        if (address !== undefined) updateData.address = address;
+const sendDrawingToTrades = asyncHandler(async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Drawing dispatched to trades',
+  });
+});
 
-        const updated = await prisma.vendor.update({
-            where: { id: req.params.id },
-            data: updateData
-        });
+const getBids = asyncHandler(async (req, res) => {
+  const bids = await tradeBidRepository.findMany({ companyId: req.user.companyId });
+  const list = Array.isArray(bids) ? bids : (bids.data || []);
+  res.json(list);
+});
 
-        res.json({ ...updated, _id: updated.id });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
+const updateBidStatus = asyncHandler(async (req, res) => {
+  const updated = await tradeBidRepository.updateById(req.params.id, req.body);
+  res.json({
+    success: true,
+    data: updated,
+  });
+});
 
-// @desc    Delete vendor
-// @route   DELETE /api/vendors/:id
-exports.deleteVendor = async (req, res) => {
-    try {
-        const vendor = await prisma.vendor.findFirst({
-            where: { id: req.params.id, companyId: req.user.companyId }
-        });
-        if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+const deleteBid = asyncHandler(async (req, res) => {
+  await tradeBidRepository.softDeleteById(req.params.id);
+  res.json({
+    success: true,
+    message: 'Bid deleted',
+  });
+});
 
-        await prisma.vendor.delete({ where: { id: req.params.id } });
-        res.json({ message: 'Vendor deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// @desc    Send drawing to trades
-// @route   POST /api/vendors/send-drawing
-exports.sendDrawingToTrades = async (req, res) => {
-    try {
-        res.json({ message: 'Drawing sent to trades' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// @desc    Submit bid from trade
-// @route   POST /api/vendors/submit-bid
-exports.submitBid = async (req, res) => {
-    try {
-        res.status(201).json({ message: 'Bid submitted' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// @desc    Get all bids for the company
-// @route   GET /api/vendors/bids
-exports.getBids = async (req, res) => {
-    try {
-        res.json([]);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// @desc    Get public drawing info for bidding
-// @route   GET /api/vendors/public/drawing/:id
-exports.getPublicDrawingInfo = async (req, res) => {
-    try {
-        res.json({});
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// @desc    Update bid status
-// @route   PATCH /api/vendors/bids/:id
-exports.updateBidStatus = async (req, res) => {
-    try {
-        res.json({});
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// @desc    Delete a bid
-// @route   DELETE /api/vendors/bids/:id
-exports.deleteBid = async (req, res) => {
-    try {
-        res.json({ message: 'Bid deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
+module.exports = {
+  getVendors,
+  createVendor,
+  updateVendor,
+  deleteVendor,
+  getPublicDrawingInfo,
+  submitBid,
+  sendDrawingToTrades,
+  getBids,
+  updateBidStatus,
+  deleteBid,
 };

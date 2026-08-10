@@ -149,7 +149,7 @@ function App() {
       <Route
         path="/company-admin"
         element={
-          <ProtectedRoute allowedRoles={['COMPANY_OWNER', 'PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR']}>
+          <ProtectedRoute allowedRoles={['COMPANY_OWNER', 'PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR', 'ENGINEER']}>
             <CompanyAdminLayout />
           </ProtectedRoute>
         }

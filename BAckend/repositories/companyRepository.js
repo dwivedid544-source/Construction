@@ -1,5 +1,8 @@
+'use strict';
+
 const Company = require('../models/Company');
 const prisma = require('../config/prisma');
+const AppError = require('../utils/AppError');
 
 const getDriver = () => (process.env.DB_DRIVER || 'prisma').toLowerCase();
 
@@ -7,7 +10,8 @@ class CompanyRepository {
   async findByName(name) {
     if (getDriver() === 'prisma') {
       return await prisma.company.findUnique({
-        where: { name }
+        where: { name },
+        include: { subscriptionPlan: true },
       });
     }
     return await Company.findOne({ name });
@@ -17,20 +21,50 @@ class CompanyRepository {
     if (getDriver() === 'prisma') {
       return await prisma.company.findUnique({
         where: { id },
-        include: { subscriptionPlan: true }
+        include: { subscriptionPlan: true },
       });
     }
     return await Company.findById(id).populate('subscriptionPlanId').lean();
   }
 
+  async findByIdOrFail(id, entityName = 'Company') {
+    const item = await this.findById(id);
+    if (!item) {
+      throw AppError.notFound(`${entityName} not found`);
+    }
+    return item;
+  }
+
   async find(query = {}) {
     if (getDriver() === 'prisma') {
       return await prisma.company.findMany({
-        where: query,
-        include: { subscriptionPlan: true }
+        where: { ...query, deletedAt: null },
+        include: { subscriptionPlan: true },
+        orderBy: { createdAt: 'desc' },
       });
     }
-    return await Company.find(query).populate('subscriptionPlanId').lean();
+    return await Company.find({ ...query, deletedAt: null }).populate('subscriptionPlanId').lean();
+  }
+
+  async findMany(query = {}) {
+    return this.find(query);
+  }
+
+  async paginate(query = {}) {
+    const companies = await this.find(query);
+    return {
+      data: companies,
+      total: companies.length,
+      page: 1,
+      limit: companies.length,
+    };
+  }
+
+  async count(query = {}) {
+    if (getDriver() === 'prisma') {
+      return await prisma.company.count({ where: { ...query, deletedAt: null } });
+    }
+    return await Company.countDocuments({ ...query, deletedAt: null });
   }
 
   async create(companyData) {
@@ -42,8 +76,8 @@ class CompanyRepository {
           phone: companyData.phone || null,
           address: companyData.address || null,
           subscriptionPlanId: companyData.subscriptionPlanId || null,
-          subscriptionStatus: companyData.subscriptionStatus || 'active'
-        }
+          subscriptionStatus: companyData.subscriptionStatus || 'active',
+        },
       });
     }
     return await Company.create(companyData);
@@ -53,19 +87,24 @@ class CompanyRepository {
     if (getDriver() === 'prisma') {
       return await prisma.company.update({
         where: { id },
-        data: updateData
+        data: updateData,
       });
     }
     return await Company.findByIdAndUpdate(id, updateData, { new: true });
   }
 
-  async deleteById(id) {
+  async softDeleteById(id) {
     if (getDriver() === 'prisma') {
-      return await prisma.company.delete({
-        where: { id }
+      return await prisma.company.update({
+        where: { id },
+        data: { deletedAt: new Date() },
       });
     }
-    return await Company.findByIdAndDelete(id);
+    return await Company.findByIdAndUpdate(id, { deletedAt: new Date() }, { new: true });
+  }
+
+  async deleteById(id) {
+    return this.softDeleteById(id);
   }
 }
 

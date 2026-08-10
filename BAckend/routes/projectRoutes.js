@@ -24,18 +24,22 @@ const {
 const { protect, authorize } = require('../middlewares/authMiddleware');
 const { checkProjectLimit } = require('../middlewares/checkPlanLimits');
 const upload = require('../middlewares/uploadMiddleware');
+const { validate } = require('../validators/validate');
+const { createProject: createProjectSchema, updateProject: updateProjectSchema, listProjects } = require('../validators/schemas/project.schema');
+const { auditMiddleware } = require('../utils/auditLog');
 
 router.use(protect); // All routes protected
+router.use(auditMiddleware('Project'));
 
-router.get('/', getProjects);
+router.get('/', validate(listProjects, 'query'), getProjects);
 router.post('/reorder', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), reorderProjects);
 router.get('/archived', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), getArchivedProjects);
 
 router.get('/:id', getProjectById);
 router.get('/:id/members', getProjectMembers);
-router.post('/', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), checkProjectLimit, upload.single('image'), createProject);
+router.post('/', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), checkProjectLimit, upload.single('image'), validate(createProjectSchema), createProject);
 router.post('/:id/assign-pm', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), updateProject); 
-router.patch('/:id', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM'), upload.single('image'), updateProject);
+router.patch('/:id', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM'), upload.single('image'), validate(updateProjectSchema), updateProject);
 router.get('/:id/client-progress', getClientProgress);
 router.get('/:id/client-updates', getProjectClientUpdates);
 router.post('/:id/client-updates', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM'), upload.array('images', 5), createProjectClientUpdate);

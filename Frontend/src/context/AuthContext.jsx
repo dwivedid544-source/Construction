@@ -225,7 +225,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUserData = (newData) => {
-    const updatedUser = { ...user, ...newData };
+    const updatedUser = {
+      ...user,
+      ...newData,
+      name: newData.fullName || newData.name || user?.name,
+      fullName: newData.fullName || newData.name || user?.fullName,
+      phone: newData.phoneNumber || newData.phone || user?.phone,
+      phoneNumber: newData.phoneNumber || newData.phone || user?.phoneNumber,
+    };
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
   };

@@ -1,93 +1,135 @@
-const Company = require('../models/Company');
-const Plan = require('../models/Plan');
-const Project = require('../models/Project');
-const User = require('../models/User');
-const mongoose = require('mongoose');
+/**
+ * checkPlanLimits.js — Plan Limit & Feature Flag Enforcement Middleware.
+ *
+ * Checks if a tenant company has remaining capacity for creating new projects
+ * or inviting new team members based on their active subscription plan limits.
+ */
 
-const getPlan = async (company) => {
-    if (!company.subscriptionPlanId) return null;
-    
-    // If it's already populated
-    if (company.subscriptionPlanId.name) return company.subscriptionPlanId;
+'use strict';
 
-    // Try to find by ID or Name
-    const planQuery = mongoose.Types.ObjectId.isValid(company.subscriptionPlanId)
-        ? { _id: company.subscriptionPlanId }
-        : { name: new RegExp('^' + company.subscriptionPlanId + '$', 'i') };
-    
-    return await Plan.findOne(planQuery);
-};
+const prisma = require('../config/prisma');
+const AppError = require('../utils/AppError');
 
-const checkProjectLimit = async (req, res, next) => {
-    try {
-        const companyId = req.user.companyId;
-        if (!companyId) {
-            return res.status(400).json({ message: 'Company ID not found in user session' });
-        }
+/**
+ * Helper to fetch tenant company and its associated subscription plan via Prisma.
+ */
+async function getCompanyAndPlan(companyId) {
+  if (!companyId) return { company: null, plan: null };
 
-        const company = await Company.findById(companyId);
-        if (!company) {
-            return res.status(404).json({ message: 'Company not found' });
-        }
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    include: { subscriptionPlan: true },
+  });
 
-        const plan = await getPlan(company);
-        const projectCount = await Project.countDocuments({ companyId });
+  return { company, plan: company?.subscriptionPlan || null };
+}
 
-        const maxProjects = plan ? plan.maxProjects : 1; // Default limit for no plan
+/**
+ * Middleware: Verify if tenant company can create another project.
+ */
+async function checkProjectLimit(req, res, next) {
+  try {
+    if (req.user?.role === 'SUPER_ADMIN') return next();
 
-        if (projectCount >= maxProjects && req.user.role !== 'SUPER_ADMIN') {
-            return res.status(403).json({ 
-                message: `Project limit reached. Your ${plan ? plan.name : 'current'} plan allows up to ${maxProjects} projects. Please upgrade your plan to create more projects.`,
-                limitReached: true,
-                limitType: 'projects',
-                currentCount: projectCount,
-                limit: maxProjects
-            });
-        }
-
-        next();
-    } catch (error) {
-        next(error);
+    const companyId = req.user?.companyId;
+    if (!companyId) {
+      return next(AppError.badRequest('Company ID missing from session.'));
     }
-};
 
-const checkUserLimit = async (req, res, next) => {
-    try {
-        const companyId = req.user.companyId;
-        if (!companyId) {
-            return res.status(400).json({ message: 'Company ID not found in user session' });
-        }
-
-        const company = await Company.findById(companyId);
-        if (!company) {
-            return res.status(404).json({ message: 'Company not found' });
-        }
-
-        const plan = await getPlan(company);
-        const userCount = await User.countDocuments({ 
-            companyId,
-            role: { $ne: 'CLIENT' } // Usually clients don't count towards seats
-        });
-
-        const maxUsers = plan ? plan.maxUsers : 5; // Default limit for no plan
-
-        if (userCount >= maxUsers && req.user.role !== 'SUPER_ADMIN') {
-            return res.status(403).json({ 
-                message: `User limit reached. Your ${plan ? plan.name : 'current'} plan allows up to ${maxUsers} team members. Please upgrade your plan to add more members.`,
-                limitReached: true,
-                limitType: 'users',
-                currentCount: userCount,
-                limit: maxUsers
-            });
-        }
-
-        next();
-    } catch (error) {
-        next(error);
+    const { company, plan } = await getCompanyAndPlan(companyId);
+    if (!company) {
+      return next(AppError.notFound('Company not found.'));
     }
-};
+
+    const currentProjectCount = await prisma.project.count({
+      where: { companyId, deletedAt: null },
+    });
+
+    const maxProjects = plan ? plan.maxProjects : company.maxProjects || 5;
+
+    if (currentProjectCount >= maxProjects) {
+      return next(
+        AppError.forbidden(
+          `Project limit reached. Your plan allows up to ${maxProjects} projects. Please upgrade your subscription.`
+        )
+      );
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Middleware: Verify if tenant company can add another user seat.
+ */
+async function checkUserLimit(req, res, next) {
+  try {
+    if (req.user?.role === 'SUPER_ADMIN') return next();
+
+    const companyId = req.user?.companyId;
+    if (!companyId) {
+      return next(AppError.badRequest('Company ID missing from session.'));
+    }
+
+    const { company, plan } = await getCompanyAndPlan(companyId);
+    if (!company) {
+      return next(AppError.notFound('Company not found.'));
+    }
+
+    const currentUserCount = await prisma.user.count({
+      where: {
+        companyId,
+        role: { not: 'CLIENT' },
+        deletedAt: null,
+      },
+    });
+
+    const maxUsers = plan ? plan.maxUsers : company.maxUsers || 10;
+
+    if (currentUserCount >= maxUsers) {
+      return next(
+        AppError.forbidden(
+          `User seat limit reached. Your plan allows up to ${maxUsers} team members. Please upgrade your subscription.`
+        )
+      );
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Middleware: Check if tenant subscription includes a specific feature flag.
+ * @param {string} featureName
+ */
+function checkFeatureFlag(featureName) {
+  return async (req, res, next) => {
+    try {
+      if (req.user?.role === 'SUPER_ADMIN') return next();
+
+      const { plan } = await getCompanyAndPlan(req.user?.companyId);
+
+      if (!plan || !Array.isArray(plan.features) || !plan.features.includes(featureName)) {
+        return next(
+          AppError.forbidden(
+            `The feature '${featureName}' is not included in your current subscription plan. Please upgrade.`
+          )
+        );
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
 
 module.exports = {
-    checkProjectLimit,
-    checkUserLimit
+  checkProjectLimit,
+  checkUserLimit,
+  checkFeatureFlag,
 };

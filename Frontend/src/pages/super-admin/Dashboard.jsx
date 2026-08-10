@@ -124,7 +124,7 @@ const SuperAdminDashboard = () => {
         />
         <SuperAdminStatCard
           title="Monthly Revenue"
-          value={`$${(stats.monthlyRevenue / 1000).toFixed(1)}k`}
+          value={`₹${(stats.monthlyRevenue / 1000).toFixed(1)}k`}
           subtext="Net ARR Forecast"
           icon={TrendingUp}
           color="bg-indigo-600"

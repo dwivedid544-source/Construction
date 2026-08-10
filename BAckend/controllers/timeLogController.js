@@ -87,9 +87,13 @@ const clockOut = async (req, res, next) => {
 // @access  Private
 const getTimeLogs = async (req, res, next) => {
     try {
-        const where = {};
-        if (req.query.userId) where.workerId = req.query.userId;
-        if (req.query.projectId) where.projectId = req.query.projectId;
+        const where = { deletedAt: null };
+        if (req.query.userId && req.query.userId !== 'undefined' && req.query.userId !== 'null') {
+            where.workerId = req.query.userId;
+        }
+        if (req.query.projectId && req.query.projectId !== 'undefined' && req.query.projectId !== 'null') {
+            where.projectId = req.query.projectId;
+        }
 
         const logs = await prisma.timeLog.findMany({
             where,
@@ -97,7 +101,7 @@ const getTimeLogs = async (req, res, next) => {
                 worker: { select: { id: true, name: true, roleId: true } },
                 project: { select: { id: true, name: true } }
             },
-            orderBy: { clockIn: 'desc' }
+            orderBy: { createdAt: 'desc' }
         });
 
         res.json(logs.map(l => ({
