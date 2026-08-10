@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import Logo from '../assets/images/logo.png.jpeg';
 import landingPageImg from '../assets/images/landingpage.png';
+import siteEngineerTablet from '../assets/images/site_engineer_tablet.jpg';
+import siteInspectionTeam from '../assets/images/site_inspection_team.jpg';
 import api from '../utils/api';
 
 /* ─── Animated Counter Component ───────────────────────────────────────── */
@@ -56,7 +58,7 @@ const LandingPage = () => {
         };
     }, []);
 
-    // Default Subscription Plans (Exact matches from the reference image structure)
+    // Default Subscription Plans (Enhanced Construction-Specific Features)
     const defaultPlans = [
         {
             name: "Free Try Now 7 Days",
@@ -64,8 +66,13 @@ const LandingPage = () => {
             period: "per 7 Days",
             duration: "Duration: 7 Days",
             features: [
-                "7 Days full feature trial access",
-                "Duration: 7 Days"
+                "1 Active Construction Project",
+                "3 Team Members / Field Engineers",
+                "Daily Site Logs & Task Management",
+                "Basic Subcontractor RFQ Requests",
+                "Purchase Orders & Invoice Creation",
+                "Document & Blueprint Vault (500 MB)",
+                "Full 7-Day Unrestricted Access"
             ],
             isPopular: false
         },
@@ -75,8 +82,14 @@ const LandingPage = () => {
             period: "per month",
             duration: "Duration: Monthly",
             features: [
-                "Essential construction management features",
-                "Duration: Monthly"
+                "Up to 3 Active Construction Projects",
+                "Up to 10 Team Members & Engineers",
+                "Daily Site Logs & Worker Attendance",
+                "Subcontractor Bidding & RFQ Hub",
+                "Purchase Order (PO) & Invoice System",
+                "Site Daily Logs & Photo Attachments",
+                "RFI & Blueprint Document Vault (5 GB)",
+                "Basic Cost Control & Expense Tracking"
             ],
             isPopular: false
         },
@@ -86,8 +99,15 @@ const LandingPage = () => {
             period: "per month",
             duration: "Duration: Monthly",
             features: [
-                "Complete features for growing teams",
-                "Duration: Monthly"
+                "Up to 10 Active Construction Projects",
+                "Up to 25 Team Members & Subcontractors",
+                "Advanced Subcontractor & Field Tracking",
+                "Real-time Site & Workforce Analytics",
+                "GPS Crew Clock-in & Site Geofencing",
+                "Full PO Approval & Invoice Workflows",
+                "Gantt Schedules & Milestone Tracking",
+                "Blueprint Center with RFI System (25 GB)",
+                "Automated Budget Overrun Alerts"
             ],
             isPopular: true
         },
@@ -97,8 +117,15 @@ const LandingPage = () => {
             period: "per month",
             duration: "Duration: Monthly",
             features: [
-                "Advanced features and priority support",
-                "Duration: Monthly"
+                "Unlimited Active Construction Projects",
+                "Unlimited Team Members & Subcontractors",
+                "Complete Enterprise Construction Suite",
+                "AI-Powered Scheduling & Delay Forecasts",
+                "Live GPS Site Monitoring & Asset Tracking",
+                "Advanced Financial Controls & Audit Logs",
+                "Multi-Site Executive Dashboards & Analytics",
+                "Unlimited CAD Blueprints & RFI Vault",
+                "24/7 Dedicated Support & Account Manager"
             ],
             isPopular: false
         }
@@ -199,6 +226,7 @@ const LandingPage = () => {
     const navLinks = [
         { name: 'Home', href: '#home' },
         { name: 'Features', href: '#features' },
+        { name: 'Field Operations', href: '#field-showcase' },
         { name: 'Results', href: '#why-us' },
         { name: 'Testimonials', href: '#testimonials' },
         { name: 'Pricing', href: '#pricing' },
@@ -720,6 +748,158 @@ const LandingPage = () => {
                                 </div>
                             );
                         })}
+                    </div>
+                </div>
+            </section>
+
+            {/* ══ ON-SITE FIELD OPERATIONS SHOWCASE ═══════════════════════════ */}
+            <section id="field-showcase" style={{
+                padding: '90px 0',
+                background: 'radial-gradient(ellipse at center, rgba(30, 41, 59, 0.65) 0%, #0b132b 100%)',
+                position: 'relative',
+                borderTop: '1px solid rgba(59, 130, 246, 0.15)',
+                borderBottom: '1px solid rgba(59, 130, 246, 0.15)'
+            }}>
+                {/* Ambient glow effect */}
+                <div className="glow-orb" style={{ top: '20%', right: '-5%', width: 450, height: 450, background: 'rgba(59, 130, 246, 0.14)' }} />
+                <div className="glow-orb" style={{ bottom: '10%', left: '-5%', width: 450, height: 450, background: 'rgba(14, 165, 233, 0.12)' }} />
+
+                <div className="container-custom" style={{ position: 'relative', zIndex: 2 }}>
+                    <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto 60px' }}>
+                        <div className="pill-tag" style={{ marginBottom: 16 }}>
+                            <HardHat size={14} color="#60a5fa" /> Real Construction Sites In Action
+                        </div>
+                        <h2 className="font-title" style={{
+                            fontSize: 'clamp(28px, 4vw, 44px)',
+                            fontWeight: 800,
+                            color: '#ffffff',
+                            marginBottom: 16
+                        }}>
+                            Empowering Field Engineers & <span className="gradient-text-blue">Project Teams On-Site</span>
+                        </h2>
+                        <p style={{ color: '#94a3b8', fontSize: 15, lineHeight: 1.7 }}>
+                            From scaffolding daily logs on mobile tablets to live contractor collaboration and laser measurements on job sites — KT Construct bridges field execution with office control.
+                        </p>
+                    </div>
+
+                    {/* 2 Image Cards Grid */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                        gap: 32,
+                        alignItems: 'stretch'
+                    }}>
+                        {/* Image 1 Card: Site Engineer with Tablet */}
+                        <div className="dark-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ position: 'relative', height: isMobile ? 260 : 340, overflow: 'hidden' }}>
+                                <img
+                                    src={siteEngineerTablet}
+                                    alt="Site Safety & Daily Log Tracking"
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        transition: 'transform 0.5s ease',
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                                />
+                                <div style={{
+                                    position: 'absolute', inset: 0,
+                                    background: 'linear-gradient(180deg, rgba(15,23,42,0.1) 0%, rgba(15,23,42,0.85) 100%)'
+                                }} />
+                                <div style={{
+                                    position: 'absolute', top: 16, left: 16,
+                                    background: 'rgba(11, 19, 43, 0.85)',
+                                    backdropFilter: 'blur(8px)',
+                                    border: '1px solid rgba(96, 165, 250, 0.4)',
+                                    padding: '6px 14px',
+                                    borderRadius: 9999,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: '#60a5fa'
+                                }}>
+                                    <CheckCircle size={14} color="#60a5fa" /> Field Daily Logs & Safety
+                                </div>
+                            </div>
+                            <div style={{ padding: 28, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div>
+                                    <h3 className="font-title" style={{ fontSize: 21, fontWeight: 700, color: '#ffffff', marginBottom: 10 }}>
+                                        Instant Field Audits & Digital Punch Lists
+                                    </h3>
+                                    <p style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1.6, marginBottom: 20 }}>
+                                        Site engineers capture site progress, log daily workforce counts, monitor safety equipment compliance, and update digital punch lists on mobile devices directly from job site scaffolding.
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 20, borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: 16, flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>
+                                        <Smartphone size={16} color="#60a5fa" /> Mobile & Tablet Access
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>
+                                        <ShieldCheck size={16} color="#60a5fa" /> Instant Cloud Sync
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Image 2 Card: Construction Inspection Team */}
+                        <div className="dark-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ position: 'relative', height: isMobile ? 260 : 340, overflow: 'hidden' }}>
+                                <img
+                                    src={siteInspectionTeam}
+                                    alt="Site Managers & Engineers Collaboration"
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        transition: 'transform 0.5s ease',
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                                />
+                                <div style={{
+                                    position: 'absolute', inset: 0,
+                                    background: 'linear-gradient(180deg, rgba(15,23,42,0.1) 0%, rgba(15,23,42,0.85) 100%)'
+                                }} />
+                                <div style={{
+                                    position: 'absolute', top: 16, left: 16,
+                                    background: 'rgba(11, 19, 43, 0.85)',
+                                    backdropFilter: 'blur(8px)',
+                                    border: '1px solid rgba(96, 165, 250, 0.4)',
+                                    padding: '6px 14px',
+                                    borderRadius: 9999,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: '#60a5fa'
+                                }}>
+                                    <Users size={14} color="#60a5fa" /> On-Site Team Collaboration
+                                </div>
+                            </div>
+                            <div style={{ padding: 28, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div>
+                                    <h3 className="font-title" style={{ fontSize: 21, fontWeight: 700, color: '#ffffff', marginBottom: 10 }}>
+                                        Collaborative RFQs & Blueprint Verification
+                                    </h3>
+                                    <p style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1.6, marginBottom: 20 }}>
+                                        General contractors and site managers review active RFQs, check laser survey data, align on blueprint specs, and manage sub-contractor estimates right at the construction site.
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 20, borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: 16, flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>
+                                        <FileText size={16} color="#60a5fa" /> Live Blueprint Vault
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>
+                                        <Layers size={16} color="#60a5fa" /> Subcontractor RFQ Hub
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
