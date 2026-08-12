@@ -230,6 +230,22 @@ const LandingPage = () => {
             return;
         }
 
+        setSubmittingPayment(true);
+
+        // Step 1: Pre-check eligibility on backend BEFORE launching payment gateway!
+        try {
+            await api.post('/auth/check-subscription-eligibility', {
+                email: formData.email,
+                phone: formData.phone,
+                planName: planName,
+                price: planPriceStr,
+            });
+        } catch (preCheckErr) {
+            setSubmittingPayment(false);
+            alert(preCheckErr.response?.data?.message || 'Verification failed. You are not eligible to claim this offer.');
+            return; // STOP HERE! Do not launch Razorpay modal, zero money charged.
+        }
+
         // Live Razorpay Key
         const key = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_T2CGGz8NLUuopj';
 
@@ -242,7 +258,6 @@ const LandingPage = () => {
             document.body.appendChild(script);
         });
 
-        setSubmittingPayment(true);
         const loaded = await loadScript('https://checkout.razorpay.com/v1/checkout.js');
         if (!loaded) {
             alert('Razorpay SDK failed to load. Please check your internet connection.');
@@ -259,7 +274,7 @@ const LandingPage = () => {
             image: Logo,
             handler: async function (response) {
                 try {
-                    // Send registration & trigger welcome email matching Screenshot 2
+                    // Send registration & trigger custom KT Construct welcome email after backend verification
                     await api.post('/auth/register-subscription', {
                         companyName: formData.companyName,
                         city: formData.city,
@@ -269,10 +284,12 @@ const LandingPage = () => {
                         planName: planName,
                         price: planPriceStr,
                         startDate: formData.startDate,
-                        paymentId: response.razorpay_payment_id || 'pay_success'
+                        paymentId: response.razorpay_payment_id || 'pay_success',
+                        razorpayOrderId: response.razorpay_order_id,
+                        razorpaySignature: response.razorpay_signature,
                     });
 
-                    alert(`✅ Payment Successful!\nPayment ID: ${response.razorpay_payment_id || 'Success'}\n\nYour account has been successfully activated! An official activation email has been sent to ${formData.email}.`);
+                    alert(`✅ Payment Verified & Successful!\nPayment ID: ${response.razorpay_payment_id || 'Success'}\n\nYour KT Construct account has been activated! An activation email has been sent to ${formData.email}.`);
                     setSubscriptionModalOpen(false);
                     navigate('/login');
                 } catch (err) {
