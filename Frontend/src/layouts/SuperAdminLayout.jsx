@@ -108,7 +108,6 @@ const SuperAdminLayout = () => {
         { icon: LayoutDashboard, label: 'Dashboard', path: '/super-admin' },
         { icon: Building, label: 'Companies', path: '/super-admin/companies' },
         { icon: CreditCard, label: 'Subscriptions', path: '/super-admin/subscriptions', badge: 3 },
-        { icon: Bookmark, label: 'Plans & Pricing', path: '/super-admin/plans' },
       ]
     },
     {

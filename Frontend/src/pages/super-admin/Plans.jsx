@@ -190,14 +190,22 @@ const Plans = () => {
 
                         <div className="flex gap-2 pt-6 border-t border-slate-100">
                             <button
+                                onClick={() => { setEditingPlan(plan); handleOpenEditModal(plan); }}
+                                className="p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl font-bold transition flex items-center justify-center border border-blue-100"
+                                title="View / Edit Plan"
+                            >
+                                <Eye size={16} />
+                            </button>
+                            <button
                                 onClick={() => handleOpenEditModal(plan)}
                                 className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-700 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 border border-slate-200"
                             >
                                 <Edit size={16} /> Edit
                             </button>
                             <button
-                                onClick={() => handleDeleteClick(plan._id)}
+                                onClick={() => handleDeleteClick(plan._id || plan.id)}
                                 className="px-4 bg-red-50 hover:bg-red-100 text-red-600 py-2.5 rounded-xl font-bold transition flex items-center justify-center border border-red-100"
+                                title="Delete Plan"
                             >
                                 <Trash2 size={16} />
                             </button>

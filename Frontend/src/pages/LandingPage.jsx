@@ -149,26 +149,33 @@ const LandingPage = () => {
     ];
 
     useEffect(() => {
-        (async () => {
+        const fetchLivePlans = async () => {
             try {
                 const plansRes = await api.get('/plans');
                 const plansData = plansRes?.data;
                 if (Array.isArray(plansData) && plansData.length > 0) {
                     setPricingPlans(plansData.map(p => ({
+                        id: p._id || p.id,
                         name: p.name,
                         price: p.price === 0 ? '₹0' : (typeof p.price === 'number' ? '₹' + p.price.toLocaleString('en-IN') : p.price),
-                        period: p.period === 'custom' ? '' : '/ ' + (p.period || 'month'),
+                        numericPrice: p.price,
+                        period: p.period === 'custom' ? '' : (p.period === '7 Days' ? 'per 7 Days' : '/ ' + (p.period || 'month')),
                         duration: p.duration || ('Duration: ' + (p.period || 'Monthly')),
                         features: Array.isArray(p.features) ? p.features : [],
-                        isPopular: Boolean(p.isPopular)
+                        isPopular: Boolean(p.isPopular),
+                        maxUsers: p.maxUsers,
+                        maxProjects: p.maxProjects
                     })));
                 } else {
                     setPricingPlans(defaultPlans);
                 }
             } catch (e) {
+                console.error("Error fetching live plans on landing page:", e);
                 setPricingPlans(defaultPlans);
             }
-        })();
+        };
+
+        fetchLivePlans();
     }, []);
 
     const openPlanModal = (plan) => {
@@ -1210,14 +1217,17 @@ const LandingPage = () => {
                         </p>
                     </div>
 
-                    {/* 4 Cards Pricing Grid */}
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
-                        gap: 20,
-                        alignItems: 'stretch'
-                    }}>
-                        {displayPlans.map((plan, i) => (
+                    {/* Dynamic Pricing Grid */}
+                    {(() => {
+                        const displayPlans = pricingPlans.length > 0 ? pricingPlans : defaultPlans;
+                        return (
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: isMobile ? '1fr' : `repeat(${Math.min(displayPlans.length, 4)}, 1fr)`,
+                                gap: 20,
+                                alignItems: 'stretch'
+                            }}>
+                                {displayPlans.map((plan, i) => (
                             <div key={i} style={{
                                 background: plan.isPopular ? 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)' : 'rgba(15, 23, 42, 0.85)',
                                 backdropFilter: 'blur(12px)',
@@ -1305,8 +1315,10 @@ const LandingPage = () => {
                             </div>
                         ))}
                     </div>
-                </div>
-            </section>
+                );
+            })()}
+        </div>
+    </section>
 
             {/* ══ CTA BANNER SECTION ══════════════════════════════════════════ */}
             <section style={{ padding: '80px 0', position: 'relative' }}>
