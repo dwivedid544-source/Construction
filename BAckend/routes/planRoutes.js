@@ -8,6 +8,7 @@ router.get('/', getPlans);
 
 // Admin only routes
 router.post('/', protect, authorize('SUPER_ADMIN'), createPlan);
+router.put('/:id', protect, authorize('SUPER_ADMIN'), updatePlan);
 router.patch('/:id', protect, authorize('SUPER_ADMIN'), updatePlan);
 router.delete('/:id', protect, authorize('SUPER_ADMIN'), deletePlan);
 
