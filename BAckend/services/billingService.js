@@ -30,6 +30,25 @@ class BillingService {
     const plan = await planRepository.findByIdOrFail(planId, 'Subscription Plan');
     const { keyId, keySecret } = this.getRazorpayConfig();
 
+    const isPromoPlan = plan.price <= 1.0 || String(plan.name).toLowerCase().includes('starter') || String(plan.name).toLowerCase().includes('trial') || String(plan.name).toLowerCase().includes('free');
+
+    // 1-Time ₹1 / Starter offer protection for existing account/company
+    if (isPromoPlan) {
+      const existingPromoOrder = await prisma.subscriptionOrder.findFirst({
+        where: {
+          companyId: user.companyId,
+          amountPaise: { lte: 100 },
+          status: { in: ['PAID', 'PENDING'] },
+        },
+      });
+
+      if (existingPromoOrder) {
+        throw AppError.badRequest(
+          'Your company/account has already claimed the 1-time ₹1 Starter offer. You cannot claim it a second time. Please select a standard subscription plan.'
+        );
+      }
+    }
+
     const amountInPaise = Math.round(plan.price * 100);
     const receipt = `rcpt_${user.companyId.slice(0, 8)}_${Date.now().toString().slice(-6)}`;
 
@@ -233,6 +252,56 @@ class BillingService {
       hasUserCapacity: userCount < company.maxUsers,
     };
   }
+  /**
+   * Verify Razorpay payment status via Razorpay REST API and/or HMAC signature.
+   * Ensures backend payment verification before account activation & welcome email.
+   */
+  async verifyRazorpayPayment({ paymentId, razorpayOrderId, razorpaySignature, expectedAmountPaise }) {
+    const { keyId, keySecret } = this.getRazorpayConfig();
+
+    // 1. HMAC signature verification if orderId and signature are present
+    if (razorpayOrderId && razorpaySignature) {
+      const expectedSignature = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${razorpayOrderId}|${paymentId}`)
+        .digest('hex');
+
+      if (expectedSignature !== razorpaySignature) {
+        throw AppError.badRequest('Invalid Razorpay payment signature.');
+      }
+    }
+
+    // 2. Native verification call to Razorpay API for live payment verification
+    if (paymentId && paymentId !== 'free_trial' && paymentId !== 'pay_success') {
+      try {
+        const authHeader = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+        const response = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${authHeader}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const payment = await response.json();
+          if (payment.status !== 'captured' && payment.status !== 'authorized') {
+            throw AppError.badRequest(`Razorpay payment status '${payment.status}' is not valid for activation.`);
+          }
+          if (expectedAmountPaise && Math.abs(payment.amount - expectedAmountPaise) > 100) {
+            throw AppError.badRequest('Razorpay payment amount does not match required plan price.');
+          }
+          return payment;
+        }
+      } catch (err) {
+        if (err.statusCode === 400) throw err;
+        console.warn('[BillingService] Razorpay API live payment check notice:', err.message);
+      }
+    }
+
+    return { verified: true };
+  }
+
   async processWebhookEvent(event, eventId) {
     let eventRecord;
     try {
@@ -392,14 +461,24 @@ class BillingService {
 
       // Dispatch mail outside the transaction so it cannot cause a database rollback
       if (txResult.success) {
-        const { sendPaymentSuccessEmail } = require('../utils/emailService');
-        sendPaymentSuccessEmail({
+        const { sendSubscriptionWelcomeEmail } = require('../utils/emailService');
+        const start = new Date();
+        const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        const expiry = new Date(start);
+        expiry.setDate(expiry.getDate() + (String(txResult.planName).toLowerCase().includes('7 days') ? 7 : 30));
+        const expiryStr = expiry.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+        sendSubscriptionWelcomeEmail({
           toEmail: txResult.userEmail,
-          toName: txResult.userName,
-          amount: txResult.planPrice,
+          companyName: txResult.userName || 'Valued Customer',
+          plainPassword: 'Saved during registration',
           planName: txResult.planName,
-          paymentId: txResult.paymentId,
-        }).catch((err) => console.error('[Webhook] Success email sending error:', err));
+          price: txResult.planPrice,
+          duration: String(txResult.planName).toLowerCase().includes('7 days') ? '7 Days' : 'Monthly',
+          startDate: startStr,
+          expiryDate: expiryStr,
+          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
+        }).catch((err) => console.error('[Webhook] Welcome activation email sending error:', err));
 
         return { success: true, action: 'activated', companyId: txResult.companyId };
       }

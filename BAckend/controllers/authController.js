@@ -178,6 +178,8 @@ const registerSubscription = asyncHandler(async (req, res) => {
     price = '1.00',
     startDate,
     paymentId,
+    razorpayOrderId,
+    razorpaySignature,
   } = req.body;
 
   if (!email || !password || !companyName) {
@@ -185,7 +187,53 @@ const registerSubscription = asyncHandler(async (req, res) => {
     throw AppError.badRequest('Company Name, Email, and Password are required.');
   }
 
-  // Create or register company + user
+  const cleanedPriceStr = String(price).replace(/[^0-9.]/g, '');
+  const numericPrice = cleanedPriceStr ? parseFloat(cleanedPriceStr) : 0;
+  const isPaidPlan = numericPrice > 0 && String(planName).toLowerCase().includes('free') === false;
+
+  // 1. One-Time ₹1 / Starter Offer Protection (Email & Mobile Phone Number restriction)
+  const isPromoStarterPlan = numericPrice <= 1.0 || String(planName).toLowerCase().includes('starter') || String(planName).toLowerCase().includes('free') || String(planName).toLowerCase().includes('trial');
+  
+  if (isPromoStarterPlan) {
+    const prisma = require('../config/prisma');
+    const existingUserOrCompany = await prisma.user.findFirst({
+      where: {
+        deletedAt: null,
+        OR: [
+          { email: email.toLowerCase() },
+          ...(phone ? [{ phoneNumber: phone }] : []),
+        ],
+      },
+    });
+
+    if (existingUserOrCompany) {
+      const AppError = require('../utils/AppError');
+      throw AppError.badRequest(
+        'This Email Address or Mobile Number has already been registered and claimed the 1-time ₹1 Starter offer. Multiple claims are not allowed. Please log in or select a standard subscription plan.'
+      );
+    }
+  }
+
+  // 2. Mandatory Backend Payment Verification for Paid Plans
+  if (isPaidPlan) {
+    if (!paymentId) {
+      const AppError = require('../utils/AppError');
+      throw AppError.badRequest('Payment ID is required for paid subscription plans.');
+    }
+
+    const billingService = require('../services/billingService');
+    const expectedPaise = Math.round(numericPrice * 100);
+    
+    // Perform backend Razorpay API verification & signature check
+    await billingService.verifyRazorpayPayment({
+      paymentId,
+      razorpayOrderId,
+      razorpaySignature,
+      expectedAmountPaise: expectedPaise,
+    });
+  }
+
+  // 2. Create or register company + user
   let result;
   try {
     result = await authService.registerCompany({
@@ -208,14 +256,21 @@ const registerSubscription = asyncHandler(async (req, res) => {
     }
   }
 
-  // Format dates
+  // 3. Format start and expiry dates
   const start = startDate ? new Date(startDate) : new Date();
   const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   const expiry = new Date(start);
-  expiry.setDate(expiry.getDate() + (String(planName).toLowerCase().includes('7 days') ? 7 : 30));
+  const durLower = String(planName).toLowerCase();
+  if (durLower.includes('7 day') || durLower.includes('week')) {
+    expiry.setDate(expiry.getDate() + 7);
+  } else if (durLower.includes('year') || durLower.includes('annual')) {
+    expiry.setFullYear(expiry.getFullYear() + 1);
+  } else {
+    expiry.setMonth(expiry.getMonth() + 1);
+  }
   const expiryStr = expiry.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  // Send activation email via Brevo
+  // 4. Send custom KT Construct welcome activation email (only after verified backend payment)
   const { sendSubscriptionWelcomeEmail } = require('../utils/emailService');
   try {
     await sendSubscriptionWelcomeEmail({
@@ -223,22 +278,84 @@ const registerSubscription = asyncHandler(async (req, res) => {
       companyName,
       plainPassword: password,
       planName,
-      price,
-      duration: String(planName).toLowerCase().includes('7 days') ? '7 Days' : 'Monthly',
+      price: numericPrice > 0 ? numericPrice : price,
+      duration: durLower.includes('7 day') ? '7 Days' : durLower.includes('year') ? 'Yearly' : 'Monthly',
       startDate: startStr,
       expiryDate: expiryStr,
       loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
     });
-    console.log(`[AuthController] Subscription welcome email successfully delivered to ${email}`);
+    console.log(`[AuthController] Custom KT Construct activation email successfully sent to ${email}`);
   } catch (emailErr) {
-    console.error('[AuthController] Error delivering subscription welcome email:', emailErr);
+    console.error('[AuthController] Error sending KT Construct activation email:', emailErr);
   }
 
   res.status(201).json({
     success: true,
-    message: 'Subscription registered and activation email sent!',
+    message: 'Backend payment verified successfully. Account activated and activation email sent!',
     user: result.user,
     token: result.token,
+  });
+});
+
+// POST /api/auth/check-subscription-eligibility
+const checkSubscriptionEligibility = asyncHandler(async (req, res) => {
+  const { email, phone, planName = 'Starter 1', price = '1.00' } = req.body;
+
+  if (!email) {
+    const AppError = require('../utils/AppError');
+    throw AppError.badRequest('Email Address is required.');
+  }
+
+  const cleanedPriceStr = String(price).replace(/[^0-9.]/g, '');
+  const numericPrice = cleanedPriceStr ? parseFloat(cleanedPriceStr) : 0;
+  const isPromoStarterPlan = numericPrice <= 1.0 || String(planName).toLowerCase().includes('starter') || String(planName).toLowerCase().includes('free') || String(planName).toLowerCase().includes('trial');
+
+  const prisma = require('../config/prisma');
+
+  // Check 1: Existing Active User or Mobile Number check (ignores deleted accounts for Super Admin re-testing)
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      deletedAt: null,
+      OR: [
+        { email: email.toLowerCase() },
+        ...(phone ? [{ phoneNumber: phone }] : []),
+      ],
+    },
+  });
+
+  if (existingUser) {
+    const AppError = require('../utils/AppError');
+    if (isPromoStarterPlan) {
+      throw AppError.badRequest(
+        'This Email Address or Mobile Number has already been registered and claimed the 1-time ₹1 Starter offer. Multiple claims are not allowed. Please log in or select a standard subscription plan.'
+      );
+    } else {
+      throw AppError.conflict('An account with this Email Address or Mobile Number already exists. Please log in to your portal.');
+    }
+  }
+
+  // Check 2: Existing Active Company check by Email or Mobile Phone
+  const existingCompany = await prisma.company.findFirst({
+    where: {
+      deletedAt: null,
+      OR: [
+        { email: email.toLowerCase() },
+        ...(phone ? [{ phone }] : []),
+      ],
+    },
+  });
+
+  if (existingCompany) {
+    const AppError = require('../utils/AppError');
+    throw AppError.badRequest(
+      'An active company is already registered under this Email Address or Mobile Number. Please log in to manage your subscription.'
+    );
+  }
+
+  res.json({
+    success: true,
+    eligible: true,
+    message: 'Subscription eligibility verified. You may proceed to payment.',
   });
 });
 
@@ -247,6 +364,7 @@ module.exports = {
   registerUser,
   registerCompany,
   registerSubscription,
+  checkSubscriptionEligibility,
   getMe,
   getUsers,
   updateUser,

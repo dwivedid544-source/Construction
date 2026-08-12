@@ -5,6 +5,7 @@ const {
   registerUser, 
   registerCompany, 
   registerSubscription,
+  checkSubscriptionEligibility,
   getMe, 
   getUsers, 
   updateUser, 
@@ -35,6 +36,7 @@ const { authRateLimiter } = require('../middlewares/rateLimiter');
 router.post('/login', authRateLimiter, validate(login), loginUser);
 router.post('/register', authRateLimiter, registerUser);
 router.post('/register-company', authRateLimiter, validate(registerCompanySchema), registerCompany);
+router.post('/check-subscription-eligibility', checkSubscriptionEligibility);
 router.post('/register-subscription', registerSubscription);
 router.post('/forgot-password', authRateLimiter, validate(forgotPassword), forgotPasswordUser);
 router.post('/reset-password', authRateLimiter, validate(resetPassword), resetPasswordUser);

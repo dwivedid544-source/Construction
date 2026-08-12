@@ -53,9 +53,20 @@ class AuthService {
   async registerCompany(data, req = null) {
     const { companyName, fullName, email, password, phone, plan = 'starter' } = data;
 
-    const existingUser = await userRepository.findByEmail(email);
+    const existingUser = await prisma.user.findFirst({
+      where: { email: email.toLowerCase(), deletedAt: null },
+    });
     if (existingUser) {
       throw AppError.conflict('User with this email already exists.');
+    }
+
+    if (phone) {
+      const existingPhone = await prisma.user.findFirst({
+        where: { phoneNumber: phone, deletedAt: null },
+      });
+      if (existingPhone) {
+        throw AppError.conflict('An account with this mobile phone number already exists.');
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -97,13 +108,15 @@ class AuthService {
         req,
       });
 
-      // Dispatch welcome email via Brevo API
-      const { sendWelcomeEmail } = require('../utils/emailService');
-      sendWelcomeEmail({
+      // Dispatch custom KT Construct welcome activation email
+      const { sendSubscriptionWelcomeEmail } = require('../utils/emailService');
+      sendSubscriptionWelcomeEmail({
         toEmail: user.email,
-        toName: user.name || fullName,
         companyName: company.name,
-        planName: plan || '7-Day Free Trial',
+        plainPassword: password,
+        planName: plan || 'Starter 1',
+        price: '0.00',
+        duration: String(plan).toLowerCase().includes('7 day') ? '7 Days' : 'Monthly',
         expiryDate: '7 Days',
         loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`,
       }).catch((err) => console.error('[AuthService] Welcome email error:', err));
