@@ -1,0 +1,1185 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum RoleEnum {
+  SUPER_ADMIN
+  COMPANY_OWNER
+  PM
+  FOREMAN
+  WORKER
+  CLIENT
+  SUBCONTRACTOR
+  ENGINEER
+}
+
+enum SubscriptionStatus {
+  active
+  inactive
+  past_due
+  canceled
+  pending
+}
+
+enum PlanPeriod {
+  month
+  year
+  custom
+}
+
+enum PermissionModule {
+  TASK
+  RFI
+  PO
+  CHAT
+  EQUIPMENT
+  USER
+  PROJECT
+  FINANCIAL
+  OTHER
+}
+
+enum ProjectStatus {
+  planning
+  active
+  on_hold
+  completed
+  cancelled
+  archived
+}
+
+enum JobStatus {
+  planning
+  active
+  on_hold     @map("on-hold")
+  completed
+}
+
+enum IssueSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum IssueStatus {
+  open
+  in_progress
+  fixed
+  closed
+  in_review
+  resolved
+}
+
+enum IssueCategory {
+  safety
+  quality
+  work
+  material
+  other
+  general
+  equipment
+}
+
+enum JobActivityType {
+  CREATED
+  STATUS_CHANGED
+  WORKER_ADDED
+  WORKER_REMOVED
+  UPDATED
+  COMPLETED
+  FOREMAN_CHANGED
+}
+
+enum JobTaskPriority {
+  low
+  medium
+  high
+}
+
+enum JobTaskStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum NotificationType {
+  task
+  schedule
+  financial
+  system
+  chat
+  project
+  photo
+  clock_out   @map("clock-out")
+  clock_in    @map("clock-in")
+  rfi
+  issue
+  equipment
+}
+
+enum PayrollStatus {
+  pending
+  processing
+  paid
+  held
+}
+
+enum POStatus {
+  Draft
+  PendingApproval
+  Approved
+  Sent
+  Delivered
+  Closed
+  Cancelled
+}
+
+enum RFICategory {
+  design
+  structural
+  mechanical
+  electrical
+  civil
+  safety
+  material
+  other
+}
+
+enum RFIPriority {
+  low
+  medium
+  high
+}
+
+enum RFIStatus {
+  open
+  in_review
+  answered
+  closed
+}
+
+enum SchedulePriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum ScheduleStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum SubTaskType {
+  Task
+  JobTask
+}
+
+enum SubTaskStatus {
+  todo
+  in_progress
+  completed
+}
+
+enum SubTaskPriority {
+  Low
+  Medium
+  High
+}
+
+enum SupportTicketPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum SupportTicketStatus {
+  open
+  in_progress @map("in-progress")
+  resolved
+  closed
+}
+
+enum SupportTicketCategory {
+  billing
+  technical
+  feature_request @map("feature-request")
+  bug
+  other
+}
+
+enum TimeLogStatus {
+  pending
+  approved
+  rejected
+}
+
+enum TodoStatus {
+  pending
+  completed
+}
+
+enum TodoPriority {
+  Low
+  Medium
+  High
+}
+
+enum TradeBidStatus {
+  Pending
+  Approved
+  Rejected
+}
+
+enum TransactionStatus {
+  paid
+  failed
+  refunded
+  pending
+}
+
+enum TransactionType {
+  subscription
+  top_up          @map("top-up")
+  adjustment
+}
+
+enum VendorStatus {
+  active
+  inactive
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+model Company {
+  id                 String             @id @default(cuid())
+  name               String             @unique
+  logo               String?            @db.Text
+  email              String
+  phone              String?
+  address            String?            @db.Text
+  subscriptionPlanId String?
+  subscriptionPlan   Plan?              @relation(fields: [subscriptionPlanId], references: [id])
+  subscriptionStatus SubscriptionStatus @default(active)
+  storageUsed        BigInt             @default(0)
+  startDate          DateTime?
+  expireDate         DateTime?
+  planType           String             @default("Monthly")
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  users              User[]
+  projects           Project[]
+  auditLogs          AuditLog[]
+  dailyLogs          DailyLog[]
+  equipment          Equipment[]
+  estimates          Estimate[]
+  invoices           Invoice[]
+  issues             Issue[]
+  jobTasks           JobTask[]
+  notifications      Notification[]
+  payrolls           Payroll[]
+  projectDocuments   ProjectDocument[]
+  projectNotes       ProjectNote[]
+  purchaseOrders     PurchaseOrder[]
+  rfis               RFI[]
+  schedules          Schedule[]
+  subTasks           SubTask[]
+  supportTickets     SupportTicket[]
+  tasks              Task[]
+  taskTemplates      TaskTemplate[]
+  timeLogs           TimeLog[]
+  todos              Todo[]
+  tradeBids          TradeBid[]
+  transactions       Transaction[]
+  vendors            Vendor[]
+  photos             Photo[]
+  jobs               Job[]
+
+  @@index([subscriptionPlanId])
+}
+
+model User {
+  id           String     @id @default(cuid())
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fullName     String
+  email        String     @unique
+  password     String
+  role         RoleEnum   @default(WORKER)
+  roleId       String?
+  customRole   Role?      @relation(fields: [roleId], references: [id])
+  phone        String?
+  address      String?    @db.Text
+  hourlyRate   Decimal    @default(30.00) @db.Decimal(10, 2)
+  province     String     @default("Ontario")
+  isActive     Boolean    @default(true)
+  avatar       String?    @db.Text
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Mapped relations
+  createdProjects        Project[]        @relation("ProjectCreator")
+  clientProjects         Project[]        @relation("ProjectClient")
+  pmProjects             Project[]        @relation("ProjectPM")
+  projectsAsPm           Project[]        @relation("ProjectPMs")
+  auditLogs              AuditLog[]
+  chatsCreated           Chat[]           @relation("ChatSender")
+  chatParticipants       ChatParticipant[]
+  correctionRequests     CorrectionRequest[]
+  dailyLogs              DailyLog[]
+  equipmentCreated       Equipment[]      @relation("EquipmentCreator")
+  estimates              Estimate[]
+  fcmTokens              FcmToken[]
+  invoicesCreated        Invoice[]        @relation("InvoiceCreator")
+  invoicesClient         Invoice[]        @relation("InvoiceClient")
+  issuesCreated          Issue[]          @relation("IssueCreator")
+  issuesAssigned         Issue[]          @relation("IssueAssignee")
+  jobsCreated            Job[]            @relation("JobCreator")
+  jobsAsForeman          Job[]            @relation("JobForeman")
+  jobsAssigned           Job[]            @relation("JobWorkers")
+  jobActivityLogs        JobActivityLog[]
+  jobNotes               JobNote[]
+  jobTasksCreated        JobTask[]        @relation("JobTaskCreator")
+  jobTasksAssigned       JobTask[]        @relation("JobTaskAssignee")
+  jobTimeLogs            JobTimeLog[]
+  jobWorkers             JobWorker[]
+  notifications          Notification[]
+  payrolls               Payroll[]
+  projectDocuments       ProjectDocument[]
+  projectNotes           ProjectNote[]
+  projectUpdates         ProjectUpdate[]
+  purchaseOrdersCreated  PurchaseOrder[]  @relation("POCreator")
+  purchaseOrdersAssigned PurchaseOrder[]  @relation("POAssignee")
+  rfisCreated            RFI[]            @relation("RFICreator")
+  rfisAssigned           RFI[]            @relation("RFIAssignee")
+  schedulesCreated       Schedule[]       @relation("ScheduleCreator")
+  schedulesAssigned      Schedule[]       @relation("ScheduleAssignee")
+  subTasksCreated        SubTask[]        @relation("SubTaskCreator")
+  subTasksAssigned       SubTask[]        @relation("SubTaskAssignee")
+  ticketsCreated         SupportTicket[]  @relation("TicketCreator")
+  ticketsAssigned        SupportTicket[]  @relation("TicketAssignee")
+  tasksCreated           Task[]           @relation("TaskCreator")
+  tasksAssigned          Task[]           @relation("TaskAssignee")
+  tasksChanged           Task[]           @relation("TaskChangedBy")
+  templatesCreated       TaskTemplate[]   @relation("TaskTemplateCreator")
+  timeLogs               TimeLog[]
+  timeLogsCreated        TimeLog[]        @relation("TimeLogCreator")
+  todosAssigned          Todo[]           @relation("TodoAssignee")
+  todosCreated           Todo[]           @relation("TodoCreator")
+  userPermissions        UserPermission[]
+  vendorsCreated         Vendor[]
+  photos                 Photo[]
+
+  @@index([companyId, role, isActive])
+  @@index([roleId])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?          @db.Text
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  module      PermissionModule @default(OTHER)
+  description String?          @db.Text
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  roles            RolePermission[]
+  userPermissions  UserPermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([roleId, permissionId])
+}
+
+model UserPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  isAllowed    Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([userId, permissionId])
+}
+
+model Plan {
+  id              String     @id @default(cuid())
+  name            String     @unique
+  price           Decimal    @db.Decimal(10, 2)
+  period          PlanPeriod @default(month)
+  features        Json?
+  maxUsers        Int        @default(10)
+  maxProjects     Int        @default(5)
+  isPopular       Boolean    @default(false)
+  rolePermissions Json?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  companies       Company[]
+}
+
+model Project {
+  id                  String        @id @default(cuid())
+  companyId           String
+  company             Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name                String
+  clientId            String?
+  client              User?         @relation("ProjectClient", fields: [clientId], references: [id])
+  startDate           DateTime?
+  endDate             DateTime?
+  budget              Decimal       @default(0.00) @db.Decimal(15, 2)
+  progress            Int           @default(0)
+  status              ProjectStatus @default(planning)
+  locationAddress     String?       @db.Text
+  locationLatitude    Float?
+  locationLongitude   Float?
+  siteLatitude        Float?
+  siteLongitude       Float?
+  allowedRadiusMeters Float         @default(100)
+  geofenceRadius      Float         @default(200)
+  strictGeofence      Boolean       @default(false)
+  image               String?       @db.LongText
+  pmId                String?
+  pm                  User?         @relation("ProjectPM", fields: [pmId], references: [id])
+  createdBy           String
+  creator             User          @relation("ProjectCreator", fields: [createdBy], references: [id])
+  currentPhase        String        @default("Planning")
+  contacts            Json?
+  sortOrder           Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  // Many-to-Many with PMs
+  pms                 User[]        @relation("ProjectPMs")
+
+  jobs                Job[]
+  dailyLogs           DailyLog[]
+  drawings            Drawing[]
+  estimates           Estimate[]
+  invoices            Invoice[]
+  issues              Issue[]
+  photos              Photo[]
+  projectDocuments    ProjectDocument[]
+  projectNotes        ProjectNote[]
+  projectUpdates      ProjectUpdate[]
+  purchaseOrders      PurchaseOrder[]
+  rfis                RFI[]
+  schedules           Schedule[]
+  tasks               Task[]
+  timeLogs            TimeLog[]
+
+  @@index([companyId, status])
+  @@index([companyId, clientId])
+}
+
+model Job {
+  id              String      @id @default(cuid())
+  projectId       String
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  companyId       String
+  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name            String
+  location        String      @default("")
+  startDate       DateTime?
+  endDate         DateTime?
+  foremanId       String?
+  foreman         User?       @relation("JobForeman", fields: [foremanId], references: [id])
+  budget          Decimal     @default(0.00) @db.Decimal(15, 2)
+  progress        Int         @default(0)
+  status          JobStatus   @default(planning)
+  description     String?     @db.Text
+  createdBy       String
+  creator         User        @relation("JobCreator", fields: [createdBy], references: [id])
+  currentPhase    String      @default("Scheduled")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  assignedWorkers User[]      @relation("JobWorkers")
+  jobActivityLogs JobActivityLog[]
+  jobNotes        JobNote[]
+  jobTasks        JobTask[]
+  jobTimeLogs     JobTimeLog[]
+  jobWorkers      JobWorker[]
+  purchaseOrders  PurchaseOrder[]
+  timeLogs        TimeLog[]
+  issues          Issue[]
+  equipment       Equipment[]
+
+  @@index([companyId, projectId])
+  @@index([foremanId])
+  @@index([companyId, status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action     String
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([userId])
+}
+
+model ChatRoom {
+  id           String            @id @default(cuid())
+  name         String?
+  isGroup      Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  participants ChatParticipant[]
+  chats        Chat[]
+}
+
+model ChatParticipant {
+  id         String   @id @default(cuid())
+  roomId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([roomId, userId])
+}
+
+model Chat {
+  id         String   @id @default(cuid())
+  roomId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User     @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  message    String   @db.Text
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([roomId])
+}
+
+model CorrectionRequest {
+  id         String   @id @default(cuid())
+  modelName  String
+  recordId   String
+  requestedBy String
+  requester  User     @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  changes    Json
+  status     String   @default("pending") // pending, approved, rejected
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Counter {
+  id        String @id @default(cuid())
+  model     String @unique
+  count     Int    @default(0)
+}
+
+model DailyLog {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date            DateTime
+  weather         String?
+  notes           String?  @db.Text
+  createdBy       String
+  creator         User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  workPerformed   Json?
+  visitors        Json?
+  safetyIncidents Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Drawing {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  number      String
+  version     String   @default("1.0")
+  fileUrl     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  annotations DrawingAnnotation[]
+  tradeBids   TradeBid[]
+}
+
+model DrawingAnnotation {
+  id        String   @id @default(cuid())
+  drawingId String
+  drawing   Drawing  @relation(fields: [drawingId], references: [id], onDelete: Cascade)
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Equipment {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  model       String?
+  serialNumber String?
+  status      String   @default("available")
+  assignedJobId String?
+  assignedJob   Job?     @relation(fields: [assignedJobId], references: [id])
+  assignedDate  DateTime?
+  assignmentHistory Json?
+  imageUrl          String?  @db.Text
+  createdBy   String
+  creator     User     @relation("EquipmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Estimate {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientName String
+  amount     Decimal  @db.Decimal(15, 2)
+  items      Json
+  status     String   @default("draft")
+  createdBy  String
+  creator    User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  invoices   Invoice[]
+}
+
+model FcmToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  deviceType String   @default("android") // android, ios, web
+  platform   String   @default("firebase") // firebase, expo
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          User     @relation("InvoiceClient", fields: [clientId], references: [id], onDelete: Cascade)
+  estimateId      String?
+  estimate        Estimate? @relation(fields: [estimateId], references: [id])
+  invoiceNumber   String   @unique
+  totalAmount     Decimal  @db.Decimal(15, 2)
+  items           Json
+  status          String   @default("unpaid")
+  dueDate         DateTime
+  paidAt          DateTime?
+  stripeInvoiceId String?
+  invoiceImage    String?  @db.Text
+  createdBy       String
+  creator         User     @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Issue {
+  id          String        @id @default(cuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobId       String?
+  job         Job?          @relation(fields: [jobId], references: [id])
+  title       String
+  description String?       @db.Text
+  severity    IssueSeverity @default(medium)
+  status      IssueStatus   @default(open)
+  category    IssueCategory @default(general)
+  assignedTo  String?
+  assignee    User?         @relation("IssueAssignee", fields: [assignedTo], references: [id])
+  createdBy   String
+  creator     User          @relation("IssueCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  photos      Photo[]
+}
+
+model JobActivityLog {
+  id        String          @id @default(cuid())
+  jobId     String
+  job       Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  type      JobActivityType
+  details   String?         @db.Text
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model JobNote {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JobTask {
+  id             String          @id @default(cuid())
+  jobId          String
+  job            Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  companyId      String
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?         @db.Text
+  priority       JobTaskPriority @default(medium)
+  status         JobTaskStatus   @default(pending)
+  assignedWorker String?
+  worker         User?           @relation("JobTaskAssignee", fields: [assignedWorker], references: [id])
+  createdBy      String
+  creator        User            @relation("JobTaskCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([companyId])
+  @@index([jobId])
+}
+
+model JobTimeLog {
+  id        String    @id @default(cuid())
+  jobId     String
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockIn   DateTime
+  clockOut  DateTime?
+  hours     Float     @default(0.0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model JobWorker {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  companyId String
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String           @db.Text
+  type      NotificationType @default(system)
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model Payroll {
+  id          String        @id @default(cuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  totalHours  Float         @default(0.0)
+  grossPay    Decimal       @db.Decimal(12, 2)
+  netPay      Decimal       @db.Decimal(12, 2)
+  status      PayrollStatus @default(pending)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Photo {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id])
+  issueId     String?
+  issue       Issue?   @relation(fields: [issueId], references: [id])
+  url         String   @db.Text
+  caption     String?  @db.Text
+  uploadedBy  String
+  uploader    User     @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProjectDocument {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title       String
+  description String?  @db.Text
+  category    String?  @default("General")
+  fileUrl     String   @db.Text
+  fileType    String?
+  uploadedBy  String
+  uploader    User     @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProjectNote {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProjectUpdate {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  update    String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PurchaseOrder {
+  id             String        @id @default(cuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobId          String?
+  job            Job?          @relation(fields: [jobId], references: [id])
+  vendorId       String
+  vendor         Vendor        @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  poNumber       String        @unique
+  items          Json
+  totalAmount    Decimal       @db.Decimal(15, 2)
+  status         POStatus      @default(Draft)
+  requestedBy    String
+  requester      User          @relation("POCreator", fields: [requestedBy], references: [id], onDelete: Cascade)
+  approvedBy     String?
+  approver       User?         @relation("POAssignee", fields: [approvedBy], references: [id])
+  approvalDate   DateTime?
+  deliveryDate   DateTime?
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model RFI {
+  id          String      @id @default(cuid())
+  companyId   String
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number      String      @unique
+  subject     String
+  question    String      @db.Text
+  suggestedAnswer String? @db.Text
+  category    RFICategory @default(other)
+  priority    RFIPriority @default(medium)
+  status      RFIStatus   @default(open)
+  assignedTo  String?
+  assignee    User?       @relation("RFIAssignee", fields: [assignedTo], references: [id])
+  createdBy   String
+  creator     User        @relation("RFICreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  dueDate     DateTime?
+  resolvedAt  DateTime?
+  attachments Json?
+  comments    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Schedule {
+  id          String           @id @default(cuid())
+  companyId   String
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?          @db.Text
+  startDate   DateTime
+  endDate     DateTime
+  priority    SchedulePriority @default(medium)
+  status      ScheduleStatus   @default(pending)
+  assignedTo  String?
+  assignee    User?            @relation("ScheduleAssignee", fields: [assignedTo], references: [id])
+  createdBy   String
+  creator     User             @relation("ScheduleCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tasks       Task[]
+}
+
+model SubTask {
+  id             String          @id @default(cuid())
+  companyId      String
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentType     SubTaskType     @default(Task)
+  parentId       String
+  title          String
+  description    String?         @db.Text
+  status         SubTaskStatus   @default(todo)
+  priority       SubTaskPriority @default(Medium)
+  assignedTo     String?
+  assignee       User?           @relation("SubTaskAssignee", fields: [assignedTo], references: [id])
+  createdBy      String
+  creator        User            @relation("SubTaskCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  estimatedHours Float           @default(0.0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model SupportTicket {
+  id          String                @id @default(cuid())
+  companyId   String
+  company     Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ticketNo    String                @unique
+  subject     String
+  description String                @db.Text
+  priority    SupportTicketPriority @default(medium)
+  status      SupportTicketStatus   @default(open)
+  category    SupportTicketCategory @default(other)
+  assignedTo  String?
+  assignee    User?                 @relation("TicketAssignee", fields: [assignedTo], references: [id])
+  createdBy   String
+  creator     User                  @relation("TicketCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  userRole    RoleEnum              @default(WORKER)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model Task {
+  id             String         @id @default(cuid())
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scheduleId     String?
+  schedule       Schedule?      @relation(fields: [scheduleId], references: [id])
+  title          String
+  description    String?        @db.Text
+  status         String         @default("todo") // todo, in_progress, review, completed
+  priority       String         @default("medium") // low, medium, high
+  assignedTo     String?
+  assignee       User?          @relation("TaskAssignee", fields: [assignedTo], references: [id])
+  createdBy      String
+  creator           User           @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  startDate      DateTime?
+  dueDate        DateTime?
+  completionDate DateTime?
+  estimatedHours Float          @default(0.0)
+  actualHours    Float          @default(0.0)
+  isCompleted    Boolean        @default(false)
+  parentTaskId   String?
+  parentTask     Task?          @relation("SubTasks", fields: [parentTaskId], references: [id])
+  subTasks       Task[]         @relation("SubTasks")
+  changedBy      String?
+  changer        User?          @relation("TaskChangedBy", fields: [changedBy], references: [id])
+  changedAt      DateTime?
+  note           String?        @db.Text
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  photos         Photo[]
+}
+
+model TaskTemplate {
+  id             String       @id @default(cuid())
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  templateName   String
+  taskTitle      String
+  description    String?      @db.Text
+  assignedRole   String
+  estimatedHours Float        @default(0.0)
+  priority       String       @default("Medium")
+  steps          Json?
+  position       Int          @default(0)
+  createdBy      String
+  creator        User         @relation("TaskTemplateCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model TimeLog {
+  id                String        @id @default(cuid())
+  companyId         String
+  company           Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project?      @relation(fields: [projectId], references: [id])
+  jobId             String?
+  job               Job?          @relation(fields: [jobId], references: [id])
+  taskId            String?
+  taskModel         String        @default("JobTask") // JobTask, Task, SubTask
+  clockIn           DateTime
+  clockOut          DateTime?
+  clockInLatitude   Float?
+  clockInLongitude  Float?
+  clockInAccuracy   Float?
+  clockInAddress    String?       @db.Text
+  clockOutLatitude  Float?
+  clockOutLongitude Float?
+  clockOutAccuracy  Float?
+  clockOutAddress   String?       @db.Text
+  isOutsideGeofence Boolean       @default(false)
+  geofenceStatus    String        @default("unknown") // inside, outside, unknown
+  status            TimeLogStatus @default(pending)
+  isManual          Boolean       @default(false)
+  reason            String?       @db.Text
+  createdBy         String?
+  creator           User?         @relation("TimeLogCreator", fields: [createdBy], references: [id])
+  createdByRole     String        @default("WORKER")
+  deviceInfo        String?       @db.Text
+  offlineSync       Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model Todo {
+  id          String       @id @default(cuid())
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title       String
+  description String?      @db.Text
+  assignedTo  String
+  assignee    User         @relation("TodoAssignee", fields: [assignedTo], references: [id], onDelete: Cascade)
+  assignedBy  String
+  creator     User         @relation("TodoCreator", fields: [assignedBy], references: [id], onDelete: Cascade)
+  status      TodoStatus   @default(pending)
+  priority    TodoPriority @default(Medium)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model TradeBid {
+  id          String         @id @default(cuid())
+  companyId   String
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  drawingId   String
+  drawing     Drawing        @relation(fields: [drawingId], references: [id], onDelete: Cascade)
+  vendorId    String
+  vendor      Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  bidAmount   Decimal        @db.Decimal(15, 2)
+  notes       String?        @db.Text
+  attachments Json?
+  status      TradeBidStatus @default(Pending)
+  bidDate     DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model Transaction {
+  id                    String            @id @default(cuid())
+  companyId             String
+  company               Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  amount                Decimal           @db.Decimal(15, 2)
+  currency              String            @default("USD")
+  status                TransactionStatus
+  type                  TransactionType   @default(subscription)
+  paymentMethod         String?
+  stripePaymentIntentId String?
+  failureReason         String?           @db.Text
+  metadata              Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+}
+
+model Vendor {
+  id            String       @id @default(cuid())
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy     String?
+  creator       User?        @relation(fields: [createdBy], references: [id])
+  name          String
+  email         String?
+  phone         String?
+  address       String?      @db.Text
+  contactPerson String?
+  category      String?
+  status        VendorStatus @default(active)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+  tradeBids      TradeBid[]
+}
