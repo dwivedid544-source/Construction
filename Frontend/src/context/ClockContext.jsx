@@ -40,15 +40,13 @@ export const ClockProvider = ({ children }) => {
             return;
         }
         try {
-            const res = await api.get('/timelogs');
-            const mine = (res.data || []).filter(log => {
-                const uid = log.userId?._id || log.userId;
-                return uid?.toString() === user._id?.toString();
-            });
-            const open = mine.find(log => !log.clockOut) || null;
-            setActiveLog(open);
+            // Use dedicated endpoint so we always get ONLY this user's own open log,
+            // never another team member's log (which would cause false "clocked in" state).
+            const res = await api.get('/timelogs/active-self');
+            setActiveLog(res.data || null);
         } catch (error) {
             console.error('[Clock] refresh failed:', error);
+            setActiveLog(null);
         } finally {
             setLoading(false);
         }
