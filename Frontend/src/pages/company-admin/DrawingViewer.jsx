@@ -26,6 +26,7 @@ const PEN_WIDTHS = [2, 3, 5, 8];
 
 const DrawingPage = React.memo(({ 
     pdf, 
+    imageUrl,
     pageNumber, 
     zoom, 
     annotations, 
@@ -295,44 +296,76 @@ const DrawingPage = React.memo(({
 
     useEffect(() => {
         const renderPage = async () => {
-            if (!pdf) return;
-            const page = await pdf.getPage(pageNumber);
-            const viewport = page.getViewport({ scale: zoom });
-            const canvas = canvasRef.current;
-            if (!canvas) return;
-            const context = canvas.getContext('2d');
+            if (pdf) {
+                const page = await pdf.getPage(pageNumber);
+                const viewport = page.getViewport({ scale: zoom });
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const context = canvas.getContext('2d');
 
-            const pixelRatio = window.devicePixelRatio || 1;
-            canvas.width = viewport.width * pixelRatio;
-            canvas.height = viewport.height * pixelRatio;
-            canvas.style.width = `${viewport.width}px`;
-            canvas.style.height = `${viewport.height}px`;
+                const pixelRatio = window.devicePixelRatio || 1;
+                canvas.width = viewport.width * pixelRatio;
+                canvas.height = viewport.height * pixelRatio;
+                canvas.style.width = `${viewport.width}px`;
+                canvas.style.height = `${viewport.height}px`;
 
-            if (containerRef.current) {
-                containerRef.current.style.width = `${viewport.width}px`;
-                containerRef.current.style.height = `${viewport.height}px`;
-            }
+                if (containerRef.current) {
+                    containerRef.current.style.width = `${viewport.width}px`;
+                    containerRef.current.style.height = `${viewport.height}px`;
+                }
 
-            if (overlayRef.current) {
-                overlayRef.current.style.width = `${viewport.width}px`;
-                overlayRef.current.style.height = `${viewport.height}px`;
-            }
+                if (overlayRef.current) {
+                    overlayRef.current.style.width = `${viewport.width}px`;
+                    overlayRef.current.style.height = `${viewport.height}px`;
+                }
 
-            if (renderTaskRef.current) renderTaskRef.current.cancel();
-            renderTaskRef.current = page.render({
-                canvasContext: context,
-                viewport: viewport,
-                transform: [pixelRatio, 0, 0, pixelRatio, 0, 0]
-            });
-            try {
-                await renderTaskRef.current.promise;
-            } catch (err) {
-                if (err.name !== 'RenderingCancelledException') console.error(err);
+                if (renderTaskRef.current) renderTaskRef.current.cancel();
+                renderTaskRef.current = page.render({
+                    canvasContext: context,
+                    viewport: viewport,
+                    transform: [pixelRatio, 0, 0, pixelRatio, 0, 0]
+                });
+                try {
+                    await renderTaskRef.current.promise;
+                } catch (err) {
+                    if (err.name !== 'RenderingCancelledException') console.error(err);
+                }
+            } else if (imageUrl) {
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                img.onload = () => {
+                    const canvas = canvasRef.current;
+                    if (!canvas) return;
+                    const context = canvas.getContext('2d');
+                    const baseWidth = img.naturalWidth || img.width || 1200;
+                    const baseHeight = img.naturalHeight || img.height || 800;
+                    const w = baseWidth * zoom;
+                    const h = baseHeight * zoom;
+                    const pixelRatio = window.devicePixelRatio || 1;
+
+                    canvas.width = w * pixelRatio;
+                    canvas.height = h * pixelRatio;
+                    canvas.style.width = `${w}px`;
+                    canvas.style.height = `${h}px`;
+
+                    if (containerRef.current) {
+                        containerRef.current.style.width = `${w}px`;
+                        containerRef.current.style.height = `${h}px`;
+                    }
+                    if (overlayRef.current) {
+                        overlayRef.current.style.width = `${w}px`;
+                        overlayRef.current.style.height = `${h}px`;
+                    }
+
+                    context.scale(pixelRatio, pixelRatio);
+                    context.drawImage(img, 0, 0, w, h);
+                };
+                img.src = imageUrl;
             }
         };
 
         renderPage();
-    }, [pdf, pageNumber, zoom]);
+    }, [pdf, imageUrl, pageNumber, zoom]);
 
     const getCoordinates = (e) => {
         const rect = overlayRef.current.getBoundingClientRect();
@@ -496,7 +529,7 @@ const DrawingPage = React.memo(({
     };
 
     const renderAnnotation = (ann) => {
-        const isSelected = selectedAnnotationId === ann._id;
+        const isSelected = selectedAnnotationId === (ann._id || ann.id);
         const baseStyle = {
             position: 'absolute',
             pointerEvents: 'auto',
@@ -505,14 +538,15 @@ const DrawingPage = React.memo(({
             zIndex: isSelected ? 30 : 20
         };
 
-        const { x1, y1, x2, y2, x, y, points } = ann.coordinates;
+        const coordsObj = ann.coordinates || ann.coords || {};
+        const { x1 = 0, y1 = 0, x2 = 0, y2 = 0, x = 0, y = 0, points = [] } = coordsObj;
 
         switch (ann.type) {
             case 'pen':
                 if (!points || points.length < 2) return null;
                 return (
                     <svg
-                        key={ann._id}
+                        key={ann._id || ann.id}
                         onMouseDown={(e) => handleAnnotationDragStart(ann, e)}
                         style={{
                             position: 'absolute', left: 0, top: 0,
@@ -523,7 +557,7 @@ const DrawingPage = React.memo(({
                         <path
                             d={buildSvgPath(points.map(p => ({ x: p.x * zoom, y: p.y * zoom })))}
                             stroke="transparent"
-                            strokeWidth={(ann.coordinates.penWidth || ann.penWidth || 3) * zoom + 12}
+                            strokeWidth={(coordsObj.penWidth || ann.penWidth || 3) * zoom + 12}
                             fill="none"
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -531,8 +565,8 @@ const DrawingPage = React.memo(({
                         />
                         <path
                             d={buildSvgPath(points.map(p => ({ x: p.x * zoom, y: p.y * zoom })))}
-                            stroke={ann.coordinates.penColor || ann.penColor || '#ef4444'}
-                            strokeWidth={(ann.coordinates.penWidth || ann.penWidth || 3) * zoom}
+                            stroke={coordsObj.penColor || ann.penColor || '#ef4444'}
+                            strokeWidth={(coordsObj.penWidth || ann.penWidth || 3) * zoom}
                             fill="none"
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -542,7 +576,7 @@ const DrawingPage = React.memo(({
                             <path
                                 d={buildSvgPath(points.map(p => ({ x: p.x * zoom, y: p.y * zoom })))}
                                 stroke="#3b82f6"
-                                strokeWidth={((ann.coordinates.penWidth || ann.penWidth || 3) + 4) * zoom}
+                                strokeWidth={((coordsObj.penWidth || ann.penWidth || 3) + 4) * zoom}
                                 fill="none"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
@@ -880,9 +914,13 @@ const DrawingPage = React.memo(({
 });
 
 const DrawingViewer = ({ drawing, version, onClose }) => {
-    const [numPages, setNumPages] = useState(0);
+    const rawFileUrl = version?.fileUrl || drawing?.fileUrl || '';
+    const isImage = Boolean(rawFileUrl.match(/\.(jpg|jpeg|png|gif|webp|heic)(\?.*)?$/i));
+    const fullFileUrl = rawFileUrl ? getServerUrl(rawFileUrl) : '';
+
+    const [numPages, setNumPages] = useState(isImage ? 1 : 0);
     const [currentPage, setCurrentPage] = useState(1);
-    const [zoom, setZoom] = useState(1.5);
+    const [zoom, setZoom] = useState(1.0);
     const [pdf, setPdf] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTool, setActiveTool] = useState(null);
@@ -903,14 +941,18 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
     const pageRefs = useRef({});
 
     const recalculateZoomForFitWidth = useCallback(async () => {
-        if (!pdf || !containerRef.current) return;
+        if (!containerRef.current) return;
         try {
-            const page = await pdf.getPage(1);
-            const viewport = page.getViewport({ scale: 1.0 });
+            let pageWidth = 1200;
+            if (pdf) {
+                const page = await pdf.getPage(1);
+                const viewport = page.getViewport({ scale: 1.0 });
+                pageWidth = viewport.width;
+            }
             const containerWidth = containerRef.current.clientWidth;
-            const availableWidth = containerWidth - 64; // subtract p-8 padding on left and right (32px * 2)
-            if (availableWidth > 0) {
-                const calculatedZoom = availableWidth / viewport.width;
+            const availableWidth = containerWidth - 64; // subtract p-8 padding
+            if (availableWidth > 0 && pageWidth > 0) {
+                const calculatedZoom = availableWidth / pageWidth;
                 setZoom(Math.round(calculatedZoom * 100) / 100);
             }
         } catch (err) {
@@ -920,7 +962,6 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
 
     useEffect(() => {
         if (isFitWidth) {
-            // Wait 350ms for the 300ms CSS sidebar transition to complete before measuring
             const timer = setTimeout(() => {
                 recalculateZoomForFitWidth();
             }, 350);
@@ -938,28 +979,45 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
     }, [isFitWidth, recalculateZoomForFitWidth]);
 
     useEffect(() => {
-        const loadPdf = async () => {
+        const loadDoc = async () => {
+            if (!fullFileUrl) {
+                setLoading(false);
+                setNumPages(1);
+                return;
+            }
+
             try {
                 setLoading(true);
-                const url = getServerUrl(version.fileUrl);
-                const loadingTask = pdfjsLib.getDocument(url);
-                const pdfInstance = await loadingTask.promise;
-                setPdf(pdfInstance);
-                setNumPages(pdfInstance.numPages);
+                if (isImage) {
+                    setPdf(null);
+                    setNumPages(1);
+                } else {
+                    const loadingTask = pdfjsLib.getDocument(fullFileUrl);
+                    const pdfInstance = await loadingTask.promise;
+                    setPdf(pdfInstance);
+                    setNumPages(pdfInstance.numPages || 1);
+                }
 
-                const annRes = await api.get(`/drawings/${drawing._id}/annotations`, {
-                    params: { versionId: version._id }
-                });
-                setAnnotations(annRes.data);
+                const targetDrawingId = drawing?._id || drawing?.id;
+                if (targetDrawingId) {
+                    try {
+                        const annRes = await api.get(`/drawings/${targetDrawingId}/annotations`);
+                        setAnnotations(Array.isArray(annRes.data) ? annRes.data : []);
+                    } catch (e) {
+                        setAnnotations([]);
+                    }
+                }
             } catch (err) {
-                console.error('Error loading PDF:', err);
-                alert(`Failed to load PDF: ${err.message}`);
+                console.warn('Falling back to image view mode:', err.message);
+                setPdf(null);
+                setNumPages(1);
             } finally {
                 setLoading(false);
             }
         };
-        if (version?.fileUrl) loadPdf();
-    }, [drawing._id, version]);
+
+        loadDoc();
+    }, [drawing, version, fullFileUrl, isImage]);
 
     const handleSaveAnnotation = async (data) => {
         try {
@@ -1011,9 +1069,92 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
     };
 
     const handleExportPDF = async () => {
-        if (!pdf) return;
         try {
             setLoading(true);
+            setExportProgress(10);
+
+            if (isImage || !pdf) {
+                // Export Image drawing (with all annotations baked in) as PDF!
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = () => reject(new Error('Failed to load drawing image for PDF export'));
+                    img.src = fullFileUrl;
+                });
+
+                const baseWidth = img.naturalWidth || img.width || 1200;
+                const baseHeight = img.naturalHeight || img.height || 800;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = baseWidth;
+                canvas.height = baseHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(img, 0, 0, baseWidth, baseHeight);
+
+                // Bake annotations into exported PDF canvas
+                annotations.forEach(ann => {
+                    const coordsObj = ann.coordinates || ann.coords || {};
+                    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0, x = 0, y = 0, points = [] } = coordsObj;
+                    const penColor = coordsObj.penColor || ann.penColor || '#ef4444';
+                    const penWidth = coordsObj.penWidth || ann.penWidth || 3;
+
+                    if (ann.type === 'pen' && points && points.length >= 2) {
+                        context.strokeStyle = penColor;
+                        context.lineWidth = penWidth;
+                        context.lineCap = 'round';
+                        context.lineJoin = 'round';
+                        context.beginPath();
+                        context.moveTo(points[0].x, points[0].y);
+                        for (let j = 1; j < points.length; j++) {
+                            context.lineTo(points[j].x, points[j].y);
+                        }
+                        context.stroke();
+                    } else if (ann.type === 'box') {
+                        context.strokeStyle = '#3b82f6';
+                        context.lineWidth = 3;
+                        const bx = Math.min(x1, x2);
+                        const by = Math.min(y1, y2);
+                        const bw = Math.abs(x2 - x1);
+                        const bh = Math.abs(y2 - y1);
+                        context.strokeRect(bx, by, bw, bh);
+                        if (ann.content || ann.text) {
+                            context.fillStyle = '#3b82f6';
+                            context.font = 'bold 16px Arial';
+                            context.fillText(ann.content || ann.text, bx + 8, by + 20);
+                        }
+                    } else if (ann.type === 'highlight') {
+                        context.fillStyle = 'rgba(234, 179, 8, 0.4)';
+                        context.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+                    } else if (ann.type === 'arrow' || ann.type === 'line') {
+                        context.strokeStyle = '#ef4444';
+                        context.lineWidth = 3;
+                        context.beginPath();
+                        context.moveTo(x1, y1);
+                        context.lineTo(x2, y2);
+                        context.stroke();
+                    } else if (ann.type === 'text' || ann.type === 'comment') {
+                        context.fillStyle = '#3b82f6';
+                        context.font = 'bold 16px Arial';
+                        context.fillText(ann.content || ann.text || 'Note', x || x1, y || y1);
+                    }
+                });
+
+                const doc = new jsPDF({
+                    orientation: baseWidth > baseHeight ? 'landscape' : 'portrait',
+                    unit: 'px',
+                    format: [baseWidth, baseHeight],
+                    compress: true
+                });
+
+                const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                doc.addImage(imgData, 'JPEG', 0, 0, baseWidth, baseHeight);
+                doc.save(`${drawing?.title || 'Drawing'}_reviewed_${Date.now()}.pdf`);
+                setExportProgress(100);
+                return;
+            }
+
+            // PDF Multi-page Export
             const exportScale = 1.5;
             const firstPage = await pdf.getPage(1);
             const firstViewport = firstPage.getViewport({ scale: exportScale });
@@ -1035,16 +1176,17 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
                 canvas.height = viewport.height; canvas.width = viewport.width;
                 await page.render({ canvasContext: context, viewport }).promise;
 
-                const pageAnns = annotations.filter(a => a.pageNumber === i);
+                const pageAnns = annotations.filter(a => (a.pageNumber || 1) === i);
                 pageAnns.forEach(ann => {
                     const s = exportScale;
-                    const { x1, y1, x2, y2, x, y, points } = ann.coordinates;
-                    context.lineWidth = 2 * s;
+                    const coordsObj = ann.coordinates || ann.coords || {};
+                    const { x1 = 0, y1 = 0, x2 = 0, y2 = 0, x = 0, y = 0, points = [] } = coordsObj;
+                    const penColor = coordsObj.penColor || ann.penColor || '#ef4444';
+                    const penWidth = coordsObj.penWidth || ann.penWidth || 3;
 
                     if (ann.type === 'pen' && points && points.length >= 2) {
-                        // Draw freehand pen stroke
-                        context.strokeStyle = ann.coordinates.penColor || ann.penColor || '#ef4444';
-                        context.lineWidth = (ann.coordinates.penWidth || ann.penWidth || 3) * s;
+                        context.strokeStyle = penColor;
+                        context.lineWidth = penWidth * s;
                         context.lineCap = 'round';
                         context.lineJoin = 'round';
                         context.beginPath();
@@ -1055,72 +1197,38 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
                         context.stroke();
                     } else if (ann.type === 'box') {
                         context.strokeStyle = '#3b82f6';
+                        context.lineWidth = 2 * s;
                         const bx = Math.min(x1, x2) * s;
                         const by = Math.min(y1, y2) * s;
                         const bw = Math.abs(x2 - x1) * s;
-                        let bh = Math.abs(y2 - y1) * s;
-
-                        let textLines = [];
-                        let totalHeight = 0;
-                        const paddingX = 6 * s;
-                        const paddingY = 6 * s;
-                        const lineHeight = 14 * s;
-
-                        if (ann.content) {
-                            context.font = `bold ${11 * s}px Arial`;
-                            textLines = ann.content.split('\n');
-                            totalHeight = textLines.length * lineHeight;
-                            const requiredHeight = totalHeight + paddingY * 2;
-                            if (requiredHeight > bh) {
-                                bh = requiredHeight;
-                            }
-                        }
-
-                        // Draw the box (with potentially expanded height)
+                        const bh = Math.abs(y2 - y1) * s;
                         context.strokeRect(bx, by, bw, bh);
-
-                        // Draw text lines inside the box
-                        if (ann.content) {
-                            context.fillStyle = '#3b82f6';
-                            textLines.forEach((line, index) => {
-                                context.fillText(line, bx + paddingX, by + paddingY + (index + 1) * lineHeight - 2 * s);
-                            });
-                        }
                     } else if (ann.type === 'highlight') {
                         context.fillStyle = 'rgba(234, 179, 8, 0.4)';
                         context.fillRect(Math.min(x1, x2) * s, Math.min(y1, y2) * s, Math.abs(x2 - x1) * s, Math.abs(y2 - y1) * s);
-                    } else if (ann.type === 'arrow') {
-                        context.strokeStyle = '#ef4444'; context.beginPath();
-                        context.moveTo(x1 * s, y1 * s); context.lineTo(x2 * s, y2 * s); context.stroke();
-                        const angle = Math.atan2((y2 - y1) * s, (x2 - x1) * s);
-                        context.beginPath(); context.moveTo(x2 * s, y2 * s);
-                        const arrowSize = 8 * s;
-                        context.lineTo(x2 * s - arrowSize * Math.cos(angle - Math.PI / 6), y2 * s - arrowSize * Math.sin(angle - Math.PI / 6));
-                        context.lineTo(x2 * s - arrowSize * Math.cos(angle + Math.PI / 6), y2 * s - arrowSize * Math.sin(angle + Math.PI / 6));
-                        context.closePath(); context.fillStyle = '#ef4444'; context.fill();
-                    } else if (ann.type === 'line') {
-                        context.strokeStyle = '#ef4444'; context.beginPath();
-                        context.moveTo(x1 * s, y1 * s); context.lineTo(x2 * s, y2 * s); context.stroke();
+                    } else if (ann.type === 'arrow' || ann.type === 'line') {
+                        context.strokeStyle = '#ef4444';
+                        context.lineWidth = 2 * s;
+                        context.beginPath();
+                        context.moveTo(x1 * s, y1 * s);
+                        context.lineTo(x2 * s, y2 * s);
+                        context.stroke();
                     } else if (ann.type === 'text' || ann.type === 'comment') {
                         context.fillStyle = '#3b82f6';
                         context.font = `bold ${12 * s}px Arial`;
-                        const text = ann.content || (ann.type === 'comment' ? 'Comment' : 'Note');
-                        const lines = text.split('\n');
-                        const lineHeight = 15 * s;
-                        lines.forEach((line, index) => {
-                            context.fillText(line, (x || x1) * s, (y || y1) * s + index * lineHeight);
-                        });
+                        context.fillText(ann.content || ann.text || 'Note', (x || x1) * s, (y || y1) * s);
                     }
                 });
 
-                doc.addImage(canvas.toDataURL('image/jpeg', 0.5), 'JPEG', 0, 0, viewport.width, viewport.height, undefined, 'FAST');
+                doc.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, viewport.width, viewport.height, undefined, 'FAST');
             }
-            doc.save(`${drawing.title}_reviewed_${Date.now()}.pdf`);
+            doc.save(`${drawing?.title || 'Drawing'}_reviewed_${Date.now()}.pdf`);
         } catch (err) {
             console.error('Export error:', err);
             alert(`Failed to export PDF: ${err.message}`);
         } finally {
-            setLoading(false); setExportProgress(0);
+            setLoading(false);
+            setExportProgress(0);
         }
     };
 
@@ -1252,11 +1360,19 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
                         <div 
                             key={i + 1} 
                             onClick={() => scrollToPage(i + 1)}
-                            className={`aspect-[3/4] rounded-lg border-2 cursor-pointer transition-all hover:border-blue-400 relative group overflow-hidden
-                                ${currentPage === i + 1 ? 'border-blue-600 ring-2 ring-blue-600/20' : 'border-white/5 bg-slate-900/50'}`}
+                            className={`aspect-[3/4] rounded-lg border-2 cursor-pointer transition-all hover:border-blue-400 relative group overflow-hidden bg-slate-900/80
+                                ${currentPage === i + 1 ? 'border-blue-600 ring-2 ring-blue-600/20 shadow-lg' : 'border-white/10 hover:border-white/20'}`}
                         >
-                            <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-500 opacity-20 group-hover:opacity-40 transition">PAGE {i + 1}</div>
-                            <div className="absolute bottom-1 right-1 bg-black/60 px-1.5 rounded text-[8px] font-black text-white">{i + 1}</div>
+                            {isImage || !pdf ? (
+                                <img 
+                                    src={fullFileUrl} 
+                                    alt={`Thumbnail Page ${i + 1}`} 
+                                    className="w-full h-full object-cover rounded"
+                                />
+                            ) : (
+                                <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-400 opacity-40 group-hover:opacity-70 transition">PAGE {i + 1}</div>
+                            )}
+                            <div className="absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.5 rounded text-[8px] font-black text-white z-10 shadow">PAGE {i + 1}</div>
                         </div>
                     ))}
                 </div>
@@ -1277,6 +1393,7 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
                         <div key={i + 1} ref={el => pageRefs.current[i + 1] = el}>
                             <DrawingPage 
                                 pdf={pdf}
+                                imageUrl={isImage || !pdf ? fullFileUrl : null}
                                 pageNumber={i + 1}
                                 zoom={zoom}
                                 annotations={annotations}
@@ -1285,8 +1402,8 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
                                 onDeleteAnnotation={handleDeleteAnnotation}
                                 selectedAnnotationId={selectedAnnotationId}
                                 setSelectedAnnotationId={setSelectedAnnotationId}
-                                drawingId={drawing._id}
-                                versionId={version._id}
+                                drawingId={drawing?._id || drawing?.id}
+                                versionId={version?._id || drawing?._id || drawing?.id}
                                 onVisible={setCurrentPage}
                                 penColor={penColor}
                                 penWidth={penWidth}
@@ -1312,32 +1429,39 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
                                 <p className="text-xs font-bold uppercase tracking-widest">No markups yet</p>
                             </div>
                         ) : (
-                            annotations.map(ann => (
-                                <div
-                                    key={ann._id}
-                                    onClick={() => {
-                                        scrollToPage(ann.pageNumber);
-                                        setSelectedAnnotationId(ann._id);
-                                    }}
-                                    className={`p-4 rounded-2xl border transition-all cursor-pointer relative group ${selectedAnnotationId === ann._id ? 'bg-blue-600/10 border-blue-500/50' : 'bg-slate-900/30 border-white/5 hover:border-white/10'}`}
-                                >
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2">
-                                            {ann.type === 'pen' && (
-                                                <span className="w-3 h-3 rounded-full inline-block" style={{ background: ann.coordinates.penColor || ann.penColor || '#ef4444' }} />
-                                            )}
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Page {ann.pageNumber}</span>
-                                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">{ann.type}</span>
+                            annotations.map(ann => {
+                                const annCoords = ann.coordinates || ann.coords || {};
+                                const penColor = annCoords.penColor || ann.penColor || '#ef4444';
+                                const userName = ann.userId?.fullName || ann.author?.name || 'User';
+                                const createdDate = ann.createdAt ? new Date(ann.createdAt).toLocaleDateString() : 'Today';
+
+                                return (
+                                    <div
+                                        key={ann._id || ann.id}
+                                        onClick={() => {
+                                            scrollToPage(ann.pageNumber || 1);
+                                            setSelectedAnnotationId(ann._id || ann.id);
+                                        }}
+                                        className={`p-4 rounded-2xl border transition-all cursor-pointer relative group ${selectedAnnotationId === (ann._id || ann.id) ? 'bg-blue-600/10 border-blue-500/50' : 'bg-slate-900/30 border-white/5 hover:border-white/10'}`}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                {ann.type === 'pen' && (
+                                                    <span className="w-3 h-3 rounded-full inline-block" style={{ background: penColor }} />
+                                                )}
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Page {ann.pageNumber || 1}</span>
+                                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">{ann.type}</span>
+                                            </div>
+                                            <button onClick={(e) => handleDeleteAnnotation(ann._id || ann.id, e)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition"><Trash2 size={12} /></button>
                                         </div>
-                                        <button onClick={(e) => handleDeleteAnnotation(ann._id, e)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition"><Trash2 size={12} /></button>
+                                        <p className="text-sm font-medium text-slate-200 line-clamp-3">{ann.content || ann.text || `A ${ann.type} markup added.`}</p>
+                                        <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
+                                            <span className="font-bold text-blue-400">@{userName.split(' ')[0]}</span>
+                                            <span>{createdDate}</span>
+                                        </div>
                                     </div>
-                                    <p className="text-sm font-medium text-slate-200 line-clamp-3">{ann.content || `A ${ann.type} markup added.`}</p>
-                                    <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
-                                        <span className="font-bold text-blue-400">@{ann.userId?.fullName?.split(' ')[0]}</span>
-                                        <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
-                                    </div>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>

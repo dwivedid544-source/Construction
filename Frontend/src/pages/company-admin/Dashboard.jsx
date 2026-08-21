@@ -1187,14 +1187,22 @@ const CompanyAdminDashboard = () => {
           {!(isWorker || isSubcontractor) && (
             <div className="bg-transparent">
               <h3 className="text-base font-black text-slate-800 mb-4 tracking-tight">Quick Actions</h3>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                {isOwnerOrPM && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {isOwner && (
                   <>
-                    <QuickActionButton label="Clock In crew" icon={CheckCircle} bg="bg-blue-600" color="text-white" onClick={() => navigate('/company-admin/timesheets')} />
+                    <QuickActionButton label="Review Timesheets" icon={Clock} bg="bg-blue-600" color="text-white" onClick={() => navigate('/company-admin/timesheets')} />
+                    <QuickActionButton label="Review Daily Logs" icon={FileText} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/daily-logs')} />
+                    <QuickActionButton label="Approve POs" icon={ClipboardList} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/purchase-orders')} />
+                    <QuickActionButton label="Run Payroll" icon={DollarSign} bg="bg-emerald-600" color="text-white" onClick={() => navigate('/company-admin/payroll')} />
+                  </>
+                )}
+
+                {isPM && (
+                  <>
+                    <QuickActionButton label="Clock In Crew" icon={Users} bg="bg-blue-600" color="text-white" onClick={() => navigate('/company-admin/crew-clock')} />
                     <QuickActionButton label="Daily Log" icon={FileText} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/daily-logs')} />
                     <QuickActionButton label="Upload Photo" icon={Camera} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/photos')} />
-                    {/* <QuickActionButton label="Equipment Hours" icon={Wrench} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/equipment')} /> */}
-                    <QuickActionButton label="Create PO" icon={ClipboardList} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/purchase-orders')} />
+                    <QuickActionButton label="Create PO" icon={ClipboardList} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/purchase-orders/new')} />
                   </>
                 )}
 
@@ -1203,8 +1211,7 @@ const CompanyAdminDashboard = () => {
                     <QuickActionButton label="Clock In Crew" icon={Users} bg="bg-blue-600" color="text-white" onClick={() => navigate('/company-admin/crew-clock')} />
                     <QuickActionButton label="Add Daily Log" icon={FileText} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/daily-logs')} />
                     <QuickActionButton label="Upload Site Photo" icon={Camera} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/photos')} />
-                    {/* <QuickActionButton label="Equipment Tracking" icon={Wrench} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/equipment')} /> */}
-                    <QuickActionButton label="Create PO" icon={ClipboardList} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/purchase-orders')} />
+                    <QuickActionButton label="Create PO" icon={ClipboardList} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/purchase-orders/new')} />
                   </>
                 )}
               </div>

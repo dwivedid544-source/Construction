@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Building, Mail, Lock, User, Phone, ArrowRight, Loader, CheckCircle } from 'lucide-react';
-import Logo from '../../assets/images/logo.png.jpeg';
+import Logo from '../../assets/images/Logo.png';
 import api from '../../utils/api';
 
 const FEATURES = [

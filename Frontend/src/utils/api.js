@@ -27,10 +27,16 @@ api.interceptors.request.use(
 );
 
 export const getServerUrl = (path) => {
-    if (!path) return '';
-    if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return path;
-    const baseUrl = BASE_URL;
-    return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+    if (!path || typeof path !== 'string') return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:') || path.startsWith('data:')) {
+        return path;
+    }
+    let clean = path.replace(/\\/g, '/');
+    if (clean.includes('uploads/')) {
+        clean = '/uploads/' + clean.split('uploads/')[1];
+    }
+    const base = (import.meta.env.VITE_API_URL || 'http://localhost:4000/api').replace(/\/api\/?$/, '');
+    return `${base}${clean.startsWith('/') ? '' : '/'}${clean}`;
 };
 
 export default api;

@@ -31,7 +31,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/logo.png.jpeg';
+import logo from '../../assets/images/Logo.png';
 
 const ProjectIntelligence = () => {
     const [projects, setProjects] = useState([]);

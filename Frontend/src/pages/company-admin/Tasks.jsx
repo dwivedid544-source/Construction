@@ -2582,7 +2582,8 @@ const Tasks = () => {
     };
 
     const handleSave = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
+        if (isSubmitting) return;
         try {
             setIsSubmitting(true);
             const payload = {
@@ -2731,6 +2732,7 @@ const Tasks = () => {
     };
 
     const canManage = ['ADMIN', 'SUPER_ADMIN', 'COMPANY_OWNER', 'PM', 'FOREMAN'].includes(user?.role);
+    const canCreateTask = ['SUPER_ADMIN', 'PM', 'FOREMAN'].includes(user?.role);
 
     return (
         <div className={`space-y-4 animate-fade-in ${['calendar', 'list', 'kanban', 'gantt'].includes(view) ? 'pb-20' : 'h-[calc(100vh-80px)] flex flex-col'}`}>
@@ -2776,7 +2778,7 @@ const Tasks = () => {
                         </button>
                     </div>
 
-                    {canManage && (
+                    {canCreateTask && (
                         <div className="flex gap-2 shrink-0">
                             {selectedTasks.size > 0 && (
                                 <button

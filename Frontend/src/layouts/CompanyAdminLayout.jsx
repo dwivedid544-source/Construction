@@ -7,10 +7,10 @@ import {
   LayoutDashboard, Briefcase, Clock, FileText,
   Wrench, ClipboardList, BarChart2, DollarSign,
   Users, Settings, LogOut, Menu, X, Bell, MessageSquare,
-  Search, ChevronDown, RefreshCw, MapPin, Building2, PenTool, Camera, FileQuestion, AlertCircle, Activity, Lock, CheckCircle
+  Search, ChevronDown, ChevronRight, RefreshCw, MapPin, Building2, PenTool, Camera, FileQuestion, AlertCircle, Activity, Lock, CheckCircle, Check
 } from 'lucide-react';
 import api, { BASE_URL } from '../utils/api';
-import Logo from '../assets/images/logo.png.jpeg';
+import Logo from '../assets/images/Logo.png';
 import { playSound } from '../utils/notificationSound';
 import toast from 'react-hot-toast';
 import Modal from '../components/Modal';
@@ -37,9 +37,13 @@ const CompanyAdminLayout = () => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showPlansModal, setShowPlansModal] = useState(false);
   const [plansList, setPlansList] = useState([]);
-  const [showTrialExpiredModal, setShowTrialExpiredModal] = useState(() => {
-    return localStorage.getItem('isTrialActive') === 'true' || localStorage.getItem('subscriptionStatus') === 'expired';
+  const [trialInfo, setTrialInfo] = useState({
+    isExpired: false,
+    daysRemaining: null,
+    isTrialActive: false,
+    subscriptionStatus: 'active'
   });
+  const [showTrialExpiredModal, setShowTrialExpiredModal] = useState(false);
 
   const fetchPlans = async () => {
     try {
@@ -53,6 +57,75 @@ const CompanyAdminLayout = () => {
   useEffect(() => {
     fetchPlans();
   }, []);
+
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [newPasswordValue, setNewPasswordValue] = useState('');
+  const [confirmPasswordValue, setConfirmPasswordValue] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  const fetchUserProfile = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      if (res.data) {
+        updateUserData(res.data);
+
+        // Check if first login after purchase/registration
+        if (res.data.mustChangePassword || localStorage.getItem('mustChangePassword') === 'true') {
+          setShowChangePasswordModal(true);
+        }
+
+        const comp = res.data.companyDetails;
+        if (comp) {
+          const isExpired = Boolean(comp.isExpired || comp.subscriptionStatus === 'expired');
+          const isTrial = Boolean(comp.isTrialActive || (comp.subscriptionPlan?.price === 0 && !isExpired));
+          const daysRemaining = comp.daysRemaining !== undefined ? comp.daysRemaining : null;
+
+          setTrialInfo({
+            isExpired,
+            daysRemaining,
+            isTrialActive: isTrial,
+            subscriptionStatus: comp.subscriptionStatus || (isExpired ? 'expired' : 'active')
+          });
+
+          if (isExpired && res.data.role !== 'SUPER_ADMIN') {
+            setShowTrialExpiredModal(true);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to sync profile:', err);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!newPasswordValue) {
+      toast.error('Please enter a new password.');
+      return;
+    }
+    if (newPasswordValue.length < 6) {
+      toast.error('Password must be at least 6 characters long.');
+      return;
+    }
+    if (newPasswordValue !== confirmPasswordValue) {
+      toast.error('Passwords do not match. Please re-enter.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      await api.patch('/auth/updatepassword', { newPassword: newPasswordValue });
+      localStorage.removeItem('mustChangePassword');
+      toast.success('🎉 Password updated successfully! Your account is fully secured.');
+      setShowChangePasswordModal(false);
+      setNewPasswordValue('');
+      setConfirmPasswordValue('');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update password. Please try again.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
 
   const handleRazorpayBuyPlan = async (amountInRupees = 999, planName = 'KT Construct Pro Plan', planId = null) => {
     try {
@@ -222,16 +295,6 @@ const CompanyAdminLayout = () => {
     }
   };
 
-  const fetchUserProfile = async () => {
-    try {
-      const res = await api.get('/auth/me');
-      if (res.data) {
-        updateUserData(res.data);
-      }
-    } catch (err) {
-      console.error('Failed to sync profile:', err);
-    }
-  };
 
   useEffect(() => {
     fetchUserProfile();
@@ -337,8 +400,7 @@ const CompanyAdminLayout = () => {
         { icon: Clock, label: 'Timesheets', path: '/company-admin/timesheets', permission: 'VIEW_TIMESHEETS' },
         { icon: FileText, label: 'Daily Logs', path: '/company-admin/daily-logs', permission: 'VIEW_DAILY_LOGS' },
         { icon: Users, label: 'Trade Management', path: '/company-admin/trades', permission: 'VIEW_DAILY_LOGS' },
-        { icon: AlertCircle, label: 'Issues', path: '/company-admin/issues', permission: 'VIEW_ISSUES', badge: issueCount > 0 ? issueCount : null },
-        { icon: MapPin, label: 'GPS Tracking', path: '/company-admin/gps', permission: 'VIEW_GPS' },
+        { icon: AlertCircle, label: 'Issues', path: '/company-admin/issues', permission: 'VIEW_ISSUES', badge: issueCount > 0 ? issueCount : null }
       ]
     },
     {
@@ -369,13 +431,23 @@ const CompanyAdminLayout = () => {
     return menuGroups.map(group => ({
       ...group,
       items: group.items.filter(item => {
-        // Self clock-in ("My Clock") is available to EVERY role — the backend allows
-        // self clock-in for all authenticated users regardless of CLOCK_IN_* permissions.
+        // Self clock-in ("My Clock") is available to EVERY role
         if (item.label === 'My Clock') return true;
-        if (user?.role === 'COMPANY_OWNER') {
+        
+        // Company Owner and Super Admin have company-wide oversight across all modules
+        if (user?.role === 'COMPANY_OWNER' || user?.role === 'SUPER_ADMIN') {
           return true;
         }
-        return user?.permissions?.includes(item.permission);
+
+        // PM: Operational project management & execution. Block company-level finance (Payroll) & Settings.
+        if (user?.role === 'PM') {
+          if (item.label === 'Payroll' || item.permission === 'VIEW_PAYROLL') return false;
+          if (item.label === 'Settings' || item.permission === 'ACCESS_SETTINGS') return false;
+          return true;
+        }
+
+        const perms = user?.permissions || [];
+        return perms.includes(item.permission);
       })
     })).filter(group => group.items.length > 0);
   };
@@ -411,14 +483,17 @@ const CompanyAdminLayout = () => {
             <div className="absolute -inset-1 bg-gradient-to-r from-[#155dff] to-[#4e8cff] rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
             <div className="relative w-12 h-12 bg-[#0f172a] border border-[#1e293b] rounded-full flex items-center justify-center overflow-hidden">
               <img
-                src={Logo}
-                alt="KT Construct Logo"
-                className="h-8 w-auto"
+                src={user?.companyDetails?.logo || user?.avatar || Logo}
+                alt="Company Logo"
+                className="h-full w-full object-contain p-1"
               />
             </div>
           </div>
-          <div className="mt-4 text-center">
-             <div className="h-[2px] w-8 bg-[#155dff] mx-auto mb-2 rounded-full"></div>
+          <div className="mt-3 text-center">
+             <h4 className="text-xs font-black text-white tracking-wide truncate max-w-[190px]">
+               {user?.companyDetails?.name || user?.fullName || 'KT Construct'}
+             </h4>
+             <div className="h-[2px] w-8 bg-[#155dff] mx-auto mt-1.5 mb-1.5 rounded-full"></div>
              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">{user?.role?.replace(/_/g, ' ') || 'Admin'}</p>
           </div>
         </div>
@@ -476,7 +551,7 @@ const CompanyAdminLayout = () => {
               {user?.avatar ? (
                 <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                (user?.fullName || 'A').charAt(0)
+                <img src={Logo} alt="Logo" className="w-full h-full object-contain p-1" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -581,11 +656,18 @@ const CompanyAdminLayout = () => {
           </div>
 
           <div className="flex items-center gap-2 md:gap-6">
-            {/* Company Branding (Static) */}
-            <div className="text-right hidden md:block">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Organization</span>
-              <div className="text-sm font-black text-slate-900 leading-none">
-                {user?.company?.name || user?.companyName || 'KT Construct'}
+            {/* Company Branding */}
+            <div className="items-center gap-2.5 hidden md:flex">
+              <img
+                src={user?.companyDetails?.logo || user?.avatar || Logo}
+                alt="Org Logo"
+                className="w-7 h-7 rounded-lg object-contain p-0.5 border border-slate-200"
+              />
+              <div className="text-right">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Organization</span>
+                <div className="text-xs font-black text-slate-900 leading-none">
+                  {user?.companyDetails?.name || user?.company?.name || user?.companyName || 'KT Construct'}
+                </div>
               </div>
             </div>
 
@@ -731,13 +813,11 @@ const CompanyAdminLayout = () => {
                 onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                 className="flex items-center gap-3 hover:bg-slate-50 p-1 pr-3 rounded-full border border-transparent hover:border-slate-200 transition"
               >
-                <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-white shadow-sm bg-slate-200">
+                <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-white shadow-sm bg-slate-200 flex items-center justify-center">
                   {user?.avatar ? (
                     <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-blue-100 text-blue-600 font-bold">
-                      {(user?.fullName || 'U').charAt(0)}
-                    </div>
+                    <img src={Logo} alt="Profile" className="w-full h-full object-contain p-1" />
                   )}
                 </div>
                 <div className="text-left hidden lg:block">
@@ -776,6 +856,26 @@ const CompanyAdminLayout = () => {
           </div>
         </header>
 
+        {/* ⏳ Free Trial Countdown Warning Banner */}
+        {trialInfo.isTrialActive && !trialInfo.isExpired && trialInfo.daysRemaining !== null && (
+          <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 text-white px-4 py-2.5 flex items-center justify-between shadow-md text-xs font-medium z-10">
+            <div className="flex items-center gap-2">
+              <span className="text-base">⏳</span>
+              <span>
+                <strong className="font-extrabold uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded text-[11px] mr-1.5">Free Trial Active</strong>
+                Your 7-day trial expires in <strong className="font-black text-amber-200">{trialInfo.daysRemaining} day{trialInfo.daysRemaining === 1 ? '' : 's'}</strong>. Upgrade now to preserve full project data and unlimited access.
+              </span>
+            </div>
+            <button
+              onClick={() => setShowPlansModal(true)}
+              className="px-3.5 py-1 bg-white text-orange-700 hover:bg-orange-50 font-black rounded-lg text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-1 shrink-0"
+            >
+              <span>Upgrade Plan</span>
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        )}
+
         {/* Dynamic Content */}
         <main className="flex-1 overflow-auto bg-[#f3f4f7] scroll-smooth p-3 md:p-4 px-1 md:px-2">
           <div className="w-full">
@@ -783,6 +883,7 @@ const CompanyAdminLayout = () => {
           </div>
         </main>
       </div>
+
       {/* Clear Notifications Confirmation Modal */}
       <Modal
         isOpen={showClearConfirm}
@@ -824,72 +925,64 @@ const CompanyAdminLayout = () => {
         </div>
       </Modal>
 
-      {/* Trial Expired Modal */}
+      {/* Trial Expired Lockout Modal */}
       <Modal
         isOpen={showTrialExpiredModal}
-        onClose={() => setShowTrialExpiredModal(false)}
-        maxWidth="max-w-md"
+        onClose={() => {
+          if (!trialInfo.isExpired) setShowTrialExpiredModal(false);
+        }}
+        maxWidth="max-w-xl"
         hideHeader={true}
         darkMode={true}
       >
         <div className="bg-[#0b0f19] p-6 md:p-8 rounded-3xl text-center border border-white/[0.08] shadow-2xl text-white relative">
           {/* Brand Lock Circle Icon */}
-          <div className="w-16 h-16 rounded-2xl bg-[#155dff]/15 border border-[#155dff]/30 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-[#155dff]/20">
-            <Lock size={28} className="text-[#155dff]" />
+          <div className="w-16 h-16 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-orange-500/20">
+            <Lock size={28} className="text-orange-400" />
           </div>
 
           {/* Title */}
           <h3 className="text-2xl font-extrabold text-white mb-2 tracking-tight">
-            Your Free Trial Has Expired
+            Your 7-Day Free Trial Has Expired
           </h3>
 
           {/* Subtitle */}
           <p className="text-xs md:text-sm text-slate-400 leading-relaxed mb-6 px-2">
-            Your 7-day free trial has expired. Upgrade to a paid plan now to restore full access to your construction management software and data.
+            Your 7-day free trial has completed. To restore full access to your projects, jobs, site logs, worker tracking, and financials, please choose an active subscription plan below.
           </p>
 
           {/* Access Blocked Banner */}
-          <div className="bg-[#155dff]/10 border border-[#155dff]/25 rounded-2xl p-4 mb-6 text-left backdrop-blur-sm">
-            <div className="text-xs font-bold text-[#155dff] mb-1 flex items-center gap-1.5 uppercase tracking-wider">
-              <span>⚠️</span> Access Restricted
+          <div className="bg-orange-500/10 border border-orange-500/25 rounded-2xl p-4 mb-6 text-left backdrop-blur-sm">
+            <div className="text-xs font-bold text-orange-400 mb-1 flex items-center gap-1.5 uppercase tracking-wider">
+              <span>⚠️</span> Account Access Locked
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Dashboard, Members, Staff, Reports, Payments and all other modules will remain restricted until an active subscription plan is purchased.
+              Dashboard, Projects, Daily Logs, Team Members, and Reports are currently locked. Payment unlocks your workspace immediately.
             </p>
           </div>
 
           {/* Action Buttons */}
           <div className="space-y-3">
-            {/* Buy Plan Now -> Triggers Razorpay */}
-            <button
-              onClick={() => {
-                handleRazorpayBuyPlan(799, 'Standard 799');
-              }}
-              className="w-full py-3.5 bg-[#155dff] hover:bg-blue-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[#155dff]/30 transition-all text-xs uppercase tracking-wider"
-            >
-              <span className="text-sm">🛒</span> Buy Plan Now
-            </button>
-
-            {/* View Plans */}
+            {/* View Plans & Upgrade */}
             <button
               onClick={() => {
                 setShowTrialExpiredModal(false);
                 setShowPlansModal(true);
               }}
-              className="w-full py-3 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider"
+              className="w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 transition-all text-xs uppercase tracking-wider"
             >
-              <span className="text-sm">📋</span> View Plans
+              <span className="text-sm">⚡</span> Choose Subscription Plan
             </button>
 
-            {/* Contact Support */}
-            <a
-              href="https://wa.me/919752100980"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] text-slate-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider text-center block"
+            {/* Direct Standard Plan Checkout */}
+            <button
+              onClick={() => {
+                handleRazorpayBuyPlan(1299, 'Standard Plan');
+              }}
+              className="w-full py-3 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.15] text-amber-300 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider"
             >
-              <span className="text-sm">💬</span> Contact Support
-            </a>
+              <span>⭐</span> Buy Standard Plan (₹1,299/mo)
+            </button>
 
             {/* Logout */}
             <button
@@ -902,79 +995,320 @@ const CompanyAdminLayout = () => {
         </div>
       </Modal>
 
-      {/* Subscription Plans Modal */}
+      {/* Subscription Plans Modal (Matching Screenshot 1) */}
       <Modal
         isOpen={showPlansModal}
-        onClose={() => setShowPlansModal(false)}
-        maxWidth="max-w-4xl"
+        onClose={() => {
+          if (!trialInfo.isExpired) setShowPlansModal(false);
+        }}
+        maxWidth="max-w-5xl"
         darkMode={true}
         hideHeader={false}
-        title="Choose a Subscription Plan"
+        title="Upgrade Your Subscription Plan"
       >
-        <div className="bg-[#0b0f19] p-4 md:p-6 rounded-3xl text-white space-y-6">
+        <div className="p-4 md:p-6 space-y-6">
           <div className="text-center max-w-lg mx-auto">
-            <h3 className="text-xl md:text-2xl font-black tracking-tight text-white">Available SaaS Subscription Plans</h3>
-            <p className="text-xs text-slate-400 mt-1">Select a plan to restore full access to your construction software and data.</p>
+            <h3 className="text-xl md:text-2xl font-black tracking-tight text-white">Choose Your Growth Plan</h3>
+            <p className="text-xs text-slate-400 mt-1">Unlock unrestricted access to projects, field operations, blueprints, and analytics.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {(plansList && plansList.length > 0 ? plansList : [
-              { id: 'starter', name: 'Starter 599', price: 599, period: 'Month', isPopular: false, features: ['Core Project Tracking', 'Up to 5 Users', 'Standard Support'] },
-              { id: 'standard', name: 'Standard 799', price: 799, period: 'Month', isPopular: true, features: ['Field Operations & RFIs', 'Up to 15 Users', 'Priority Support'] },
-              { id: 'pro', name: 'Pro 1299', price: 1299, period: 'Month', isPopular: false, features: ['Unlimited Projects', 'Unlimited Users', 'Dedicated 24/7 Support'] },
+              { id: 'starter', name: 'STARTER PLAN', price: 999, period: 'month', isPopular: false, tag: 'SMALL TEAM', maxProjects: 3, maxJobs: 5, maxUsers: 5, features: ['Up to 3 Active Projects', 'Up to 5 Jobs', 'Up to 5 Team Members', 'Daily Site Logs & Receipts', 'Purchase Orders (PO) & Invoices'] },
+              { id: 'standard', name: 'STANDARD PLAN', price: 1299, period: 'month', isPopular: true, tag: 'RECOMMENDED', maxProjects: 10, maxJobs: 25, maxUsers: 15, features: ['Everything in Starter Plan', 'Up to 10 Projects & 25 Jobs', 'Up to 15 Team Members', 'Interactive Gantt Schedules', 'GPS Crew Clock-in & Geofencing', 'Blueprint Center (25 GB)'] },
+              { id: 'pro', name: 'PRO PLAN', price: 1499, period: 'month', isPopular: false, tag: 'UNCAPPED POWER', maxProjects: 50, maxJobs: 100, maxUsers: 50, features: ['Everything in Standard Plan', 'Up to 50 Projects & 100 Jobs', 'Up to 50 Team Members', 'AI-Powered Delay Forecasts', 'Full PO & Financial ERP', 'Priority 24/7 Dedicated Support'] },
             ])
-            .filter(plan => plan.price > 0 && !plan.name.toLowerCase().includes('free') && !plan.name.toLowerCase().includes('trial'))
-            .map((plan) => (
-              <div
-                key={plan._id || plan.id}
-                className={`bg-[#141b2d] rounded-2xl p-5 border flex flex-col justify-between relative transition-all hover:scale-[1.02] ${
-                  plan.isPopular ? 'border-[#155dff] shadow-lg shadow-[#155dff]/20' : 'border-slate-800'
-                }`}
-              >
-                {plan.isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#155dff] text-white text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest">
-                    Popular
-                  </div>
-                )}
-                <div>
-                  <h4 className="font-bold text-lg text-white mb-1">{plan.name}</h4>
-                  <div className="flex items-baseline gap-1 my-3">
-                    <span className="text-3xl font-black text-white">₹{plan.price}</span>
-                    <span className="text-xs text-slate-400 font-medium">/{plan.period}</span>
-                  </div>
-                  <ul className="space-y-2 mb-6">
-                    {(Array.isArray(plan.features)
-                      ? plan.features
-                      : (plan.features && typeof plan.features === 'object'
-                          ? Object.keys(plan.features)
-                          : ['Full Modules Access', '24/7 Priority Support'])
-                    ).map((feat, i) => (
-                      <li key={i} className="flex items-center gap-2 text-xs text-slate-300">
-                        <CheckCircle size={14} className="text-[#155dff] shrink-0" />
-                        <span>{typeof feat === 'string' ? feat.replace(/_/g, ' ') : String(feat)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setShowPlansModal(false);
-                    handleRazorpayBuyPlan(plan.price, plan.name);
+            .filter(plan => plan.price > 0 && !plan.name.toLowerCase().includes('free') && !plan.name.toLowerCase().includes('trial') && !plan.name.toLowerCase().includes('custom'))
+            .map((plan) => {
+              const isPopular = Boolean(plan.isPopular || plan.tag === 'RECOMMENDED' || plan.name.includes('STANDARD'));
+              return (
+                <div
+                  key={plan._id || plan.id}
+                  className="rounded-3xl p-6 flex flex-col justify-between relative transition-all"
+                  style={{
+                    background: isPopular ? 'linear-gradient(180deg, rgba(22, 38, 70, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)' : 'rgba(15, 23, 42, 0.85)',
+                    backdropFilter: 'blur(16px)',
+                    border: isPopular ? '2px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.22)',
+                    boxShadow: isPopular ? '0 16px 45px rgba(37, 99, 235, 0.35)' : '0 8px 30px rgba(0, 0, 0, 0.3)'
                   }}
-                  className={`w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                    plan.isPopular
-                      ? 'bg-[#155dff] hover:bg-blue-600 text-white shadow-lg shadow-[#155dff]/30'
-                      : 'bg-white/10 hover:bg-white/20 text-white border border-white/10'
-                  }`}
                 >
-                  {plan.price === 0 ? 'Start Trial' : 'Buy Now'}
-                </button>
-              </div>
-            ))}
+                  {isPopular && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 14,
+                        right: -30,
+                        transform: 'rotate(45deg)',
+                        background: 'linear-gradient(135deg, #1d4ed8, #3b82f6)',
+                        color: '#ffffff',
+                        fontSize: 9,
+                        fontWeight: 900,
+                        letterSpacing: '0.1em',
+                        padding: '3px 32px',
+                        textTransform: 'uppercase'
+                      }}
+                    >
+                      POPULAR
+                    </div>
+                  )}
+
+                  <div>
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        padding: '4px 10px',
+                        borderRadius: 10,
+                        background: isPopular ? 'rgba(37, 99, 235, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                        border: isPopular ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                        color: isPopular ? '#60a5fa' : '#94a3b8',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        marginBottom: 12
+                      }}
+                    >
+                      {plan.tag || (isPopular ? 'RECOMMENDED' : 'SMALL TEAM')}
+                    </div>
+
+                    <h4 className="font-extrabold text-lg text-white mb-1">{plan.name}</h4>
+                    <div className="flex items-baseline gap-1 my-3 pb-3 border-b border-white/[0.08]">
+                      <span className="text-3xl font-black text-white">₹{plan.price?.toLocaleString('en-IN')}</span>
+                      <span className="text-xs text-slate-400 font-semibold">/{plan.period || 'month'}</span>
+                    </div>
+
+                    <ul className="space-y-2.5 mb-6">
+                      {(Array.isArray(plan.features)
+                        ? plan.features
+                        : ['Full Modules Access', 'Field Operations', 'Priority Support']
+                      ).map((feat, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-slate-300 leading-snug">
+                          <div className="w-4 h-4 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                            <Check size={10} className="text-[#60a5fa]" strokeWidth={3} />
+                          </div>
+                          <span>{typeof feat === 'string' ? feat.replace(/_/g, ' ') : String(feat)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setShowPlansModal(false);
+                      handleRazorpayBuyPlan(plan.price, plan.name, plan._id || plan.id);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: 16,
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      border: isPopular ? 'none' : '1px solid rgba(59, 130, 246, 0.3)',
+                      background: isPopular ? 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)' : 'rgba(255, 255, 255, 0.05)',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      boxShadow: isPopular ? '0 4px 18px rgba(37, 99, 235, 0.45)' : 'none'
+                    }}
+                  >
+                    <span>Choose Plan</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </Modal>
+
+      {/* ══ FIRST LOGIN: CHANGE PASSWORD MODAL ══ */}
+      {showChangePasswordModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10000,
+          background: 'rgba(4, 9, 20, 0.85)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#0d1527',
+            color: '#ffffff',
+            borderRadius: 24,
+            width: '100%',
+            maxWidth: 460,
+            overflow: 'hidden',
+            border: '1.5px solid rgba(59, 130, 246, 0.35)',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 50px rgba(37, 99, 235, 0.25)',
+            position: 'relative',
+            animation: 'fadeIn 0.25s ease-out'
+          }}>
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #2563eb 100%)',
+              padding: '22px 24px',
+              color: '#ffffff',
+              position: 'relative',
+              borderBottom: '1px solid rgba(59, 130, 246, 0.3)'
+            }}>
+              <button
+                onClick={() => {
+                  setShowChangePasswordModal(false);
+                  localStorage.removeItem('mustChangePassword');
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 18,
+                  right: 18,
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  border: 'none',
+                  color: '#ffffff',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'}
+              >
+                <X size={18} />
+              </button>
+              <h3 style={{ fontSize: 19, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8, color: '#ffffff' }}>
+                🔐 Welcome! Please Change Your Password
+              </h3>
+              <p style={{ fontSize: 12.5, color: '#bfdbfe', margin: '6px 0 0', lineHeight: 1.4 }}>
+                For account security on your new subscription, please choose your personal password.
+              </p>
+            </div>
+
+            {/* Body Form */}
+            <form onSubmit={handleChangePasswordSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                  New Password *
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter new password (min 6 characters)"
+                  value={newPasswordValue}
+                  onChange={e => setNewPasswordValue(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '11px 14px',
+                    borderRadius: 12,
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                    fontSize: 14,
+                    color: '#ffffff',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                  onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                  Confirm New Password *
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Re-enter new password"
+                  value={confirmPasswordValue}
+                  onChange={e => setConfirmPasswordValue(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '11px 14px',
+                    borderRadius: 12,
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                    fontSize: 14,
+                    color: '#ffffff',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                  onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                  onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangePasswordModal(false);
+                    localStorage.removeItem('mustChangePassword');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: 12,
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    color: '#94a3b8',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    fontSize: 13.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                >
+                  Remind Me Later
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingPassword}
+                  style={{
+                    flex: 2,
+                    padding: '12px 18px',
+                    borderRadius: 12,
+                    background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    cursor: isUpdatingPassword ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 16px rgba(37, 99, 235, 0.5)',
+                    letterSpacing: '0.02em',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={e => {
+                    if (!isUpdatingPassword) {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(37, 99, 235, 0.7)';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!isUpdatingPassword) {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 16px rgba(37, 99, 235, 0.5)';
+                    }
+                  }}
+                >
+                  {isUpdatingPassword ? 'Updating...' : 'Save New Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

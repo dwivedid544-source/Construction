@@ -8,8 +8,8 @@ import {
   Bell, Search, TrendingUp, Bookmark, FileText, ChevronDown, MessageSquare, AlertCircle
 } from 'lucide-react';
 import api, { BASE_URL, getServerUrl } from '../utils/api';
-import Logo from '../assets/images/logo.png.jpeg';
-import sidebarlogo from '../assets/images/logo.png.jpeg';
+import Logo from '../assets/images/Logo.png';
+import sidebarlogo from '../assets/images/Logo.png';
 import { playSound } from '../utils/notificationSound';
 import Modal from '../components/Modal';
 

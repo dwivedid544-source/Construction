@@ -643,12 +643,14 @@ const Issues = () => {
                 <List size={20} />
               </button>
             </div>
-            <button
-              onClick={() => { setFormData({ title: '', projectId: '', priority: 'medium', status: 'open', assignedTo: '', dueDate: '', description: '', category: 'general', images: [], newImages: [] }); setIsReportOpen(true); }}
-              className="bg-red-600 text-white px-8 py-3 rounded-2xl flex items-center gap-2 hover:bg-red-700 transition shadow-xl shadow-red-200 font-black text-sm uppercase tracking-tight"
-            >
-              <Plus size={18} /> Log Critical Snag
-            </button>
+            {['PM', 'FOREMAN', 'WORKER', 'ENGINEER', 'SUBCONTRACTOR', 'SUPER_ADMIN'].includes(user?.role) && (
+              <button
+                onClick={() => { setFormData({ title: '', projectId: '', priority: 'medium', status: 'open', assignedTo: '', dueDate: '', description: '', category: 'general', images: [], newImages: [] }); setIsReportOpen(true); }}
+                className="bg-red-600 text-white px-8 py-3 rounded-2xl flex items-center gap-2 hover:bg-red-700 transition shadow-xl shadow-red-200 font-black text-sm uppercase tracking-tight"
+              >
+                <Plus size={18} /> Log Critical Snag
+              </button>
+            )}
           </div>
         </div>
       </div>

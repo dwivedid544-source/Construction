@@ -227,7 +227,7 @@ const DailyLogs = () => {
                     </p>
                 </div>
                 <div className="flex gap-3">
-                    {!isSubcontractor && (
+                    {['PM', 'FOREMAN', 'WORKER', 'SUPER_ADMIN'].includes(user?.role) && (
                         <button
                             onClick={handleCreate}
                             className="bg-blue-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 font-black text-sm uppercase tracking-tight"

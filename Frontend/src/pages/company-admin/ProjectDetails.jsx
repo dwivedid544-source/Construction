@@ -8,7 +8,7 @@ import {
     Loader, ChevronRight, LayoutGrid, List, Search, Filter, AlertTriangle, Users, FileText, TrendingUp, ChevronDown, MessageSquare, ShoppingCart,
     CheckCircle, Flag, UserCheck, User, ClipboardList, Image as ImageIcon, X, Phone, Mail, Eye, Check
 } from 'lucide-react';
-import api from '../../utils/api';
+import api, { getServerUrl } from '../../utils/api';
 
 import DeficiencyModal from '../../components/deficiencies/DeficiencyModal';
 import Modal from '../../components/Modal';
@@ -218,9 +218,46 @@ const ProjectDetails = () => {
         }
     };
 
+    const fetchProjectTasks = async () => {
+        try {
+            setTasksLoading(true);
+            const res = await api.get(`/tasks?projectId=${projectId}`);
+            const rawData = res.data;
+            const tasksArr = Array.isArray(rawData) 
+                ? rawData 
+                : Array.isArray(rawData?.data) 
+                ? rawData.data 
+                : Array.isArray(rawData?.tasks) 
+                ? rawData.tasks 
+                : [];
+            setProjectTasks(tasksArr);
+        } catch (err) {
+            console.error('Failed to fetch project tasks:', err);
+            setProjectTasks([]);
+        } finally {
+            setTasksLoading(false);
+        }
+    };
+
     useEffect(() => { 
-        if (user && projectId) fetchAll(); 
+        if (user && projectId) {
+            fetchAll(); 
+            fetchProjectTasks();
+        }
     }, [projectId, user?._id]);
+
+    useEffect(() => {
+        if (!projectId) return;
+        if (activeTab === 'tasks') {
+            fetchProjectTasks();
+        } else if (activeTab === 'notes') {
+            fetchProjectNotes();
+        } else if (activeTab === 'store-doc') {
+            fetchDocuments();
+        } else if (activeTab === 'deficiencies') {
+            fetchDeficiencies();
+        }
+    }, [activeTab, projectId]);
 
     const handleAssignPM = async (pmId) => {
         try {
@@ -274,10 +311,41 @@ const ProjectDetails = () => {
 
     const handleAssignWorkers = async (jobId, workerIds) => {
         try {
-            await api.post(`/jobs/${jobId}/assign-workers`, { assignedWorkers: workerIds });
-            setJobs(prev => prev.map(j => j._id === jobId ? { ...j, assignedWorkers: workerIds } : j));
+            const stringIds = (workerIds || []).map(String);
+            
+            // Optimistic update for instantaneous checkmark toggling
+            setJobs(prev => prev.map(j => {
+                if (j._id === jobId || j.id === jobId) {
+                    return {
+                        ...j,
+                        assignedWorkers: stringIds.map(id => {
+                            const found = users.find(u => String(u._id || u.id) === id);
+                            return found || { _id: id, id };
+                        })
+                    };
+                }
+                return j;
+            }));
+
+            const res = await api.post(`/jobs/${jobId}/assign-workers`, { assignedWorkers: stringIds });
+            if (res.data) {
+                const updated = res.data;
+                setJobs(prev => prev.map(j => {
+                    if (j._id === jobId || j.id === jobId) {
+                        return {
+                            ...j,
+                            ...updated,
+                            assignedWorkers: (updated.assignedWorkers && updated.assignedWorkers.length > 0)
+                                ? updated.assignedWorkers
+                                : stringIds.map(id => users.find(u => String(u._id || u.id) === id) || { _id: id, id })
+                        };
+                    }
+                    return j;
+                }));
+            }
         } catch (err) {
-            console.error(err);
+            console.error('Failed to assign workers:', err);
+            api.get(`/jobs?projectId=${projectId}`).then(r => setJobs(r.data || [])).catch(console.error);
         }
     };
 
@@ -551,16 +619,25 @@ const ProjectDetails = () => {
         try {
             setNotesLoading(true);
             const res = await api.get(`/projects/${projectId}/notes`);
-            setProjectNotes(res.data || []);
+            const rawData = res.data;
+            const notesArr = Array.isArray(rawData) 
+                ? rawData 
+                : Array.isArray(rawData?.data) 
+                ? rawData.data 
+                : Array.isArray(rawData?.notes) 
+                ? rawData.notes 
+                : [];
+            setProjectNotes(notesArr);
         } catch (err) {
             console.error('Failed to fetch project notes:', err);
+            setProjectNotes([]);
         } finally {
             setNotesLoading(false);
         }
     };
 
     const handleStartEditNote = (note) => {
-        setEditingNoteId(note._id);
+        setEditingNoteId(note._id || note.id);
         setNewProjectNote(note.content);
     };
 
@@ -571,11 +648,13 @@ const ProjectDetails = () => {
             setIsSubmittingNote(true);
             if (editingNoteId) {
                 const res = await api.patch(`/projects/${projectId}/notes/${editingNoteId}`, { content: newProjectNote });
-                setProjectNotes(prev => prev.map(n => n._id === editingNoteId ? res.data : n));
+                const updatedNote = res.data?.data || res.data;
+                setProjectNotes(prev => (Array.isArray(prev) ? prev : []).map(n => (n._id === editingNoteId || n.id === editingNoteId) ? updatedNote : n));
                 setEditingNoteId(null);
             } else {
                 const res = await api.post(`/projects/${projectId}/notes`, { content: newProjectNote });
-                setProjectNotes(prev => [res.data, ...prev]);
+                const createdNote = res.data?.data || res.data;
+                setProjectNotes(prev => [createdNote, ...(Array.isArray(prev) ? prev : [])]);
             }
             setNewProjectNote('');
         } catch (err) {
@@ -591,7 +670,7 @@ const ProjectDetails = () => {
         try {
             setIsSubmittingNote(true);
             await api.delete(`/projects/${projectId}/notes/${noteToDelete}`);
-            setProjectNotes(prev => prev.filter(n => n._id !== noteToDelete));
+            setProjectNotes(prev => (Array.isArray(prev) ? prev : []).filter(n => n._id !== noteToDelete && n.id !== noteToDelete));
             setNoteToDelete(null);
         } catch (err) {
             console.error('Error deleting project note:', err);
@@ -602,23 +681,27 @@ const ProjectDetails = () => {
     };
 
     // ── Filter ─────────────────────────────────────────────────────────────────
-    const filteredJobs = jobs.filter(j => {
+    const filteredJobs = (Array.isArray(jobs) ? jobs : []).filter(j => {
+        const currentUserId = String(user?._id || user?.id || '');
         // Role-based visibility check
         const isForemanOrSub = ['FOREMAN', 'SUBCONTRACTOR'].includes(user?.role);
         const isWorker = user?.role === 'WORKER';
 
-        const isAssignedAsForeman = isForemanOrSub &&
-            (typeof j.foremanId === 'object' ? j.foremanId?._id === user?._id : j.foremanId === user?._id);
+        const jForemanId = typeof j.foremanId === 'object' ? String(j.foremanId?._id || j.foremanId?.id || '') : String(j.foremanId || '');
+        const isAssignedAsForeman = isForemanOrSub && jForemanId === currentUserId;
 
         const isAssignedAsWorker = isWorker &&
-            j.assignedWorkers?.some(w => (typeof w === 'object' ? w._id === user?._id : w === user?._id));
+            j.assignedWorkers?.some(w => {
+                const wId = typeof w === 'object' ? String(w._id || w.id || '') : String(w || '');
+                return wId === currentUserId;
+            });
 
-        const hasAccess = ['COMPANY_OWNER', 'SUPER_ADMIN', 'PM', 'ENGINEER'].includes(user?.role) ||
+        const hasAccess = ['COMPANY_OWNER', 'COMPANY_ADMIN', 'ADMIN', 'SUPER_ADMIN', 'PM', 'ENGINEER'].includes(user?.role) ||
             isAssignedAsForeman || isAssignedAsWorker;
 
         if (!hasAccess) return false;
 
-        const matchSearch = j.name.toLowerCase().includes(search.toLowerCase()) ||
+        const matchSearch = (j.name || j.title || '').toLowerCase().includes(search.toLowerCase()) ||
             (j.location || '').toLowerCase().includes(search.toLowerCase());
         const matchStatus = filterStatus === 'all' || j.status === filterStatus;
         return matchSearch && matchStatus;
@@ -675,7 +758,7 @@ const ProjectDetails = () => {
                 <div className="absolute inset-0 rounded-[40px] overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900">
                     {project?.image && (
                         <div className="absolute inset-0">
-                            <img src={project.image} alt="" className="w-full h-full object-cover opacity-20" />
+                            <img src={getServerUrl(project.image)} alt="" className="w-full h-full object-cover opacity-20" />
                             <div className="absolute inset-0 bg-gradient-to-br from-slate-900/90 via-slate-800/80 to-blue-900/90" />
                         </div>
                     )}
@@ -1017,7 +1100,7 @@ const ProjectDetails = () => {
                                                             className="font-black text-slate-900 truncate cursor-pointer hover:text-blue-600 transition-colors"
                                                             onClick={() => navigate(`/company-admin/projects/${projectId}/jobs/${job._id}`)}
                                                         >
-                                                            {job.name}
+                                                            {job.name || job.title}
                                                         </h3>
                                                         {job.location && (
                                                             <div className="flex items-center gap-1 mt-0.5 text-slate-400">
@@ -1288,7 +1371,7 @@ const ProjectDetails = () => {
                                                 </td></tr>
                                             ) : filteredJobs.map(job => (
                                                 <tr key={job._id} className="hover:bg-slate-50/50 transition-colors">
-                                                    <td className="px-6 py-4 font-black text-slate-900">{job.name}</td>
+                                                    <td className="px-6 py-4 font-black text-slate-900">{job.name || job.title}</td>
                                                     <td className="px-6 py-4 text-slate-500 font-bold text-xs">{job.location || '—'}</td>
                                                     <td className="px-6 py-4 text-slate-600 font-bold text-xs">
                                                         {job.foremanId
@@ -1345,7 +1428,7 @@ const ProjectDetails = () => {
                     >
                         <div className="space-y-6">
                             <p className="text-[11px] text-slate-400 font-black uppercase tracking-widest -mt-2">
-                                Select available items for <span className="text-blue-600">{jobs.find(j => j._id === isAssigningEquipment)?.name || 'this job'}</span>
+                                Select available items for <span className="text-blue-600">{(jobs.find(j => j._id === isAssigningEquipment)?.name || jobs.find(j => j._id === isAssigningEquipment)?.title || 'this job')}</span>
                             </p>
 
                             <div className="relative">
@@ -1484,19 +1567,24 @@ const ProjectDetails = () => {
                             <div className="max-h-[450px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
                                 {users
                                     .filter(u => ['WORKER', 'FOREMAN', 'SUBCONTRACTOR'].includes(u.role))
-                                    .filter(u => u.fullName.toLowerCase().includes(workerSearch.toLowerCase()))
+                                    .filter(u => (u.fullName || '').toLowerCase().includes(workerSearch.toLowerCase()) || (u.role || '').toLowerCase().includes(workerSearch.toLowerCase()))
                                     .map(u => {
-                                        const currentJob = jobs.find(j => j._id === isAssigningWorkers);
-                                        const isSelected = currentJob?.assignedWorkers?.some(w => (w && typeof w === 'object' ? w._id === u._id : w === u._id));
+                                        const currentJob = jobs.find(j => j._id === isAssigningWorkers || j.id === isAssigningWorkers);
+                                        const assignedList = currentJob?.assignedWorkers || [];
+                                        const isSelected = assignedList.some(w => {
+                                            const wId = (w && typeof w === 'object') ? (w._id || w.id) : w;
+                                            return String(wId) === String(u._id || u.id);
+                                        });
                                         
                                         return (
                                             <div
-                                                key={u._id}
+                                                key={u._id || u.id}
                                                 onClick={() => {
-                                                    const currentIds = (currentJob?.assignedWorkers || []).map(w => (w && typeof w === 'object') ? w._id : w);
-                                                    const next = !isSelected
-                                                        ? [...currentIds, u._id]
-                                                        : currentIds.filter(id => id !== u._id);
+                                                    const currentIds = assignedList.map(w => String((w && typeof w === 'object') ? (w._id || w.id) : w));
+                                                    const targetId = String(u._id || u.id);
+                                                    const next = isSelected
+                                                        ? currentIds.filter(id => id !== targetId)
+                                                        : [...currentIds, targetId];
                                                     handleAssignWorkers(isAssigningWorkers, next);
                                                 }}
                                                 className={`group flex items-center justify-between p-4 rounded-3xl cursor-pointer transition-all border-2
@@ -1546,7 +1634,11 @@ const ProjectDetails = () => {
                                 <div className="flex flex-col">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Assigned</span>
                                     <span className="text-lg font-black text-slate-900">
-                                        {jobs.find(j => j._id === isAssigningWorkers)?.assignedWorkers?.length || 0} Members
+                                        {(() => {
+                                            const cj = jobs.find(j => j._id === isAssigningWorkers || j.id === isAssigningWorkers);
+                                            const cnt = cj?.assignedWorkers?.length || 0;
+                                            return `${cnt} Member${cnt === 1 ? '' : 's'}`;
+                                        })()}
                                     </span>
                                 </div>
                                 <button
@@ -2190,6 +2282,7 @@ const ProjectDetails = () => {
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                     {(() => {
+                                        const tasksList = Array.isArray(projectTasks) ? projectTasks : [];
                                         const toggleExpand = (id) => {
                                             setExpandedTasks(prev => {
                                                 const next = new Set(prev);
@@ -2200,7 +2293,8 @@ const ProjectDetails = () => {
                                         };
 
                                         const renderTaskRow = (task, depth = 0, isLast = false, levelLines = []) => {
-                                            const isExpanded = expandedTasks.has(task._id);
+                                            const taskId = task._id || task.id;
+                                            const isExpanded = expandedTasks.has(taskId);
                                             const roleColors = {
                                                 WORKER: 'bg-blue-50 text-blue-600 border-blue-100',
                                                 FOREMAN: 'bg-orange-50 text-orange-600 border-orange-100',
@@ -2218,9 +2312,9 @@ const ProjectDetails = () => {
                                             const isOverdue = due && due < now && task.status !== 'completed';
                                             const isDueSoon = due && !isOverdue && (due - now) / (1000 * 60 * 60 * 24) <= 3 && task.status !== 'completed';
 
-                                            const directChildren = projectTasks.filter(t => 
+                                            const directChildren = tasksList.filter(t => 
                                                 t.isSubTask && (
-                                                    (task.isSubTask ? t.parentSubTaskId === task._id : t.taskId === task._id && !t.parentSubTaskId)
+                                                    (task.isSubTask ? (t.parentSubTaskId === taskId || t.parentSubTaskId === task.id) : ((t.taskId === taskId || t.taskId === task.id) && !t.parentSubTaskId))
                                                 )
                                             );
                                             const hasChildren = directChildren.length > 0;
@@ -2231,7 +2325,7 @@ const ProjectDetails = () => {
                                             const indentPx = 24 + depth * step;
 
                                             return (
-                                                <React.Fragment key={task._id}>
+                                                <React.Fragment key={taskId}>
                                                     <tr className={`hover:bg-slate-50/50 transition-colors ${isOverdue ? 'bg-red-50/30' : isDueSoon ? 'bg-yellow-50/20' : ''}`}>
                                                         <td className="px-6 py-3 relative" style={{ paddingLeft: `${indentPx}px` }}>
                                                             {/* Tree Connectors */}
@@ -2261,7 +2355,7 @@ const ProjectDetails = () => {
 
                                                             <div className="flex items-center gap-1.5 relative z-10">
                                                                 <button
-                                                                    onClick={() => toggleExpand(task._id)}
+                                                                    onClick={() => toggleExpand(taskId)}
                                                                     className={`p-1 hover:bg-slate-200 rounded-md text-slate-400 transition-all ${hasChildren ? '' : 'invisible'}`}
                                                                     style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}
                                                                 >
@@ -2323,10 +2417,10 @@ const ProjectDetails = () => {
                                             );
                                         };
 
-                                        const rootTasks = projectTasks.filter(t => !t.isSubTask && t.title?.toLowerCase().includes(taskSearch.toLowerCase()));
+                                        const rootTasks = tasksList.filter(t => !t.isSubTask && (t.title || '').toLowerCase().includes((taskSearch || '').toLowerCase()));
                                         return rootTasks.map((task, idx) => renderTaskRow(task, 0, idx === rootTasks.length - 1));
                                     })()}
-                                    {projectTasks.length === 0 && (
+                                    {(Array.isArray(projectTasks) ? projectTasks : []).length === 0 && (
                                         <tr>
                                             <td colSpan={6} className="px-6 py-16 text-center">
                                                 <div className="flex flex-col items-center gap-3 text-slate-300">
@@ -3267,71 +3361,87 @@ const ProjectDetails = () => {
                     {/* Notes List */}
                     <div className="space-y-4">
                         <h3 className="px-1 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Recent Project Notes</h3>
-                        {notesLoading && projectNotes.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-20 gap-4">
-                                <Loader size={30} className="text-blue-600 animate-spin" />
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading notes...</p>
-                            </div>
-                        ) : projectNotes.length === 0 ? (
-                            <div className="bg-white border border-dashed border-slate-200 rounded-[30px] p-20 flex flex-col items-center gap-4 text-center">
-                                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300">
-                                    <MessageSquare size={32} strokeWidth={1} />
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No project notes found</p>
-                                    <p className="text-xs text-slate-400 font-bold max-w-[200px]">Important project updates and notes will appear here once added.</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-4">
-                                {projectNotes.map((note) => (
-                                    <div key={note._id} className="bg-white border border-slate-100 p-6 rounded-[28px] shadow-sm hover:shadow-md transition-all group flex gap-5">
-                                        <div className="shrink-0">
-                                            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm uppercase border border-blue-100 shadow-inner">
-                                                {note.createdBy?.fullName?.charAt(0) || '?'}
-                                            </div>
+                        {(() => {
+                            const notesList = Array.isArray(projectNotes) ? projectNotes : [];
+                            if (notesLoading && notesList.length === 0) {
+                                return (
+                                    <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                        <Loader size={30} className="text-blue-600 animate-spin" />
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading notes...</p>
+                                    </div>
+                                );
+                            }
+                            if (notesList.length === 0) {
+                                return (
+                                    <div className="bg-white border border-dashed border-slate-200 rounded-[30px] p-20 flex flex-col items-center gap-4 text-center">
+                                        <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300">
+                                            <MessageSquare size={32} strokeWidth={1} />
                                         </div>
-                                        <div className="flex-1 space-y-3">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <h4 className="text-sm font-black text-slate-900 tracking-tight">{note.createdBy?.fullName || 'Anonymous User'}</h4>
-                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
-                                                        {new Date(note.createdAt).toLocaleDateString(undefined, { 
-                                                            month: 'short', day: 'numeric', year: 'numeric',
-                                                            hour: '2-digit', minute: '2-digit'
-                                                        })}
-                                                    </p>
-                                                </div>
-                                                {(user?.role === 'COMPANY_OWNER' || user?._id === note.createdBy?._id) && (
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => {
-                                                                handleStartEditNote(note);
-                                                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                            }}
-                                                            className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
-                                                            title="Edit Note"
-                                                        >
-                                                            <Edit size={16} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setNoteToDelete(note._id)}
-                                                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                                            title="Delete Note"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div className="text-sm text-slate-600 font-bold leading-relaxed whitespace-pre-wrap">
-                                                {note.content}
-                                            </div>
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No project notes found</p>
+                                            <p className="text-xs text-slate-400 font-bold max-w-[200px]">Important project updates and notes will appear here once added.</p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
+                                );
+                            }
+                            return (
+                                <div className="grid grid-cols-1 gap-4">
+                                    {notesList.map((note) => {
+                                        const noteId = note._id || note.id;
+                                        const authorName = note.createdBy?.fullName || note.author?.name || 'Anonymous User';
+                                        const authorInitial = authorName.charAt(0) || '?';
+                                        const authorId = note.createdBy?._id || note.author?.id || note.authorId;
+
+                                        return (
+                                            <div key={noteId} className="bg-white border border-slate-100 p-6 rounded-[28px] shadow-sm hover:shadow-md transition-all group flex gap-5">
+                                                <div className="shrink-0">
+                                                    <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm uppercase border border-blue-100 shadow-inner">
+                                                        {authorInitial}
+                                                    </div>
+                                                </div>
+                                                <div className="flex-1 space-y-3">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <h4 className="text-sm font-black text-slate-900 tracking-tight">{authorName}</h4>
+                                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
+                                                                {new Date(note.createdAt).toLocaleDateString(undefined, { 
+                                                                    month: 'short', day: 'numeric', year: 'numeric',
+                                                                    hour: '2-digit', minute: '2-digit'
+                                                                })}
+                                                            </p>
+                                                        </div>
+                                                        {(user?.role === 'COMPANY_OWNER' || user?._id === authorId || user?.id === authorId) && (
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        handleStartEditNote(note);
+                                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                                    }}
+                                                                    className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                                                    title="Edit Note"
+                                                                >
+                                                                    <Edit size={16} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setNoteToDelete(noteId)}
+                                                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                                    title="Delete Note"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap leading-relaxed">
+                                                        {note.content}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}

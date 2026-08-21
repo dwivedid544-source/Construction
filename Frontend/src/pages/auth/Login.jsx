@@ -7,7 +7,7 @@ import {
   HardHat, Wrench, UserCheck, ArrowLeft, CheckCircle2,
   Key, Sparkles, ClipboardList, User, DraftingCompass, Eye, EyeOff
 } from 'lucide-react';
-import Logo from '../../assets/images/logo.png.jpeg';
+import Logo from '../../assets/images/Logo.png';
 
 const DASHBOARDS = [
   {
@@ -167,7 +167,9 @@ const Login = () => {
     setSubmitting(true);
     setError('');
     try {
-      const user = await login(email, password);
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const cleanPassword = (password || '').trim();
+      const user = await login(cleanEmail, cleanPassword);
 
       // Save email to localStorage if Remember Me is checked, otherwise clear it
       if (rememberMe) {

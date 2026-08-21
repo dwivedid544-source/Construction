@@ -28,7 +28,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 const TradeManagement = () => {
-    const { user } = useAuth();
+    const { user, socket } = useAuth();
     const [trades, setTrades] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -51,6 +51,7 @@ const TradeManagement = () => {
         phone: '',
         status: 'active'
     });
+    const [existingAttachments, setExistingAttachments] = useState([]);
     const [taskAttachments, setTaskAttachments] = useState([]); // Pending new attachments
 
     const [filters, setFilters] = useState({
@@ -67,7 +68,7 @@ const TradeManagement = () => {
         try {
             setLoading(true);
             const res = await api.get('/vendors');
-            setTrades(res.data);
+            setTrades(res.data || []);
         } catch (err) {
             console.error('Error fetching trades:', err);
         } finally {
@@ -78,7 +79,7 @@ const TradeManagement = () => {
     const fetchBids = async () => {
         try {
             const res = await api.get('/vendors/bids');
-            setBids(res.data);
+            setBids(res.data || []);
         } catch (err) {
             console.error('Error fetching bids:', err);
         }
@@ -87,7 +88,21 @@ const TradeManagement = () => {
     useEffect(() => {
         fetchTrades();
         fetchBids();
-    }, []);
+
+        if (!socket) return;
+        const onVendorEvent = () => {
+            fetchTrades();
+        };
+        socket.on('vendor_created', onVendorEvent);
+        socket.on('vendor_updated', onVendorEvent);
+        socket.on('vendor_deleted', onVendorEvent);
+
+        return () => {
+            socket.off('vendor_created', onVendorEvent);
+            socket.off('vendor_updated', onVendorEvent);
+            socket.off('vendor_deleted', onVendorEvent);
+        };
+    }, [socket]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -104,7 +119,12 @@ const TradeManagement = () => {
                 }
             });
 
-            // Append files
+            // Retained existing attachments when editing
+            if (editingId) {
+                data.append('keptAttachments', JSON.stringify(existingAttachments));
+            }
+
+            // Append newly uploaded files
             taskAttachments.forEach(file => {
                 data.append('files', file);
             });
@@ -121,6 +141,7 @@ const TradeManagement = () => {
 
             setIsModalOpen(false);
             setEditingId(null);
+            setExistingAttachments([]);
             setTaskAttachments([]);
             setFormData({
                 name: '', category: 'Flooring', customCategory: '',
@@ -137,6 +158,8 @@ const TradeManagement = () => {
 
     const handleEdit = (trade) => {
         setEditingId(trade._id);
+        setExistingAttachments(trade.attachments || []);
+        setTaskAttachments([]);
         setFormData({
             name: trade.name,
             category: categories.includes(trade.category) ? trade.category : 'Other',

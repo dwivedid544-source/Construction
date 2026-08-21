@@ -7,6 +7,34 @@ const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
 
+const safeSetUserLocalStorage = (userData) => {
+  try {
+    localStorage.setItem('user', JSON.stringify(userData));
+  } catch (quotaErr) {
+    console.warn('[AuthContext] LocalStorage quota exceeded, storing sanitized user:', quotaErr.message);
+    try {
+      // Strip oversized fields to ensure quota compliance
+      const sanitized = {
+        _id: userData._id || userData.id,
+        id: userData._id || userData.id,
+        fullName: userData.fullName || userData.name,
+        name: userData.fullName || userData.name,
+        email: userData.email,
+        role: userData.role,
+        companyId: userData.companyId,
+        avatar: userData.avatar && userData.avatar.length < 500 ? userData.avatar : '',
+        phone: userData.phone,
+        address: userData.address,
+        mustChangePassword: userData.mustChangePassword,
+        permissions: userData.permissions || []
+      };
+      localStorage.setItem('user', JSON.stringify(sanitized));
+    } catch (fallbackErr) {
+      console.error('[AuthContext] Critical storage error:', fallbackErr);
+    }
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +49,7 @@ export const AuthProvider = ({ children }) => {
         permissions: permRes.data.permissions || []
       };
       setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      safeSetUserLocalStorage(updatedUser);
       console.log('Permissions refreshed real-time');
     } catch (error) {
       console.error('Failed to refresh permissions real-time:', error);
@@ -112,7 +140,7 @@ export const AuthProvider = ({ children }) => {
               permissions: permRes.data.permissions || []
             };
             setUser(updatedUser);
-            localStorage.setItem('user', JSON.stringify(updatedUser));
+            safeSetUserLocalStorage(updatedUser);
             locationTracker.init(updatedUser);
           }).catch(error => {
             console.error('Background permission refresh failed:', error);
@@ -195,10 +223,10 @@ export const AuthProvider = ({ children }) => {
         permissions
       };
 
-      // Set token and user data in local storage
+      // Set token and user data in local storage safely
       localStorage.setItem('token', userData.token);
       setUser(userWithPerms);
-      localStorage.setItem('user', JSON.stringify(userWithPerms));
+      safeSetUserLocalStorage(userWithPerms);
 
       // Start location tracking on login
       locationTracker.init(userWithPerms);
@@ -234,7 +262,7 @@ export const AuthProvider = ({ children }) => {
       phoneNumber: newData.phoneNumber || newData.phone || user?.phoneNumber,
     };
     setUser(updatedUser);
-    localStorage.setItem('user', JSON.stringify(updatedUser));
+    safeSetUserLocalStorage(updatedUser);
   };
 
   return (

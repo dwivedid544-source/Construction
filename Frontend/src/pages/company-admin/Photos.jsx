@@ -259,12 +259,14 @@ const Photos = () => {
                             {projects.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
                         </select>
                     </div>
-                    <button
-                        onClick={() => setIsUploadOpen(true)}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 transition font-medium"
-                    >
-                        <UploadCloud size={18} /> Upload New
-                    </button>
+                    {['PM', 'FOREMAN', 'WORKER', 'ENGINEER', 'SUPER_ADMIN'].includes(user?.role) && (
+                        <button
+                            onClick={() => setIsUploadOpen(true)}
+                            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 transition font-medium"
+                        >
+                            <UploadCloud size={18} /> Upload New
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -24,7 +24,7 @@ const Timesheets = () => {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showStatusFilter, setShowStatusFilter] = useState(false);
     const socketRef = useRef();
-    const { user } = useAuth();
+    const { user, socket } = useAuth();
     const isRestrictedRole = user?.role === 'WORKER' || user?.role === 'SUBCONTRACTOR' || user?.role === 'FOREMAN';
     const isAdminOrPM = user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_OWNER' || user?.role === 'PM';
 
@@ -125,20 +125,31 @@ const Timesheets = () => {
     useEffect(() => {
         fetchData();
 
-        // Connect socket
-        const socketUrl = BASE_URL;
-        socketRef.current = io(socketUrl);
-        socketRef.current.emit('register_user', user);
-
-        socketRef.current.on('attendance_update', (data) => {
-            console.log('Timesheet attendance update:', data);
+        if (!socket) return;
+        const handleRefresh = () => {
             fetchData();
-        });
+        };
+
+        socket.on('attendance_update', handleRefresh);
+        socket.on('timelog_created', handleRefresh);
+        socket.on('timelog_updated', handleRefresh);
+        socket.on('timelog_deleted', handleRefresh);
+        socket.on('payroll_updated', handleRefresh);
+
+        // Also refresh periodically every 30s to keep in-progress elapsed time updated
+        const interval = setInterval(() => {
+            fetchData();
+        }, 30000);
 
         return () => {
-            if (socketRef.current) socketRef.current.disconnect();
+            socket.off('attendance_update', handleRefresh);
+            socket.off('timelog_created', handleRefresh);
+            socket.off('timelog_updated', handleRefresh);
+            socket.off('timelog_deleted', handleRefresh);
+            socket.off('payroll_updated', handleRefresh);
+            clearInterval(interval);
         };
-    }, []);
+    }, [socket]);
 
     // Extract unique employees and projects/jobs from fetched entries for dropdowns
     const uniqueEmployees = Array.from(new Map(
@@ -611,9 +622,14 @@ const Timesheets = () => {
                                     filteredEntries.map((entry) => {
                                         const clockInDate = new Date(entry.clockIn);
                                         const clockOutDate = entry.clockOut ? new Date(entry.clockOut) : null;
-                                        const duration = clockOutDate
-                                            ? ((clockOutDate - clockInDate) / (1000 * 60 * 60)).toFixed(1) + 'h'
-                                            : 'In Progress';
+                                        let duration = 'In Progress';
+                                        if (clockOutDate) {
+                                            const diff = (clockOutDate - clockInDate) / (1000 * 60 * 60);
+                                            duration = (diff > 0 ? diff.toFixed(1) : '0.0') + 'h';
+                                        } else {
+                                            const elapsed = Math.max(0, (new Date() - clockInDate) / (1000 * 60 * 60));
+                                            duration = `${elapsed.toFixed(1)}h (Live)`;
+                                        }
 
                                         return (
                                             <tr key={entry._id} className="hover:bg-slate-50/50 transition-colors group">

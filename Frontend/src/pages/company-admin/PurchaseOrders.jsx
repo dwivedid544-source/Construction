@@ -141,18 +141,10 @@ const PurchaseOrders = () => {
                         Procurement Management System
                     </p>
                 </div>
-                {!isForeman && (
+                {['PM', 'FOREMAN', 'SUPER_ADMIN'].includes(user?.role) && (
                     <button
                         onClick={() => navigate('/company-admin/purchase-orders/new')}
                         className="bg-blue-600 text-white px-8 py-4 rounded-2xl flex items-center gap-3 hover:bg-blue-700 transition shadow-xl shadow-blue-200 font-black text-sm uppercase tracking-tight"
-                    >
-                        <Plus size={20} /> Raise PO Request
-                    </button>
-                )}
-                {isForeman && (
-                    <button
-                        onClick={() => navigate('/company-admin/purchase-orders/new')}
-                        className="bg-slate-800 text-white px-8 py-4 rounded-2xl flex items-center gap-3 hover:bg-slate-900 transition shadow-xl shadow-slate-200 font-black text-sm uppercase tracking-tight"
                     >
                         <Plus size={20} /> Raise PO Request
                     </button>

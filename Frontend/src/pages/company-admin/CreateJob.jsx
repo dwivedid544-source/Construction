@@ -73,7 +73,14 @@ const CreateJob = () => {
                     api.get('/auth/users').catch(() => ({ data: [] })),
                     api.get('/equipment').catch(() => ({ data: [] })),
                 ]);
-                setProject(projRes.data);
+                const fetchedProject = projRes.data;
+                setProject(fetchedProject);
+
+                // Extract project location / address
+                const projectAddress = typeof fetchedProject?.location === 'object' && fetchedProject?.location !== null
+                    ? (fetchedProject.location.address || fetchedProject.location.formatted_address || '')
+                    : (fetchedProject?.locationAddress || (typeof fetchedProject?.location === 'string' ? fetchedProject.location : ''));
+
                 const team = (teamRes.data || []).filter(u => !['CLIENT', 'COMPANY_OWNER'].includes(u.role));
                 setAssignableUsers(team);
 
@@ -84,7 +91,7 @@ const CreateJob = () => {
                         const job = jobRes.data;
                         setForm({
                             name: job.name || '',
-                            location: job.location || '',
+                            location: job.location || projectAddress || '',
                             startDate: job.startDate ? job.startDate.split('T')[0] : '',
                             endDate: job.endDate ? job.endDate.split('T')[0] : '',
                             pmId: job.foremanId?._id || job.foremanId || '',
@@ -101,6 +108,12 @@ const CreateJob = () => {
                         console.error('Failed to load job details:', err);
                         setError('Failed to load job details.');
                     }
+                } else {
+                    // Pre-populate project address for new job
+                    setForm(prev => ({
+                        ...prev,
+                        location: projectAddress || prev.location
+                    }));
                 }
 
                 const availableEquip = (equipRes.data || []).filter(e => {
@@ -127,11 +140,18 @@ const CreateJob = () => {
             setError('');
             
             const payload = {
-                ...form,
-                foremanId: form.pmId,
+                title: form.name.trim(),
+                name: form.name.trim(),
+                location: form.location.trim(),
+                startDate: form.startDate ? form.startDate : null,
+                endDate: form.endDate ? form.endDate : null,
+                budget: form.budget ? Number(String(form.budget).replace(/,/g, '').replace(/[^0-9.]/g, '')) : 0,
+                description: form.description || '',
                 projectId,
                 companyId: user?.companyId,
+                foremanId: form.pmId || null,
                 equipmentIds: selectedEquipment,
+                status: form.status || 'planning',
             };
 
             if (jobId) {
@@ -155,7 +175,7 @@ const CreateJob = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="flex items-center justify-center py-40">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-14 h-14 border-4 border-blue-600/10 border-t-blue-600 rounded-full animate-spin" />
                     <p className="font-black text-slate-400 uppercase tracking-widest text-xs">Loading...</p>
@@ -166,7 +186,7 @@ const CreateJob = () => {
 
     if (success) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="flex items-center justify-center py-40">
                 <div className="flex flex-col items-center gap-6 text-center">
                     <div className="w-24 h-24 rounded-full bg-emerald-50 border-4 border-emerald-200 flex items-center justify-center">
                         <CheckCircle size={44} className="text-emerald-500" />
@@ -181,31 +201,29 @@ const CreateJob = () => {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="space-y-6 pb-12 animate-fade-in">
             {/* ── Top Bar ── */}
-            <div className="bg-white border-b border-slate-200 sticky top-0 z-20">
-                <div className="w-full mx-auto px-4 md:px-10 py-4 flex items-center gap-4">
-                    <button
-                        onClick={() => navigate(`/company-admin/projects/${projectId}`)}
-                        className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-all">
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-400">
-                        <span className="hover:text-blue-600 cursor-pointer" onClick={() => navigate('/company-admin/projects')}>
-                            Projects
-                        </span>
-                        <ChevronRight size={14} />
-                        <span className="hover:text-blue-600 cursor-pointer" onClick={() => navigate(`/company-admin/projects/${projectId}`)}>
-                            {project?.name || 'Project'}
-                        </span>
-                        <ChevronRight size={14} />
-                        <span className="text-slate-800">{jobId ? 'Edit' : 'Create'} Job</span>
-                    </div>
+            <div className="bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl px-5 py-3.5 shadow-sm sticky top-0 z-30 flex items-center gap-4">
+                <button
+                    onClick={() => navigate(`/company-admin/projects/${projectId}`)}
+                    className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-all">
+                    <ArrowLeft size={18} />
+                </button>
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-400">
+                    <span className="hover:text-blue-600 cursor-pointer" onClick={() => navigate('/company-admin/projects')}>
+                        Projects
+                    </span>
+                    <ChevronRight size={14} />
+                    <span className="hover:text-blue-600 cursor-pointer" onClick={() => navigate(`/company-admin/projects/${projectId}`)}>
+                        {project?.name || 'Project'}
+                    </span>
+                    <ChevronRight size={14} />
+                    <span className="text-slate-800 font-black">{jobId ? 'Edit' : 'Create'} Job</span>
                 </div>
             </div>
 
             {/* ── Page Content ── */}
-            <div className="w-full mx-auto px-4 md:px-10 py-10 space-y-8">
+            <div className="space-y-8">
 
                 {/* Hero Header */}
                 <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 rounded-[40px] p-10 text-white relative overflow-hidden">

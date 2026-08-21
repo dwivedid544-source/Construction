@@ -9,7 +9,7 @@ import {
 import Modal from '../../components/Modal';
 import Toast from '../../components/Toast';
 import { playSound } from '../../utils/notificationSound';
-import api from '../../utils/api';
+import api, { getServerUrl } from '../../utils/api';
 import {
   DndContext,
   closestCenter,
@@ -28,7 +28,7 @@ import {
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const SortableProject = ({ id, children, as: Component = 'div', className }) => {
+const SortableProject = ({ id, children, className = '', as: Component = 'div' }) => {
   const {
     attributes,
     listeners,
@@ -41,9 +41,8 @@ const SortableProject = ({ id, children, as: Component = 'div', className }) => 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.8 : 1,
     zIndex: isDragging ? 50 : 'auto',
-    position: 'relative',
+    opacity: isDragging ? 0.3 : 1,
   };
 
   return (
@@ -56,13 +55,21 @@ const SortableProject = ({ id, children, as: Component = 'div', className }) => 
 
 const ProjectCardImage = ({ projectImage, projectName }) => {
     const fallback = 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=800';
+    const [imgSrc, setImgSrc] = useState(() => getServerUrl(projectImage) || fallback);
+
+    useEffect(() => {
+        setImgSrc(getServerUrl(projectImage) || fallback);
+    }, [projectImage]);
 
     return (
         <div className="relative w-full h-full overflow-hidden bg-slate-100 flex items-center justify-center">
             <img
-                src={projectImage || fallback}
+                src={imgSrc}
+                onError={() => {
+                    if (imgSrc !== fallback) setImgSrc(fallback);
+                }}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                alt={projectName}
+                alt={projectName || 'Project Image'}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent" />
         </div>
@@ -489,9 +496,16 @@ const Projects = () => {
           if (key === 'imageFile' && formData[key]) {
             data.append('image', formData[key]);
           } else if (key === 'pmIds') {
-            data.append('pmIds', JSON.stringify(formData[key]));
+            data.append('pmIds', JSON.stringify(formData[key] || []));
+          } else if (key === 'budget') {
+            const cleanBud = String(formData[key] || '').replace(/,/g, '').replace(/[^0-9.]/g, '');
+            data.append('budget', cleanBud ? Number(cleanBud) : 0);
+          } else if (key === 'clientId') {
+            if (formData[key] && formData[key] !== 'null') {
+              data.append('clientId', formData[key]);
+            }
           } else if (key !== 'imagePreview' && key !== 'image') {
-            data.append(key, formData[key]);
+            data.append(key, formData[key] ?? '');
           }
         });
       const rawCompId = user?.companyId;
@@ -634,9 +648,11 @@ const Projects = () => {
   const isWorker = ['WORKER', 'SUBCONTRACTOR'].includes(user?.role);
   const isForeman = user?.role === 'FOREMAN';
   const isJobView = isWorker || isForeman;
-  const filteredJobs = jobs.filter(j => {
-    const matchSearch = j.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      j.projectId?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredJobs = (Array.isArray(jobs) ? jobs : []).filter(j => {
+    const jobName = (j.name || j.title || '').toLowerCase();
+    const projName = (j.projectId?.name || '').toLowerCase();
+    const matchSearch = jobName.includes(searchTerm.toLowerCase()) ||
+      projName.includes(searchTerm.toLowerCase());
 
     const matchStatus = filterStatus === 'all' || (j.status || '').toLowerCase() === filterStatus.toLowerCase();
     return matchSearch && matchStatus;
@@ -683,7 +699,7 @@ const Projects = () => {
                   <List size={18} />
                 </button>
               </div>
-              {user?.role === 'COMPANY_OWNER' && (
+              {(user?.role === 'PM' || user?.role === 'SUPER_ADMIN') && (
                 <button onClick={async () => { 
                   await ensureAdminDataLoaded(true);
                   setFormData(EMPTY); 

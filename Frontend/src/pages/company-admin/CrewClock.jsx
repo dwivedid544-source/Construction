@@ -59,13 +59,23 @@ const CrewClock = () => {
                 setActiveJobId(projectsRes.data[0]._id);
             }
 
-            // Filter for workers, PMs, and Admins
-            const allowedRoles = ['WORKER', 'PM', 'COMPANY_OWNER', 'SUPER_ADMIN'];
-            const workerList = usersRes.data.filter(u => allowedRoles.includes(u.role));
+            // Filter only valid company team members (exclude SUPER_ADMIN, CLIENTs, and other companies)
+            const allowedRoles = ['WORKER', 'FOREMAN', 'ENGINEER', 'SUBCONTRACTOR', 'PM'];
+            const workerList = usersRes.data.filter(u => {
+                if (u.role === 'SUPER_ADMIN' || u.role === 'CLIENT') return false;
+                if (u.role === 'COMPANY_OWNER' && u._id === user?._id) return false;
+                const uCompId = (u.companyId?._id || u.companyId)?.toString();
+                const myCompId = (user?.companyId?._id || user?.companyId)?.toString();
+                if (myCompId && uCompId && uCompId !== myCompId) return false;
+                return allowedRoles.includes(u.role);
+            });
 
             // Map status based on if they have a log without a clockOut
             const enrichedWorkers = workerList.map(worker => {
-                const activeLog = logsRes.data.find(log => log.userId?._id === worker._id && !log.clockOut);
+                const activeLog = (logsRes.data || []).find(log => {
+                    const logUId = (log.userId?._id || log.userId)?.toString();
+                    return logUId === worker._id?.toString() && !log.clockOut;
+                });
                 return {
                     ...worker,
                     isClockedIn: !!activeLog,

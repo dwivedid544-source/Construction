@@ -12,7 +12,7 @@ import api, { getServerUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/logo.png.jpeg';
+import logo from '../../assets/images/Logo.png';
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 const StatCard = ({ title, value, sub, icon: Icon, color, trend }) => (
@@ -357,35 +357,37 @@ const Equipment = () => {
     const handleSave = async () => {
         try {
             let savedItem;
+            const targetId = editingItem?._id || editingItem?.id;
             if (editingItem) {
-                const res = await api.patch(`/equipment/${editingItem._id}`, form);
+                const res = await api.patch(`/equipment/${targetId}`, form);
                 savedItem = res.data;
-                setEquipment(prev => prev.map(e => e._id === editingItem._id ? savedItem : e));
             } else {
                 const res = await api.post('/equipment', form);
                 savedItem = res.data;
-                setEquipment(prev => [...prev, savedItem]);
             }
 
+            const finalId = savedItem?._id || savedItem?.id || targetId;
+
             // Upload image if a file was selected
-            if (imageFile && savedItem?._id) {
+            if (imageFile && finalId) {
                 setImageUploading(true);
                 const fd = new FormData();
                 fd.append('image', imageFile);
-                const imgRes = await api.post(`/equipment/${savedItem._id}/upload-image`, fd, {
+                const imgRes = await api.post(`/equipment/${finalId}/upload-image`, fd, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
-                // Update the item with the returned imageUrl
-                setEquipment(prev => prev.map(e =>
-                    e._id === savedItem._id ? { ...e, imageUrl: imgRes.data.imageUrl } : e
-                ));
+                if (imgRes.data?.imageUrl) {
+                    savedItem = { ...savedItem, imageUrl: imgRes.data.imageUrl };
+                }
             }
 
+            await fetchData();
             setIsModalOpen(false);
             setImageFile(null);
             setImagePreview('');
         } catch (err) {
-            console.error(err);
+            console.error('Save error:', err);
+            alert('Failed to save equipment: ' + (err.response?.data?.message || err.message));
         } finally {
             setImageUploading(false);
         }
@@ -399,13 +401,14 @@ const Equipment = () => {
     const confirmDelete = async () => {
         if (!itemToDelete) return;
         try {
-            await api.delete(`/equipment/${itemToDelete._id}`);
-            setEquipment(prev => prev.filter(e => e._id !== itemToDelete._id));
+            const id = itemToDelete._id || itemToDelete.id;
+            await api.delete(`/equipment/${id}`);
+            await fetchData();
             setIsDeleteModalOpen(false);
             setItemToDelete(null);
         } catch (err) {
             console.error('Delete error:', err);
-            alert('Failed to delete equipment');
+            alert('Failed to delete equipment: ' + (err.response?.data?.message || err.message));
         }
     };
 
@@ -638,10 +641,12 @@ const Equipment = () => {
                             >
                                 <History size={18} /> Full History
                             </button>
-                            <button onClick={openCreate}
-                                className="bg-blue-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 font-black text-sm uppercase tracking-tight">
-                                <Plus size={18} /> Add New Item
-                            </button>
+                            {['PM', 'SUPER_ADMIN'].includes(user?.role) && (
+                                <button onClick={openCreate}
+                                    className="bg-blue-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 font-black text-sm uppercase tracking-tight">
+                                    <Plus size={18} /> Add New Item
+                                </button>
+                            )}
                         </>
                     )}
                 </div>

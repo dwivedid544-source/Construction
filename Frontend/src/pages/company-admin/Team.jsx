@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Mail, Phone, Shield, User, X, Save, Trash2, Edit, CheckCircle, AlertTriangle, Eye, Loader, Lock, Briefcase, Users } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Shield, User, X, Save, Trash2, Edit, CheckCircle, AlertTriangle, Eye, Loader, Lock, Briefcase, Users, DollarSign } from 'lucide-react';
 import api from '../../utils/api';
 import Toast from '../../components/Toast';
+import { useAuth } from '../../context/AuthContext';
 
 
 const Modal = ({ isOpen, onClose, title, children }) => {
@@ -118,17 +119,34 @@ const UserForm = ({ data, setData, onSubmit, submitLabel, isEdit = false, roleOp
       </div>
     </div>
 
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-      <select
-        value={data.status}
-        onChange={e => setData({ ...data, status: e.target.value })}
-        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 transition"
-      >
-        <option>Active</option>
-        <option>On Site</option>
-        <option>Offline</option>
-      </select>
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+        <select
+          value={data.status}
+          onChange={e => setData({ ...data, status: e.target.value })}
+          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 transition"
+        >
+          <option>Active</option>
+          <option>On Site</option>
+          <option>Offline</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Hourly Rate ($/hr)</label>
+        <div className="relative">
+          <DollarSign size={16} className="absolute left-3 top-3 text-slate-400" />
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={data.hourlyRate !== undefined ? data.hourlyRate : 30}
+            onChange={e => setData({ ...data, hourlyRate: e.target.value })}
+            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition"
+            placeholder="30.00"
+          />
+        </div>
+      </div>
     </div>
     <div className="flex justify-end pt-4">
       <button
@@ -154,7 +172,7 @@ const StatusBadge = ({ status }) => (
 );
 
 // Reusable user table
-const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onChangePassword, emptyMessage }) => (
+const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onChangePassword, emptyMessage, isAdmin = true }) => (
   <div className="overflow-x-auto">
     <table className="w-full text-left text-sm text-slate-600">
       <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
@@ -163,6 +181,7 @@ const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onCha
           <th className="px-6 py-4 whitespace-nowrap">Role</th>
           <th className="px-6 py-4 whitespace-nowrap">Status</th>
           <th className="px-6 py-4 whitespace-nowrap">Contact</th>
+          <th className="px-6 py-4 whitespace-nowrap">Pay Rate</th>
           <th className="px-6 py-4 text-right whitespace-nowrap">Actions</th>
         </tr>
       </thead>
@@ -201,30 +220,38 @@ const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onCha
                   </div>
                 </div>
               </td>
+              <td className="px-6 py-4 font-bold text-slate-800">
+                ${member.hourlyRate != null ? member.hourlyRate : 30}/hr
+              </td>
               <td className="px-6 py-4 text-right">
                 <div className="flex justify-end gap-2 text-right">
-                  {/* <button onClick={() => onManagePermissions(member)} className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Manage Permissions">
-                    <Shield size={18} />
-                  </button> */}
-                  <button onClick={() => onChangePassword(member)} className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition" title="Change Password">
-                    <Lock size={18} />
-                  </button>
-                  <button onClick={() => onView(member)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="View Details">
-                    <Eye size={18} />
-                  </button>
-                  <button onClick={() => onEdit(member)} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition" title="Edit Info">
-                    <Edit size={18} />
-                  </button>
-                  <button onClick={() => onDelete(member)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete User">
-                    <Trash2 size={18} />
-                  </button>
+                  {isAdmin ? (
+                    <>
+                      <button onClick={() => onChangePassword(member)} className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition" title="Change Password">
+                        <Lock size={18} />
+                      </button>
+                      <button onClick={() => onView(member)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="View Details">
+                        <Eye size={18} />
+                      </button>
+                      <button onClick={() => onEdit(member)} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition" title="Edit Info">
+                        <Edit size={18} />
+                      </button>
+                      <button onClick={() => onDelete(member)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete User">
+                        <Trash2 size={18} />
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => onView(member)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="View Details">
+                      <Eye size={18} />
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>
           ))
         ) : (
           <tr>
-            <td colSpan="5" className="text-center py-10 text-slate-400">{emptyMessage}</td>
+            <td colSpan="6" className="text-center py-10 text-slate-400">{emptyMessage}</td>
           </tr>
         )}
       </tbody>
@@ -244,10 +271,12 @@ const CLIENT_ROLE_OPTIONS = [
 ];
 
 const emptyForm = (role) => ({
-  fullName: '', role, email: '', phone: '', status: 'Active', password: '', confirmPassword: ''
+  fullName: '', role, email: '', phone: '', status: 'Active', password: '', confirmPassword: '', hourlyRate: 30
 });
 
 const Team = () => {
+  const { user } = useAuth();
+  const isAdmin = ['COMPANY_OWNER', 'SUPER_ADMIN'].includes(user?.role);
   const [activeTab, setActiveTab] = useState('team'); // 'team' | 'clients'
 
   // Team Members state
@@ -475,7 +504,12 @@ const Team = () => {
   const handleEdit = (member) => {
     const target = member?._id ? member : selectedMember;
     setSelectedMember(target);
-    setFormData({ ...target, password: '', confirmPassword: '' });
+    setFormData({ 
+      ...target, 
+      password: '', 
+      confirmPassword: '',
+      hourlyRate: target.hourlyRate !== undefined ? target.hourlyRate : 30
+    });
     setIsEditOpen(true);
     setIsViewOpen(false);
   };
@@ -486,6 +520,7 @@ const Team = () => {
       await api.patch(`/auth/users/${selectedMember._id}`, formData);
       if (activeTab === 'clients') fetchClients(); else fetchMembers();
       setIsEditOpen(false);
+      setToast({ message: 'User updated successfully!', type: 'success' });
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to update user.');
       console.error('Error updating user:', error);
@@ -507,6 +542,7 @@ const Team = () => {
       await api.delete(`/auth/users/${selectedMember._id}`);
       if (activeTab === 'clients') fetchClients(); else fetchMembers();
       setIsDeleteOpen(false);
+      setToast({ message: 'User removed successfully!', type: 'success' });
     } catch (error) {
       console.error('Error deleting user:', error);
     } finally {
@@ -526,12 +562,14 @@ const Team = () => {
           <h1 className="text-2xl font-bold text-slate-800">Role Management</h1>
           <p className="text-slate-500 text-sm">Manage team members and clients.</p>
         </div>
-        <button
-          onClick={handleAddClick}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium shadow-lg shadow-blue-200 transition"
-        >
-          <Plus size={18} /> {isTeamTab ? 'Add Member' : 'Add Client'}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleAddClick}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium shadow-lg shadow-blue-200 transition"
+          >
+            <Plus size={18} /> {isTeamTab ? 'Add Member' : 'Add Client'}
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -612,6 +650,7 @@ const Team = () => {
             onManagePermissions={handleManagePermissions}
             onChangePassword={handleChangePassword}
             emptyMessage={activeTab === 'team' ? 'No team members found.' : (activeTab === 'subcontractors' ? 'No subcontractors found.' : 'No clients found.')}
+            isAdmin={isAdmin}
           />
         )}
       </div>
@@ -653,7 +692,7 @@ const Team = () => {
               <p className="text-slate-500 text-sm uppercase font-bold">{selectedMember.role}</p>
               <StatusBadge status={selectedMember.status} />
             </div>
-            <div className="grid grid-cols-2 gap-4 text-left bg-slate-50 p-4 rounded-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left bg-slate-50 p-4 rounded-xl">
               <div>
                 <p className="text-xs text-slate-400 font-bold uppercase mb-1">Email</p>
                 <p className="text-sm font-medium text-slate-800 break-all">{selectedMember.email}</p>
@@ -662,15 +701,21 @@ const Team = () => {
                 <p className="text-xs text-slate-400 font-bold uppercase mb-1">Phone</p>
                 <p className="text-sm font-medium text-slate-800">{selectedMember.phone || '---'}</p>
               </div>
+              <div>
+                <p className="text-xs text-slate-400 font-bold uppercase mb-1">Pay Rate</p>
+                <p className="text-sm font-bold text-emerald-600">${selectedMember.hourlyRate != null ? selectedMember.hourlyRate : 30}/hr</p>
+              </div>
             </div>
-            <div className="flex justify-center gap-3 pt-2">
-              <button onClick={() => handleEdit(selectedMember)} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition font-medium flex justify-center items-center gap-2">
-                <Edit size={16} /> Edit Profile
-              </button>
-              <button onClick={() => handleDelete(selectedMember)} className="flex-1 bg-white border border-red-200 text-red-600 py-2 rounded-lg hover:bg-red-50 transition font-medium flex justify-center items-center gap-2">
-                <Trash2 size={16} /> Remove
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="flex justify-center gap-3 pt-2">
+                <button onClick={() => handleEdit(selectedMember)} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition font-medium flex justify-center items-center gap-2">
+                  <Edit size={16} /> Edit Profile
+                </button>
+                <button onClick={() => handleDelete(selectedMember)} className="flex-1 bg-white border border-red-200 text-red-600 py-2 rounded-lg hover:bg-red-50 transition font-medium flex justify-center items-center gap-2">
+                  <Trash2 size={16} /> Remove
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

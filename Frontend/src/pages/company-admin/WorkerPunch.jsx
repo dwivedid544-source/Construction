@@ -48,16 +48,29 @@ const WorkerPunch = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch stats (assigned projects/tasks for the selector + current job label)
-                const statsRes = await api.get('/reports/stats');
-                if (statsRes.data.workerMetrics) {
-                    setAssignedProjects(statsRes.data.workerMetrics.assignedProjects || []);
-                    setAssignedTasks(statsRes.data.workerMetrics.assignedTasks || []);
+                // Fetch stats, all company projects, and all tasks
+                const [statsRes, allProjRes, allTasksRes] = await Promise.all([
+                    api.get('/reports/stats').catch(() => ({ data: {} })),
+                    api.get('/projects').catch(() => ({ data: [] })),
+                    api.get('/tasks').catch(() => ({ data: [] }))
+                ]);
 
-                    if (statsRes.data.workerMetrics.currentJob) {
-                        // Will be formatted once tasks are fetched
-                        setActiveJob(statsRes.data.workerMetrics.currentJob);
-                    }
+                const pList = statsRes.data?.workerMetrics?.assignedProjects || [];
+                const tList = statsRes.data?.workerMetrics?.assignedTasks || [];
+
+                const projectsMap = new Map();
+                pList.forEach(p => projectsMap.set(p._id, p));
+                (allProjRes.data || []).forEach(p => projectsMap.set(p._id, p));
+
+                const tasksMap = new Map();
+                tList.forEach(t => tasksMap.set(t._id, t));
+                (allTasksRes.data || []).forEach(t => tasksMap.set(t._id, t));
+
+                setAssignedProjects(Array.from(projectsMap.values()));
+                setAssignedTasks(Array.from(tasksMap.values()));
+
+                if (statsRes.data?.workerMetrics?.currentJob) {
+                    setActiveJob(statsRes.data.workerMetrics.currentJob);
                 }
 
                 const res = await api.get('/timelogs');

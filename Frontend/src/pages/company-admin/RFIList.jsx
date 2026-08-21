@@ -124,7 +124,7 @@ const RFIList = () => {
                     >
                         Dashboard
                     </button>
-                    {user?.role !== 'CLIENT' && (
+                    {['PM', 'FOREMAN', 'SUPER_ADMIN'].includes(user?.role) && (
                         <button
                             onClick={() => navigate(`${basePath}/rfi/create`)}
                             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-200 transition text-sm"

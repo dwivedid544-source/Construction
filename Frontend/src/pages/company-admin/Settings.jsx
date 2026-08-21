@@ -2,9 +2,11 @@ import {
   Save, Lock, Camera, Shield, CheckCircle, Loader, RefreshCw, 
   Trash2, ArrowLeft, MoreVertical, Archive, ShieldAlert,
   MapPin, Users, Briefcase, Calendar, DollarSign, Eye,
-  LayoutGrid, List, Search, TrendingUp
+  LayoutGrid, List, Search, TrendingUp, FileText, Building2,
+  Percent, CreditCard, Sparkles, SlidersHorizontal, Info
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -12,7 +14,9 @@ import Modal from '../../components/Modal';
 
 const Settings = () => {
   const { user, updateUserData } = useAuth();
-  const [activeTab, setActiveTab] = useState('profile'); // 'profile', 'roles', 'archive'
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'invoice' || searchParams.get('tab') === 'template' ? 'invoice' : (searchParams.get('tab') || 'profile');
+  const [activeTab, setActiveTab] = useState(initialTab); // 'profile', 'invoice', 'roles', 'archive'
   const [profile, setProfile] = useState({
     name: user?.fullName || '',
     email: user?.email || '',
@@ -27,6 +31,13 @@ const Settings = () => {
     new: '',
     confirm: ''
   });
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'invoice' || tabParam === 'template') {
+      setActiveTab('invoice');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchLatestProfile = async () => {
@@ -55,52 +66,26 @@ const Settings = () => {
     e.preventDefault();
     try {
       setIsUpdating(true);
-      let res;
+      const data = new FormData();
+      data.append('fullName', profile.name);
+      data.append('email', profile.email);
+      data.append('phone', profile.phone);
+      data.append('address', profile.address);
       if (profile.avatarFile) {
-        const data = new FormData();
-        data.append('fullName', profile.name);
-        data.append('name', profile.name);
-        data.append('phone', profile.phone);
-        data.append('address', profile.address);
         data.append('avatar', profile.avatarFile);
-        res = await api.patch('/auth/profile', data, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-      } else {
-        res = await api.patch('/auth/profile', {
-          fullName: profile.name,
-          name: profile.name,
-          phone: profile.phone,
-          address: profile.address,
-        });
       }
       
-      const rawUser = res.data?.data || res.data?.user || res.data || {};
-      const updatedUser = {
-        ...user,
-        ...rawUser,
-        name: profile.name,
-        fullName: profile.name,
-        phone: profile.phone,
-        phoneNumber: profile.phone,
-        address: profile.address,
-        avatar: rawUser.avatar || profile.avatar,
-      };
+      const res = await api.patch('/auth/profile', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       
-      updateUserData(updatedUser);
-      setProfile(prev => ({
-        ...prev,
-        name: profile.name,
-        phone: profile.phone,
-        address: profile.address,
-        avatar: rawUser.avatar || prev.avatar,
-        avatarFile: null,
-      }));
+      // Critical: Sync local auth context so Sidebar/Navbar update immediately
+      updateUserData(res.data);
       
       toast.success("Profile details updated successfully.");
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error(error.response?.data?.message || "Failed to update profile.");
+      toast.error("Failed to update profile.");
     } finally {
       setIsUpdating(false);
     }
@@ -137,10 +122,10 @@ const Settings = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-100 pb-px">
+      <div className="flex items-center gap-2 border-b border-slate-100 pb-px overflow-x-auto">
         <button
-          onClick={() => setActiveTab('profile')}
-          className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative
+          onClick={() => { setActiveTab('profile'); setSearchParams({ tab: 'profile' }); }}
+          className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative whitespace-nowrap
             ${activeTab === 'profile' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
         >
           Profile & Security
@@ -148,8 +133,19 @@ const Settings = () => {
         </button>
         {user?.role === 'COMPANY_OWNER' && (
           <button
-            onClick={() => setActiveTab('roles')}
-            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative
+            onClick={() => { setActiveTab('invoice'); setSearchParams({ tab: 'invoice' }); }}
+            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-2 whitespace-nowrap
+              ${activeTab === 'invoice' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <FileText size={16} />
+            Invoice Template
+            {activeTab === 'invoice' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full shadow-lg shadow-blue-200" />}
+          </button>
+        )}
+        {user?.role === 'COMPANY_OWNER' && (
+          <button
+            onClick={() => { setActiveTab('roles'); setSearchParams({ tab: 'roles' }); }}
+            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative whitespace-nowrap
               ${activeTab === 'roles' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
           >
             Role Management
@@ -158,8 +154,8 @@ const Settings = () => {
         )}
         {user?.role === 'COMPANY_OWNER' && (
           <button
-            onClick={() => setActiveTab('archive')}
-            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative
+            onClick={() => { setActiveTab('archive'); setSearchParams({ tab: 'archive' }); }}
+            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative whitespace-nowrap
               ${activeTab === 'archive' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
           >
             Project Archive
@@ -293,6 +289,13 @@ const Settings = () => {
           </>
         }
 
+        {/* Invoice Template Section - Only for Company Admin */}
+        {activeTab === 'invoice' && user?.role === 'COMPANY_OWNER' && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <InvoiceTemplateSettings />
+          </div>
+        )}
+
         {/* Role Management Section - Only for Company Admin */}
         {activeTab === 'roles' && user?.role === 'COMPANY_OWNER' && <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-300">
             <h3 className="font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4 flex items-center gap-2">
@@ -343,7 +346,6 @@ const RoleSettings = () => {
     'VIEW_DAILY_LOGS': 'Daily Logs',
     'VIEW_DRAWINGS': 'Drawings',
     'VIEW_PHOTOS': 'Photos',
-    'VIEW_GPS': 'GPS Tracking',
     'VIEW_EQUIPMENT': 'Equipment',
     'VIEW_PO': 'Purchase Orders',
     'VIEW_INVOICES': 'Invoices',
@@ -916,6 +918,381 @@ const ProjectArchive = () => {
           </div>
         )}
       </Modal>
+    </div>
+  );
+};
+
+const InvoiceTemplateSettings = () => {
+  const [template, setTemplate] = useState({
+    companyName: '',
+    email: '',
+    phone: '',
+    address: '',
+    taxNumber: '',
+    defaultTaxRate: 15,
+    defaultPaymentTerms: 'Net 15',
+    bankDetails: '',
+    notes: '',
+    terms: ''
+  });
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchTemplateSettings = async () => {
+      try {
+        setLoading(true);
+        const { data } = await api.get('/companies/my-company');
+        if (data) {
+          const inv = data.invoiceSettings || {};
+          setTemplate({
+            companyName: inv.companyName || data.name || 'KT Construction Ltd',
+            email: inv.email || data.email || 'company@gmail.com',
+            phone: inv.phone || data.phone || '1234567890',
+            address: inv.address || data.address || 'Corporate Suite 402, Apex Business Park, Indore, MP',
+            taxNumber: inv.taxNumber || '',
+            defaultTaxRate: inv.defaultTaxRate !== undefined ? inv.defaultTaxRate : 15,
+            defaultPaymentTerms: inv.defaultPaymentTerms || 'Net 15',
+            bankDetails: inv.bankDetails || 'Bank: HDFC Bank | A/C: 50200012345678 | IFSC: HDFC0000240',
+            notes: inv.notes || 'Thank you for your business. Please ensure timely payment by the due date.',
+            terms: inv.terms || 'This accounting software is designed to assist users in managing financial data such as invoices, expenses, payments, reports, and tax-related records. All information and reports generated by the system depend on the data entered by the user.'
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching invoice template settings:', error);
+        toast.error('Failed to load invoice template settings.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTemplateSettings();
+  }, []);
+
+  const handleSaveTemplate = async (e) => {
+    e.preventDefault();
+    try {
+      setIsSaving(true);
+      await api.patch('/companies/invoice-template', template);
+      toast.success('Invoice template settings updated successfully!');
+    } catch (error) {
+      console.error('Error updating invoice template:', error);
+      toast.error(error.response?.data?.message || 'Failed to update invoice template.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white p-12 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader className="animate-spin text-blue-600" size={32} />
+          <p className="text-slate-500 text-sm font-semibold">Loading Invoice Template Configuration...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header Info */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-2xl text-white shadow-lg shadow-blue-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles size={18} className="text-amber-300" />
+            <h2 className="text-xl font-black tracking-tight">Invoice Template & Branding</h2>
+          </div>
+          <p className="text-blue-100 text-xs font-medium max-w-xl">
+            Configure your official company billing address, issuer details, default tax rates, and notes printed on all client invoices and PDF downloads.
+          </p>
+        </div>
+        <button
+          onClick={handleSaveTemplate}
+          disabled={isSaving}
+          className="flex items-center gap-2 bg-white text-blue-700 hover:bg-blue-50 px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md disabled:opacity-50 whitespace-nowrap"
+        >
+          {isSaving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
+          {isSaving ? 'Saving Changes...' : 'Save Template'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Form Column */}
+        <form onSubmit={handleSaveTemplate} className="lg:col-span-7 space-y-6">
+          {/* Section 1: Company / Issuer Billing Details */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Building2 size={18} className="text-blue-600" />
+              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Company / Issuer Info (Header)</h3>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Company Display Name</label>
+              <input
+                type="text"
+                value={template.companyName}
+                onChange={(e) => setTemplate({ ...template, companyName: e.target.value })}
+                placeholder="e.g. KT Construction Ltd"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Official Head Office / Billing Address</span>
+                <span className="text-[10px] text-blue-600 font-black bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                  Printed on Invoice Header
+                </span>
+              </label>
+              <textarea
+                rows={2}
+                value={template.address}
+                onChange={(e) => setTemplate({ ...template, address: e.target.value })}
+                placeholder="e.g. Corporate Suite 402, Apex Business Park, Indore, MP 452010"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              />
+              <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-medium">
+                <Info size={12} className="text-slate-400" />
+                This is your corporate company address. Individual site / delivery addresses will appear in the <strong>"Ship To"</strong> section.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Billing Contact Email</label>
+                <input
+                  type="email"
+                  value={template.email}
+                  onChange={(e) => setTemplate({ ...template, email: e.target.value })}
+                  placeholder="billing@company.com"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Billing Phone Number</label>
+                <input
+                  type="text"
+                  value={template.phone}
+                  onChange={(e) => setTemplate({ ...template, phone: e.target.value })}
+                  placeholder="e.g. +91 98765 43210"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Tax ID / GSTIN / VAT Number</label>
+              <input
+                type="text"
+                value={template.taxNumber}
+                onChange={(e) => setTemplate({ ...template, taxNumber: e.target.value })}
+                placeholder="e.g. GSTIN: 23AAAAA0000A1Z5 / Tax ID: US-98765432"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 uppercase tracking-wider focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              />
+            </div>
+          </div>
+
+          {/* Section 2: Financial Defaults & Bank Details */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <CreditCard size={18} className="text-emerald-600" />
+              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Financial & Payment Terms</h3>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Default Tax Rate (%)</span>
+                  <Percent size={14} className="text-slate-400" />
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={template.defaultTaxRate}
+                  onChange={(e) => setTemplate({ ...template, defaultTaxRate: e.target.value })}
+                  placeholder="15"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Default Payment Terms</label>
+                <input
+                  type="text"
+                  value={template.defaultPaymentTerms}
+                  onChange={(e) => setTemplate({ ...template, defaultPaymentTerms: e.target.value })}
+                  placeholder="e.g. Net 15 Days, Due on Receipt"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Bank Remittance & Transfer Details</label>
+              <textarea
+                rows={2}
+                value={template.bankDetails}
+                onChange={(e) => setTemplate({ ...template, bankDetails: e.target.value })}
+                placeholder="e.g. Bank: HDFC Bank | A/C: 50200012345678 | IFSC: HDFC0000240 | UPI: ktconstruction@okhdfcbank"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              />
+            </div>
+          </div>
+
+          {/* Section 3: Notes & Legal Terms */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <FileText size={18} className="text-indigo-600" />
+              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Invoice Footer Notes & Terms</h3>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Default Invoice Notes</label>
+              <textarea
+                rows={2}
+                value={template.notes}
+                onChange={(e) => setTemplate({ ...template, notes: e.target.value })}
+                placeholder="Thank you for your business. Please make payment before the due date."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Terms & Conditions Disclaimer</label>
+              <textarea
+                rows={3}
+                value={template.terms}
+                onChange={(e) => setTemplate({ ...template, terms: e.target.value })}
+                placeholder="Standard commercial and legal terms shown on invoices..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-600 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+              />
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+              >
+                {isSaving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
+                {isSaving ? 'Saving...' : 'Save Template Settings'}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {/* Live Preview Column */}
+        <div className="lg:col-span-5 space-y-4">
+          <div className="sticky top-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <Eye size={14} className="text-blue-600" />
+                Live Invoice Preview
+              </span>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                Real-time Sync
+              </span>
+            </div>
+
+            {/* Mock Invoice Card */}
+            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden text-xs">
+              <div className="p-6 space-y-6">
+                {/* Header */}
+                <div className="flex justify-between items-start gap-4">
+                  <div className="space-y-1 max-w-[60%]">
+                    <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-xs mb-2">
+                      KT
+                    </div>
+                    <h4 className="font-black text-slate-900 text-sm leading-tight">{template.companyName || 'Company Name'}</h4>
+                    <p className="text-[11px] text-slate-500 italic">{template.email || 'billing@company.com'}</p>
+                    <p className="text-[11px] text-slate-500">{template.phone || '+1 234 567 890'}</p>
+                    <p className="text-[11px] text-slate-600 font-medium leading-relaxed">{template.address || 'Corporate Office Address'}</p>
+                    {template.taxNumber && (
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-0.5">
+                        Tax ID: {template.taxNumber}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right space-y-1">
+                    <h3 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Invoice</h3>
+                    <p className="text-[10px] font-bold text-slate-400">#INV-001</p>
+                    <p className="text-[10px] font-bold text-slate-400">Issue: {new Date().toLocaleDateString()}</p>
+                    <p className="text-[10px] font-bold text-slate-400">Terms: <span className="text-slate-800">{template.defaultPaymentTerms}</span></p>
+                  </div>
+                </div>
+
+                <div className="h-px bg-slate-100" />
+
+                {/* Billing vs Shipping Info */}
+                <div className="grid grid-cols-2 gap-4 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">VENDOR:</span>
+                    <p className="font-bold text-slate-900 text-[11px]">Singhaniya Materials Ltd</p>
+                    <p className="text-[10px] text-slate-500">singha@materials.com</p>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block flex items-center justify-end gap-1">
+                      <span>SHIP TO:</span>
+                      <span className="text-[8px] text-blue-600 bg-blue-50 px-1 rounded font-bold">Site</span>
+                    </span>
+                    <p className="font-bold text-slate-900 text-[11px]">House 001 Construction Site</p>
+                    <p className="text-[10px] text-slate-500">14/608, Sudama Nagar, Indore, MP</p>
+                  </div>
+                </div>
+
+                {/* Table Preview */}
+                <div className="rounded-xl border border-slate-100 overflow-hidden bg-white">
+                  <table className="w-full text-left text-[10px]">
+                    <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 uppercase">
+                      <tr>
+                        <th className="p-2">Item Description</th>
+                        <th className="p-2 text-center">Qty</th>
+                        <th className="p-2 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 text-slate-700">
+                      <tr>
+                        <td className="p-2 font-medium">Plumbing Pipes 8 mm</td>
+                        <td className="p-2 text-center">25</td>
+                        <td className="p-2 text-right font-bold text-slate-900">$125.00</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-medium">Plumbing Pipes 10 mm</td>
+                        <td className="p-2 text-center">15</td>
+                        <td className="p-2 text-right font-bold text-slate-900">$150.00</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Financial Summary */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-100 text-[11px]">
+                  <div className="flex justify-between text-slate-500">
+                    <span>Subtotal:</span>
+                    <span className="font-semibold text-slate-800">$275.00</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Estimated Tax ({template.defaultTaxRate || 15}%):</span>
+                    <span className="text-amber-600 font-bold">+${((275 * (Number(template.defaultTaxRate) || 15)) / 100).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                    <span className="font-black text-slate-900 uppercase text-[10px] tracking-wider">Grand Total:</span>
+                    <span className="text-sm font-black text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-100">
+                      ${(275 + (275 * (Number(template.defaultTaxRate) || 15)) / 100).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Footer Notes Preview */}
+                <div className="pt-3 border-t border-slate-100 space-y-1">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Notes & Terms</span>
+                  <p className="text-[9px] text-slate-500 leading-relaxed line-clamp-2">{template.notes}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

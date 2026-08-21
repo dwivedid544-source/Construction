@@ -7,7 +7,7 @@ import {
     Globe, Smartphone, FileText, PieChart, Wallet, Layers, ShieldCheck, Truck,
     Instagram, Linkedin, Youtube, Camera
 } from 'lucide-react';
-import Logo from '../assets/images/logo.png.jpeg';
+import Logo from '../assets/images/Logo.png';
 import landingPageImg from '../assets/images/landingpage.png';
 import siteEngineerTablet from '../assets/images/site_engineer_tablet.jpg';
 import siteInspectionTeam from '../assets/images/site_inspection_team.jpg';
@@ -64,6 +64,39 @@ const LandingPage = () => {
     const [showQRStep, setShowQRStep] = useState(false);
     const [qrPaymentData, setQrPaymentData] = useState(null); // { planName, priceStr, amount, qrUrl }
 
+    // Customization Modal State (For Custom Plan & White-label requests)
+    const [customModalOpen, setCustomModalOpen] = useState(false);
+    const [customFormData, setCustomFormData] = useState({
+        fullName: '',
+        phone: '',
+        email: '',
+        companyName: '',
+        city: '',
+        interestedPlan: 'Custom Enterprise Plan'
+    });
+
+    const handleCustomSubmit = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!customFormData.fullName || !customFormData.phone) {
+            alert('Please enter your Full Name and Phone Number.');
+            return;
+        }
+
+        const msg = `Hello KT Construct Team, I am interested in your Construction Management SaaS Platform.
+
+*Customization Request Details:*
+• *Full Name:* ${customFormData.fullName}
+• *Phone:* ${customFormData.phone}
+• *Email:* ${customFormData.email || 'N/A'}
+• *Company Name:* ${customFormData.companyName || 'N/A'}
+• *City:* ${customFormData.city || 'N/A'}
+• *Interested Plan:* ${customFormData.interestedPlan || 'Custom Enterprise Plan'}`;
+
+        const waUrl = `https://api.whatsapp.com/send?phone=919752100980&text=${encodeURIComponent(msg)}`;
+        window.open(waUrl, '_blank');
+        setCustomModalOpen(false);
+    };
+
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth <= 768);
         const handleScroll = () => setScrolled(window.scrollY > 30);
@@ -75,76 +108,106 @@ const LandingPage = () => {
         };
     }, []);
 
-    // Default Subscription Plans (Enhanced Construction-Specific Features)
+    // Default Subscription Plans (Matching Screenshot 1 & Construction SaaS)
     const defaultPlans = [
         {
-            name: "Free Try Now 7 Days",
+            name: "FREE TRIAL",
+            tag: "TEST DRIVE",
+            description: "Experience the full platform core with site logs, sample projects & daily reports to explore KT Construct.",
             price: "₹0",
-            period: "per 7 Days",
-            duration: "Duration: 7 Days",
+            numericPrice: 0,
+            period: "/ 7 days",
+            duration: "Duration: 7 Days Trial",
             features: [
+                "Basic Daily Site Logs & Tasks",
                 "1 Active Construction Project",
-                "3 Team Members / Field Engineers",
-                "Daily Site Logs & Task Management",
-                "Basic Subcontractor RFQ Requests",
-                "Purchase Orders & Invoice Creation",
-                "Document & Blueprint Vault (500 MB)",
-                "Full 7-Day Unrestricted Access"
+                "3 Active Job Sites & Work Orders",
+                "Staff shift & attendance log access",
+                "1 Connected Mobile Terminal",
+                "7-Day trial duration"
             ],
-            isPopular: false
+            isPopular: false,
+            buttonText: "START 7-DAY TRIAL"
         },
         {
-            name: "Starter 1",
-            price: "₹1",
-            period: "per month",
-            duration: "Duration: Monthly",
+            name: "STARTER PLAN",
+            tag: "SMALL TEAM",
+            description: "Perfect for independent contractors, small builders, or stand-alone site teams.",
+            price: "₹999",
+            numericPrice: 999,
+            period: "/ month",
+            duration: "Monthly Billing",
             features: [
+                "Full Site Daily Logs & Receipts",
                 "Up to 3 Active Construction Projects",
-                "Up to 10 Team Members & Engineers",
-                "Daily Site Logs & Worker Attendance",
-                "Subcontractor Bidding & RFQ Hub",
-                "Purchase Order (PO) & Invoice System",
-                "Site Daily Logs & Photo Attachments",
-                "RFI & Blueprint Document Vault (5 GB)",
-                "Basic Cost Control & Expense Tracking"
+                "Up to 5 Job Sites & Work Orders",
+                "Subcontractor RFQs & Bidding Hub",
+                "Purchase Orders (PO) & Invoices",
+                "Basic stock level & low alerts",
+                "Up to 5 team members connected"
             ],
-            isPopular: false
+            isPopular: false,
+            buttonText: "CHOOSE PLAN"
         },
         {
-            name: "Standard 799",
-            price: "₹799",
-            period: "per month",
-            duration: "Duration: Monthly",
-            features: [
-                "Up to 10 Active Construction Projects",
-                "Up to 25 Team Members & Subcontractors",
-                "Advanced Subcontractor & Field Tracking",
-                "Real-time Site & Workforce Analytics",
-                "GPS Crew Clock-in & Site Geofencing",
-                "Full PO Approval & Invoice Workflows",
-                "Gantt Schedules & Milestone Tracking",
-                "Blueprint Center with RFI System (25 GB)",
-                "Automated Budget Overrun Alerts"
-            ],
-            isPopular: true
-        },
-        {
-            name: "Pro 1299",
+            name: "STANDARD PLAN",
+            tag: "RECOMMENDED",
+            description: "Best for growing general contractors, commercial builders, and engineering firms.",
             price: "₹1,299",
-            period: "per month",
-            duration: "Duration: Monthly",
+            numericPrice: 1299,
+            period: "/ month",
+            duration: "Monthly Billing",
             features: [
-                "Unlimited Active Construction Projects",
-                "Unlimited Team Members & Subcontractors",
-                "Complete Enterprise Construction Suite",
-                "AI-Powered Scheduling & Delay Forecasts",
-                "Live GPS Site Monitoring & Asset Tracking",
-                "Advanced Financial Controls & Audit Logs",
-                "Multi-Site Executive Dashboards & Analytics",
-                "Unlimited CAD Blueprints & RFI Vault",
-                "24/7 Dedicated Support & Account Manager"
+                "Everything in Starter Plan",
+                "Up to 10 Active Construction Projects",
+                "Up to 25 Active Job Locations",
+                "Interactive Gantt & Milestone Schedules",
+                "GPS Site Clock-in & Crew Geofencing",
+                "Blueprint Vault & RFI System (25 GB)",
+                "Staff shift & role permissions",
+                "Up to 15 team members active"
             ],
-            isPopular: false
+            isPopular: true,
+            buttonText: "CHOOSE PLAN"
+        },
+        {
+            name: "PRO PLAN",
+            tag: "UNCAPPED POWER",
+            description: "For multi-location developers, heavy infra contractors, and construction groups.",
+            price: "₹1,499",
+            numericPrice: 1499,
+            period: "/ month",
+            duration: "Monthly Billing",
+            features: [
+                "Everything in Standard Plan",
+                "Multi-site central control ERP",
+                "Up to 50 Active Projects & 100 Jobs",
+                "AI-Powered Scheduling & Delay Forecasts",
+                "Full PO & Raw Material Invoicing ERP",
+                "Priority 24/7 dedicated support",
+                "Unlimited terminal sessions",
+                "Export CSV & PDF financial audit reports"
+            ],
+            isPopular: false,
+            buttonText: "CHOOSE PLAN"
+        },
+        {
+            name: "CUSTOM PLAN",
+            tag: "CUSTOM",
+            description: "Tailored to your enterprise construction operations & custom workflows.",
+            price: "Custom",
+            numericPrice: 0,
+            period: "",
+            duration: "Annual Enterprise",
+            features: [
+                "SaaS with full customization",
+                "Personal domain & white-labeling",
+                "Personal branding",
+                "AI and automation",
+                "Custom integrations & dedicated SLA"
+            ],
+            isPopular: false,
+            buttonText: "GET STARTED"
         }
     ];
 
@@ -153,19 +216,39 @@ const LandingPage = () => {
             try {
                 const plansRes = await api.get('/plans');
                 const plansData = plansRes?.data;
-                if (Array.isArray(plansData) && plansData.length > 0) {
-                    setPricingPlans(plansData.map(p => ({
-                        id: p._id || p.id,
-                        name: p.name,
-                        price: p.price === 0 ? '₹0' : (typeof p.price === 'number' ? '₹' + p.price.toLocaleString('en-IN') : p.price),
-                        numericPrice: p.price,
-                        period: p.period === 'custom' ? '' : (p.period === '7 Days' ? 'per 7 Days' : '/ ' + (p.period || 'month')),
-                        duration: p.duration || ('Duration: ' + (p.period || 'Monthly')),
-                        features: Array.isArray(p.features) ? p.features : [],
-                        isPopular: Boolean(p.isPopular),
-                        maxUsers: p.maxUsers,
-                        maxProjects: p.maxProjects
-                    })));
+                if (Array.isArray(plansData) && plansData.length >= 3) {
+                    // Strictly sort so Custom Plan is always last
+                    const sorted = [...plansData].sort((a, b) => {
+                        const isCustomA = a.period === 'custom' || a.name?.toLowerCase().includes('custom') || (a.price === 0 && !a.name?.toLowerCase().includes('trial'));
+                        const isCustomB = b.period === 'custom' || b.name?.toLowerCase().includes('custom') || (b.price === 0 && !b.name?.toLowerCase().includes('trial'));
+                        if (isCustomA) return 1;
+                        if (isCustomB) return -1;
+                        return a.price - b.price;
+                    });
+
+                    setPricingPlans(sorted.map(p => {
+                        const isCustom = p.period === 'custom' || p.price === 0 && p.name.toLowerCase().includes('custom');
+                        const isFree = p.price === 0 && !isCustom;
+                        const pName = p.name.toUpperCase();
+                        let defaultMatch = defaultPlans.find(d => d.name.toUpperCase() === pName || d.tag === p.tag) || {};
+
+                        return {
+                            id: p._id || p.id,
+                            name: p.name.toUpperCase().includes('PLAN') ? p.name.toUpperCase() : `${p.name.toUpperCase()} PLAN`,
+                            tag: p.tag || defaultMatch.tag || (p.isPopular ? 'RECOMMENDED' : (isFree ? 'TEST DRIVE' : (isCustom ? 'CUSTOM' : 'SMALL TEAM'))),
+                            description: p.description || defaultMatch.description || 'Comprehensive construction management suite tailored for your team.',
+                            price: isCustom ? 'Custom' : (isFree ? '₹0' : (typeof p.price === 'number' ? '₹' + p.price.toLocaleString('en-IN') : p.price)),
+                            numericPrice: p.price,
+                            period: isCustom ? '' : (isFree ? '/ 7 days' : '/ month'),
+                            duration: isFree ? 'Duration: 7 Days Trial' : (isCustom ? 'Annual Enterprise' : 'Monthly Billing'),
+                            features: Array.isArray(p.features) && p.features.length > 0 ? p.features : (defaultMatch.features || []),
+                            isPopular: Boolean(p.isPopular),
+                            maxUsers: p.maxUsers,
+                            maxProjects: p.maxProjects,
+                            maxJobs: p.maxJobs,
+                            buttonText: isFree ? 'START 7-DAY TRIAL' : (isCustom ? 'GET STARTED' : 'CHOOSE PLAN')
+                        };
+                    }));
                 } else {
                     setPricingPlans(defaultPlans);
                 }
@@ -190,8 +273,17 @@ const LandingPage = () => {
             photo: null
         });
         setPhotoPreview(null);
+        setSubmittingPayment(false);
         setSubscriptionModalOpen(true);
     };
+
+    const fileToBase64 = (file) => new Promise((resolve) => {
+        if (!file) { resolve(null); return; }
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+    });
 
     // ── Payment Handler: Launch Official Razorpay Payment Gateway (Live API) ────
     const handleModalPaymentSubmit = async (e) => {
@@ -209,9 +301,11 @@ const LandingPage = () => {
         if (typeof planPriceStr === 'number') {
             numericAmount = planPriceStr;
         } else if (typeof planPriceStr === 'string') {
-            const cleaned = planPriceStr.replace(/[^0-9.]/g, '');
+            const cleaned = planPriceStr.replace(/,/g, '').replace(/[^0-9.]/g, '');
             numericAmount = cleaned === '' ? 1 : parseFloat(cleaned);
         }
+
+        const logoBase64 = formData.photo ? await fileToBase64(formData.photo) : null;
 
         // FREE plan → skip payment, go straight to register
         if (numericAmount === 0 || String(planName).toLowerCase().includes('free')) {
@@ -222,8 +316,11 @@ const LandingPage = () => {
                     email: formData.email, phone: formData.phone,
                     password: formData.password, planName: planName,
                     price: planPriceStr, startDate: formData.startDate,
+                    logo: logoBase64,
                     paymentId: 'free_trial'
                 });
+                localStorage.setItem('mustChangePassword', 'true');
+                localStorage.setItem('purchasedEmail', formData.email);
                 alert(`🎉 Free Trial Activated!\n\nYour 7-day account is ready. Activation email sent to ${formData.email}.`);
                 setSubscriptionModalOpen(false);
                 navigate('/login');
@@ -279,6 +376,11 @@ const LandingPage = () => {
             name: 'Kiaan Technology Pvt Ltd',
             description: `KT Construct - ${planName} Subscription`,
             image: Logo,
+            modal: {
+                ondismiss: function () {
+                    setSubmittingPayment(false);
+                }
+            },
             handler: async function (response) {
                 try {
                     // Send registration & trigger custom KT Construct welcome email after backend verification
@@ -291,11 +393,14 @@ const LandingPage = () => {
                         planName: planName,
                         price: planPriceStr,
                         startDate: formData.startDate,
+                        logo: logoBase64,
                         paymentId: response.razorpay_payment_id || 'pay_success',
                         razorpayOrderId: response.razorpay_order_id,
                         razorpaySignature: response.razorpay_signature,
                     });
 
+                    localStorage.setItem('mustChangePassword', 'true');
+                    localStorage.setItem('purchasedEmail', formData.email);
                     alert(`✅ Payment Verified & Successful!\nPayment ID: ${response.razorpay_payment_id || 'Success'}\n\nYour KT Construct account has been activated! An activation email has been sent to ${formData.email}.`);
                     setSubscriptionModalOpen(false);
                     navigate('/login');
@@ -318,12 +423,18 @@ const LandingPage = () => {
             }
         };
 
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', function (resp) {
-            alert(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
+        try {
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', function (resp) {
+                alert(`Payment Failed: ${resp.error?.description || 'Transaction declined'}`);
+                setSubmittingPayment(false);
+            });
+            rzp.open();
+        } catch (rzpErr) {
+            console.error('[Razorpay open error]', rzpErr);
+            alert('Failed to launch payment gateway: ' + (rzpErr.message || 'Unknown error'));
             setSubmittingPayment(false);
-        });
-        rzp.open();
+        }
     };
 
     const handleRazorpayPayment = (amountInRupees = 999, planName = 'KT Construct Subscription') => {
@@ -1198,14 +1309,14 @@ const LandingPage = () => {
             </section>
 
             {/* ══ PRICING / SUBSCRIPTION PLANS SECTION ═══════════════════════ */}
-            <section id="pricing" style={{ padding: '90px 0', position: 'relative' }}>
-                <div className="container-custom">
-                    <div style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto 60px' }}>
+            <section id="pricing" style={{ padding: '100px 0', position: 'relative' }}>
+                <div className="container-custom" style={{ maxWidth: 1380 }}>
+                    <div style={{ textAlign: 'center', maxWidth: 680, margin: '0 auto 60px' }}>
                         <div className="pill-tag" style={{ marginBottom: 16 }}>
-                            <Wallet size={14} color="#60a5fa" /> Subscription Plans
+                            <Wallet size={14} color="#60a5fa" /> Transparent SaaS Pricing
                         </div>
                         <h2 className="font-title" style={{
-                            fontSize: 'clamp(28px, 4vw, 44px)',
+                            fontSize: 'clamp(28px, 4.5vw, 44px)',
                             fontWeight: 800,
                             color: '#ffffff',
                             marginBottom: 16
@@ -1213,112 +1324,249 @@ const LandingPage = () => {
                             Choose Your <span className="gradient-text-blue">Perfect Plan</span>
                         </h2>
                         <p style={{ color: '#94a3b8', fontSize: 15 }}>
-                            Flexible pricing options for construction companies of all sizes
+                            Flexible, transparent pricing tailored for general contractors, site engineers, and growing construction firms.
                         </p>
                     </div>
 
-                    {/* Dynamic Pricing Grid */}
+                    {/* 5-Column Pricing Cards Grid (Dark Navy & Electric Blue Aesthetic) */}
                     {(() => {
-                        const displayPlans = pricingPlans.length > 0 ? pricingPlans : defaultPlans;
+                        const rawPlans = pricingPlans.length > 0 ? pricingPlans : defaultPlans;
+                        // Always ensure Custom Plan is in the 5th (last) position
+                        const displayPlans = [...rawPlans].sort((a, b) => {
+                            const isCustomA = a.period === 'custom' || a.name?.toLowerCase().includes('custom') || a.price === 'Custom' || (a.numericPrice === 0 && !a.name?.toLowerCase().includes('trial'));
+                            const isCustomB = b.period === 'custom' || b.name?.toLowerCase().includes('custom') || b.price === 'Custom' || (b.numericPrice === 0 && !b.name?.toLowerCase().includes('trial'));
+                            if (isCustomA) return 1;
+                            if (isCustomB) return -1;
+                            return (a.numericPrice || 0) - (b.numericPrice || 0);
+                        });
+
                         return (
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: isMobile ? '1fr' : `repeat(${Math.min(displayPlans.length, 4)}, 1fr)`,
-                                gap: 20,
+                                gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(235px, 1fr))',
+                                gap: isMobile ? 24 : 16,
                                 alignItems: 'stretch'
                             }}>
-                                {displayPlans.map((plan, i) => (
-                            <div key={i} style={{
-                                background: plan.isPopular ? 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)' : 'rgba(15, 23, 42, 0.85)',
-                                backdropFilter: 'blur(12px)',
-                                border: plan.isPopular ? '2px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.22)',
-                                borderRadius: 20,
-                                padding: '32px 24px 28px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                justifyContent: 'space-between',
-                                position: 'relative',
-                                transition: 'all 0.3s ease',
-                                boxShadow: plan.isPopular ? '0 12px 40px rgba(37, 99, 235, 0.3)' : 'none'
-                            }}>
-                                {plan.isPopular && (
-                                    <div style={{
-                                        position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)',
-                                        background: 'linear-gradient(135deg, #1d4ed8, #3b82f6)',
-                                        color: '#ffffff', fontSize: 11, fontWeight: 800,
-                                        letterSpacing: '0.08em', textTransform: 'uppercase',
-                                        padding: '4px 14px', borderRadius: 9999,
-                                        boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)',
-                                        whiteSpace: 'nowrap'
-                                    }}>
-                                        Most Popular
-                                    </div>
-                                )}
+                                {displayPlans.map((plan, i) => {
+                                    const isRecommended = Boolean(plan.isPopular || plan.tag === 'RECOMMENDED' || plan.name.includes('STANDARD'));
+                                    const isCustom = plan.price === 'Custom' || (plan.numericPrice === 0 && plan.name.includes('CUSTOM'));
+                                    const isFree = plan.numericPrice === 0 && !isCustom;
 
-                                <div>
-                                    <div style={{ fontSize: 15, fontWeight: 700, color: plan.isPopular ? '#60a5fa' : '#ffffff', marginBottom: 12 }}>
-                                        {plan.name}
-                                    </div>
+                                    return (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                background: isRecommended
+                                                    ? 'linear-gradient(180deg, rgba(22, 38, 70, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)'
+                                                    : 'rgba(15, 23, 42, 0.75)',
+                                                backdropFilter: 'blur(16px)',
+                                                WebkitBackdropFilter: 'blur(16px)',
+                                                borderRadius: 24,
+                                                padding: '28px 20px 24px',
+                                                border: isRecommended
+                                                    ? '2px solid #3b82f6'
+                                                    : '1px solid rgba(59, 130, 246, 0.22)',
+                                                boxShadow: isRecommended
+                                                    ? '0 16px 45px rgba(37, 99, 235, 0.35)'
+                                                    : '0 8px 30px rgba(0, 0, 0, 0.25)',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                justifyContent: 'space-between',
+                                                position: 'relative',
+                                                overflow: 'hidden',
+                                                transition: 'transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease'
+                                            }}
+                                            onMouseEnter={e => {
+                                                e.currentTarget.style.transform = 'translateY(-6px)';
+                                                e.currentTarget.style.boxShadow = isRecommended
+                                                    ? '0 22px 55px rgba(37, 99, 235, 0.45)'
+                                                    : '0 14px 36px rgba(37, 99, 235, 0.2)';
+                                                if (!isRecommended) {
+                                                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.55)';
+                                                }
+                                            }}
+                                            onMouseLeave={e => {
+                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                e.currentTarget.style.boxShadow = isRecommended
+                                                    ? '0 16px 45px rgba(37, 99, 235, 0.35)'
+                                                    : '0 8px 30px rgba(0, 0, 0, 0.25)';
+                                                if (!isRecommended) {
+                                                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.22)';
+                                                }
+                                            }}
+                                        >
+                                            {/* Diagonal Corner POPULAR Ribbon for Recommended Card */}
+                                            {isRecommended && (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: 18,
+                                                    right: -32,
+                                                    transform: 'rotate(45deg)',
+                                                    background: 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)',
+                                                    color: '#ffffff',
+                                                    fontSize: 10,
+                                                    fontWeight: 900,
+                                                    letterSpacing: '0.12em',
+                                                    padding: '4px 38px',
+                                                    boxShadow: '0 2px 10px rgba(37, 99, 235, 0.5)',
+                                                    textTransform: 'uppercase',
+                                                    zIndex: 2
+                                                }}>
+                                                    POPULAR
+                                                </div>
+                                            )}
 
-                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-                                        <span className="font-title" style={{ fontSize: 36, fontWeight: 800, color: '#ffffff' }}>
-                                            {plan.price}
-                                        </span>
-                                        <span style={{ fontSize: 13, color: '#94a3b8' }}>
-                                            {plan.period}
-                                        </span>
-                                    </div>
+                                            <div>
+                                                {/* Top Tag Pill */}
+                                                <div style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    padding: '4px 12px',
+                                                    borderRadius: 12,
+                                                    background: isRecommended
+                                                        ? 'rgba(37, 99, 235, 0.22)'
+                                                        : 'rgba(255, 255, 255, 0.05)',
+                                                    color: isRecommended ? '#60a5fa' : '#94a3b8',
+                                                    border: isRecommended
+                                                        ? '1px solid rgba(59, 130, 246, 0.4)'
+                                                        : '1px solid rgba(255, 255, 255, 0.1)',
+                                                    fontSize: 11,
+                                                    fontWeight: 800,
+                                                    letterSpacing: '0.06em',
+                                                    textTransform: 'uppercase',
+                                                    marginBottom: 16
+                                                }}>
+                                                    {plan.tag || (isFree ? 'TEST DRIVE' : (isRecommended ? 'RECOMMENDED' : (isCustom ? 'CUSTOM' : 'SMALL TEAM')))}
+                                                </div>
 
-                                    {plan.duration && (
-                                        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20, fontStyle: 'italic' }}>
-                                            {plan.duration}
+                                                {/* Plan Title */}
+                                                <h3 style={{
+                                                    fontSize: 19,
+                                                    fontWeight: 800,
+                                                    color: isRecommended ? '#60a5fa' : '#ffffff',
+                                                    marginBottom: 8,
+                                                    letterSpacing: '-0.01em',
+                                                    textTransform: 'uppercase'
+                                                }}>
+                                                    {plan.name}
+                                                </h3>
+
+                                                {/* Subtitle Description */}
+                                                <p style={{
+                                                    fontSize: 12,
+                                                    color: '#94a3b8',
+                                                    lineHeight: 1.45,
+                                                    marginBottom: 20,
+                                                    minHeight: 38
+                                                }}>
+                                                    {plan.description}
+                                                </p>
+
+                                                {/* Price Header */}
+                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                                    <span style={{
+                                                        fontSize: plan.price === 'Custom' ? 28 : 34,
+                                                        fontWeight: 900,
+                                                        color: '#ffffff',
+                                                        letterSpacing: '-0.02em'
+                                                    }}>
+                                                        {plan.price}
+                                                    </span>
+                                                    {plan.period && (
+                                                        <span style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600 }}>
+                                                            {plan.period}
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Features Checklist */}
+                                                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28, padding: 0 }}>
+                                                    {plan.features.map((feat, fIdx) => (
+                                                        <li key={fIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.4 }}>
+                                                            <div style={{
+                                                                width: 18,
+                                                                height: 18,
+                                                                borderRadius: '50%',
+                                                                background: isRecommended ? 'rgba(37, 99, 235, 0.25)' : 'rgba(59, 130, 246, 0.15)',
+                                                                border: isRecommended ? '1px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.3)',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                flexShrink: 0,
+                                                                marginTop: 1
+                                                            }}>
+                                                                <Check size={11} color="#60a5fa" strokeWidth={3} />
+                                                            </div>
+                                                            <span>{feat}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+
+                                            {/* Bottom Action Button */}
+                                            <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+                                                <button
+                                                    onClick={() => {
+                                                        if (isFree) {
+                                                            navigate('/register?plan=Free%20Trial');
+                                                        } else if (isCustom) {
+                                                            setCustomModalOpen(true);
+                                                        } else {
+                                                            openPlanModal(plan);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '12px 16px',
+                                                        borderRadius: 16,
+                                                        fontWeight: 800,
+                                                        fontSize: 13,
+                                                        cursor: 'pointer',
+                                                        border: isRecommended ? 'none' : '1px solid rgba(59, 130, 246, 0.3)',
+                                                        background: isRecommended
+                                                            ? 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)'
+                                                            : 'rgba(255, 255, 255, 0.04)',
+                                                        color: '#ffffff',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: 6,
+                                                        transition: 'all 0.2s ease',
+                                                        letterSpacing: '0.04em',
+                                                        textTransform: 'uppercase',
+                                                        boxShadow: isRecommended ? '0 6px 20px rgba(37, 99, 235, 0.45)' : 'none'
+                                                    }}
+                                                    onMouseEnter={e => {
+                                                        if (isRecommended) {
+                                                            e.currentTarget.style.background = 'linear-gradient(135deg, #1e40af 0%, #1d4ed8 50%, #2563eb 100%)';
+                                                            e.currentTarget.style.boxShadow = '0 8px 25px rgba(37, 99, 235, 0.6)';
+                                                        } else {
+                                                            e.currentTarget.style.background = 'rgba(37, 99, 235, 0.16)';
+                                                            e.currentTarget.style.borderColor = '#3b82f6';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={e => {
+                                                        if (isRecommended) {
+                                                            e.currentTarget.style.background = 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)';
+                                                            e.currentTarget.style.boxShadow = '0 6px 20px rgba(37, 99, 235, 0.45)';
+                                                        } else {
+                                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                                                            e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+                                                        }
+                                                    }}
+                                                >
+                                                    <span>{plan.buttonText || (isFree ? 'START 7-DAY TRIAL' : (isCustom ? 'GET STARTED' : 'CHOOSE PLAN'))}</span>
+                                                    <ChevronRight size={14} />
+                                                </button>
+                                            </div>
                                         </div>
-                                    )}
-
-                                    <div style={{ height: 1, background: 'rgba(255, 255, 255, 0.08)', marginBottom: 20 }} />
-
-                                    <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28, padding: 0 }}>
-                                        {plan.features.map((feat, fIdx) => (
-                                            <li key={fIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#e2e8f0', lineHeight: 1.4 }}>
-                                                <Check size={16} color="#60a5fa" style={{ marginTop: 2, flexShrink: 0 }} />
-                                                <span>{feat}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-
-                                {/* Get Started Button placed cleanly at the bottom */}
-                                <div style={{ marginTop: 'auto', paddingTop: 16 }}>
-                                    <button
-                                        onClick={() => openPlanModal(plan)}
-                                        style={{
-                                            width: '100%',
-                                            padding: '12px 20px',
-                                            borderRadius: 10,
-                                            fontWeight: 700,
-                                            fontSize: 14,
-                                            cursor: 'pointer',
-                                            border: plan.isPopular ? 'none' : '1px solid rgba(59, 130, 246, 0.35)',
-                                            background: plan.isPopular ? 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)' : 'rgba(255, 255, 255, 0.04)',
-                                            color: '#ffffff',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: 8,
-                                            transition: 'all 0.25s ease',
-                                            boxShadow: plan.isPopular ? '0 4px 20px rgba(37, 99, 235, 0.4)' : 'none'
-                                        }}
-                                    >
-                                        Get Started
-                                    </button>
-                                </div>
+                                    );
+                                })}
                             </div>
-                        ))}
-                    </div>
-                );
-            })()}
-        </div>
-    </section>
+                        );
+                    })()}
+                </div>
+            </section>
 
             {/* ══ CTA BANNER SECTION ══════════════════════════════════════════ */}
             <section style={{ padding: '80px 0', position: 'relative' }}>
@@ -1846,15 +2094,15 @@ const LandingPage = () => {
                 </div>
             )}
 
-            {/* ══ SUBSCRIPTION REGISTRATION MODAL POPUP (MATCHING USER SCREENSHOT 1) ════════ */}
+            {/* ══ SUBSCRIPTION CHECKOUT POPUP MODAL (CLEAN LIGHT THEME WITH LOGO UPLOAD) ══ */}
             {subscriptionModalOpen && (
                 <div style={{
                     position: 'fixed',
                     inset: 0,
                     zIndex: 9999,
-                    background: 'rgba(15, 23, 42, 0.75)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1863,15 +2111,17 @@ const LandingPage = () => {
                 }}>
                     <div style={{
                         background: '#ffffff',
-                        color: '#1e293b',
+                        color: '#0f172a',
                         borderRadius: 24,
                         width: '100%',
-                        maxWidth: 500,
-                        padding: isMobile ? 24 : 32,
-                        boxShadow: '0 25px 60px rgba(0, 0, 0, 0.4)',
+                        maxWidth: 490,
+                        padding: isMobile ? 22 : 30,
+                        boxShadow: '0 25px 60px rgba(0, 0, 0, 0.2), 0 0 40px rgba(37, 99, 235, 0.1)',
+                        border: '1px solid #e2e8f0',
                         position: 'relative',
-                        maxHeight: '90vh',
-                        overflowY: 'auto'
+                        maxHeight: '92vh',
+                        overflowY: 'auto',
+                        animation: 'fadeIn 0.25s ease-out'
                     }}>
                         {/* Close Button */}
                         <button
@@ -1889,31 +2139,37 @@ const LandingPage = () => {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 cursor: 'pointer',
-                                color: '#64748b'
+                                color: '#64748b',
+                                transition: 'all 0.2s ease'
                             }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#0f172a'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}
                         >
                             <X size={18} />
                         </button>
 
-                        {/* Photo Upload Header (Matching Screenshot 1) */}
-                        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                        {/* Top Center Company Logo Upload Circle */}
+                        <div style={{ textAlign: 'center', marginBottom: 14 }}>
                             <label style={{ cursor: 'pointer', display: 'inline-block' }}>
                                 <div style={{
-                                    width: 72,
-                                    height: 72,
+                                    width: 76,
+                                    height: 76,
                                     borderRadius: '50%',
-                                    border: '2px dashed #cbd5e1',
-                                    background: photoPreview ? `url(${photoPreview}) center/cover` : '#f8fafc',
+                                    border: '2px dashed #94a3b8',
+                                    background: photoPreview ? `url(${photoPreview}) center/cover no-repeat` : '#f8fafc',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    margin: '0 auto 8px',
-                                    color: '#64748b'
+                                    margin: '0 auto 6px',
+                                    color: '#64748b',
+                                    transition: 'all 0.2s ease',
+                                    overflow: 'hidden',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
                                 }}>
                                     {!photoPreview && <>
-                                        <Camera size={22} color="#94a3b8" />
-                                        <span style={{ fontSize: 10, fontWeight: 600, marginTop: 2 }}>Photo</span>
+                                        <Camera size={24} color="#64748b" />
+                                        <span style={{ fontSize: 9.5, fontWeight: 700, marginTop: 2, textTransform: 'uppercase', color: '#64748b' }}>Logo</span>
                                     </>}
                                 </div>
                                 <input
@@ -1928,33 +2184,44 @@ const LandingPage = () => {
                                         }
                                     }}
                                 />
-                                <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>
-                                    Upload Photo (Optional)
+                                <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    {photoPreview ? '✓ Change Company Logo' : '+ Upload Company Logo (Optional)'}
                                 </span>
                             </label>
                         </div>
 
-                        {/* Form Fields */}
-                        <form onSubmit={handleModalPaymentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {/* Header Title */}
+                        <div style={{ textAlign: 'center', marginBottom: 18 }}>
+                            <h3 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>
+                                🚀 Complete Subscription Setup
+                            </h3>
+                            <p style={{ fontSize: 12.5, color: '#64748b', margin: 0 }}>
+                                Enter your company details to activate your construction workspace
+                            </p>
+                        </div>
+
+                        {/* Form Fields with NO autofill */}
+                        <form onSubmit={handleModalPaymentSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
                             
                             {/* Selected Plan Field */}
                             <div>
-                                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 }}>
                                     Selected Plan
                                 </label>
                                 <input
                                     type="text"
                                     readOnly
-                                    value={selectedPlanForModal?.name || 'Starter 1'}
+                                    value={`${selectedPlanForModal?.name || 'STARTER PLAN'} (${selectedPlanForModal?.price || '₹1'})`}
                                     style={{
                                         width: '100%',
-                                        padding: '11px 14px',
+                                        padding: '10px 14px',
                                         borderRadius: 12,
-                                        border: '1px solid #e2e8f0',
-                                        background: '#f8fafc',
+                                        border: '1.5px solid #bfdbfe',
+                                        background: '#eff6ff',
                                         fontSize: 14,
-                                        fontWeight: 600,
-                                        color: '#1e293b'
+                                        fontWeight: 800,
+                                        color: '#1d4ed8',
+                                        boxSizing: 'border-box'
                                     }}
                                 />
                             </div>
@@ -1962,45 +2229,55 @@ const LandingPage = () => {
                             {/* Company Name & City */}
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 }}>
                                         Company Name *
                                     </label>
                                     <input
                                         type="text"
                                         required
+                                        autoComplete="off"
                                         placeholder="Company name"
                                         value={formData.companyName}
                                         onChange={e => setFormData({ ...formData, companyName: e.target.value })}
                                         style={{
                                             width: '100%',
-                                            padding: '11px 14px',
+                                            padding: '10px 14px',
                                             borderRadius: 12,
-                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            border: '1.5px solid #cbd5e1',
                                             fontSize: 14,
                                             color: '#0f172a',
-                                            outline: 'none'
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
                                         }}
+                                        onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = '#ffffff'; }}
+                                        onBlur={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 }}>
                                         City *
                                     </label>
                                     <input
                                         type="text"
                                         required
+                                        autoComplete="off"
                                         placeholder="Your city"
                                         value={formData.city}
                                         onChange={e => setFormData({ ...formData, city: e.target.value })}
                                         style={{
                                             width: '100%',
-                                            padding: '11px 14px',
+                                            padding: '10px 14px',
                                             borderRadius: 12,
-                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            border: '1.5px solid #cbd5e1',
                                             fontSize: 14,
                                             color: '#0f172a',
-                                            outline: 'none'
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
                                         }}
+                                        onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = '#ffffff'; }}
+                                        onBlur={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
                                     />
                                 </div>
                             </div>
@@ -2008,45 +2285,55 @@ const LandingPage = () => {
                             {/* Email Address & Mobile Number */}
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 }}>
                                         Email Address *
                                     </label>
                                     <input
                                         type="email"
                                         required
+                                        autoComplete="off"
                                         placeholder="your@email.com"
                                         value={formData.email}
                                         onChange={e => setFormData({ ...formData, email: e.target.value })}
                                         style={{
                                             width: '100%',
-                                            padding: '11px 14px',
+                                            padding: '10px 14px',
                                             borderRadius: 12,
-                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            border: '1.5px solid #cbd5e1',
                                             fontSize: 14,
                                             color: '#0f172a',
-                                            outline: 'none'
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
                                         }}
+                                        onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = '#ffffff'; }}
+                                        onBlur={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 }}>
                                         Mobile Number *
                                     </label>
                                     <input
                                         type="tel"
                                         required
+                                        autoComplete="off"
                                         placeholder="Mobile number"
                                         value={formData.phone}
                                         onChange={e => setFormData({ ...formData, phone: e.target.value })}
                                         style={{
                                             width: '100%',
-                                            padding: '11px 14px',
+                                            padding: '10px 14px',
                                             borderRadius: 12,
-                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            border: '1.5px solid #cbd5e1',
                                             fontSize: 14,
                                             color: '#0f172a',
-                                            outline: 'none'
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
                                         }}
+                                        onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = '#ffffff'; }}
+                                        onBlur={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
                                     />
                                 </div>
                             </div>
@@ -2054,28 +2341,33 @@ const LandingPage = () => {
                             {/* Password & Start Date */}
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 }}>
                                         Password *
                                     </label>
                                     <input
                                         type="password"
                                         required
-                                        placeholder="Password"
+                                        autoComplete="new-password"
+                                        placeholder="Create a password"
                                         value={formData.password}
                                         onChange={e => setFormData({ ...formData, password: e.target.value })}
                                         style={{
                                             width: '100%',
-                                            padding: '11px 14px',
+                                            padding: '10px 14px',
                                             borderRadius: 12,
-                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            border: '1.5px solid #cbd5e1',
                                             fontSize: 14,
                                             color: '#0f172a',
-                                            outline: 'none'
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
                                         }}
+                                        onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = '#ffffff'; }}
+                                        onBlur={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 }}>
                                         Start Date
                                     </label>
                                     <input
@@ -2084,13 +2376,17 @@ const LandingPage = () => {
                                         onChange={e => setFormData({ ...formData, startDate: e.target.value })}
                                         style={{
                                             width: '100%',
-                                            padding: '11px 14px',
+                                            padding: '10px 14px',
                                             borderRadius: 12,
-                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            border: '1.5px solid #cbd5e1',
                                             fontSize: 14,
                                             color: '#0f172a',
-                                            outline: 'none'
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
                                         }}
+                                        onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = '#ffffff'; }}
+                                        onBlur={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
                                     />
                                 </div>
                             </div>
@@ -2100,27 +2396,376 @@ const LandingPage = () => {
                                 type="submit"
                                 disabled={submittingPayment}
                                 style={{
-                                    marginTop: 8,
+                                    marginTop: 6,
                                     width: '100%',
-                                    padding: '13px 20px',
+                                    padding: '14px 20px',
                                     borderRadius: 12,
-                                    background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+                                    background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)',
                                     color: '#ffffff',
                                     border: 'none',
                                     fontSize: 15,
-                                    fontWeight: 700,
+                                    fontWeight: 800,
                                     cursor: submittingPayment ? 'not-allowed' : 'pointer',
-                                    boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)',
+                                    boxShadow: '0 6px 22px rgba(37, 99, 235, 0.4)',
                                     transition: 'all 0.2s ease',
-                                    opacity: submittingPayment ? 0.7 : 1
+                                    opacity: submittingPayment ? 0.7 : 1,
+                                    letterSpacing: '0.02em'
+                                }}
+                                onMouseEnter={e => {
+                                    if (!submittingPayment) {
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = '0 8px 28px rgba(37, 99, 235, 0.6)';
+                                    }
+                                }}
+                                onMouseLeave={e => {
+                                    if (!submittingPayment) {
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                        e.currentTarget.style.boxShadow = '0 6px 22px rgba(37, 99, 235, 0.4)';
+                                    }
                                 }}
                             >
-                                {submittingPayment ? 'Processing Payment...' : 'Proceed to Payment (Razorpay)'}
+                                {submittingPayment ? 'Processing Activation...' : (selectedPlanForModal?.numericPrice === 0 ? 'Activate Free 7-Day Trial' : `Proceed to Payment (Razorpay)`)}
                             </button>
                         </form>
                     </div>
                 </div>
             )}
+
+            {/* ══ CUSTOMIZE YOUR WEBSITE & APP POPUP MODAL (MATCHING LANDING PAGE THEME) ══ */}
+            {customModalOpen && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 10000,
+                    background: 'rgba(4, 9, 20, 0.85)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#0d1527',
+                        borderRadius: 24,
+                        maxWidth: 480,
+                        width: '100%',
+                        overflow: 'hidden',
+                        border: '1.5px solid rgba(59, 130, 246, 0.35)',
+                        boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 50px rgba(37, 99, 235, 0.25)',
+                        position: 'relative',
+                        animation: 'fadeIn 0.25s ease-out'
+                    }}>
+                        {/* Header with Electric Blue Gradient matching Landing Page */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #2563eb 100%)',
+                            padding: '22px 24px',
+                            color: '#ffffff',
+                            position: 'relative',
+                            borderBottom: '1px solid rgba(59, 130, 246, 0.3)'
+                        }}>
+                            <button
+                                onClick={() => setCustomModalOpen(false)}
+                                style={{
+                                    position: 'absolute',
+                                    top: 18,
+                                    right: 18,
+                                    background: 'rgba(255, 255, 255, 0.12)',
+                                    border: 'none',
+                                    color: '#ffffff',
+                                    borderRadius: '50%',
+                                    cursor: 'pointer',
+                                    width: 32,
+                                    height: 32,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'}
+                            >
+                                <X size={18} />
+                            </button>
+                            <h3 style={{ fontSize: 20, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8, color: '#ffffff' }}>
+                                🎨 Customize Your Platform & App
+                            </h3>
+                            <p style={{ fontSize: 12.5, color: '#bfdbfe', margin: '6px 0 0', lineHeight: 1.4 }}>
+                                Get custom logo, branding, features & workflows tailored for your construction company
+                            </p>
+                        </div>
+
+                        {/* Modal Body Form */}
+                        <form onSubmit={handleCustomSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {/* Full Name */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                    Full Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Your full name"
+                                    value={customFormData.fullName}
+                                    onChange={e => setCustomFormData({ ...customFormData, fullName: e.target.value })}
+                                    style={{
+                                        width: '100%',
+                                        padding: '11px 14px',
+                                        borderRadius: 12,
+                                        background: 'rgba(15, 23, 42, 0.85)',
+                                        border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                                        fontSize: 14,
+                                        color: '#ffffff',
+                                        outline: 'none',
+                                        boxSizing: 'border-box'
+                                    }}
+                                    onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                                    onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                                />
+                            </div>
+
+                            {/* Phone & Email */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                        Phone *
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        required
+                                        placeholder="Mobile number"
+                                        value={customFormData.phone}
+                                        onChange={e => setCustomFormData({ ...customFormData, phone: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '11px 14px',
+                                            borderRadius: 12,
+                                            background: 'rgba(15, 23, 42, 0.85)',
+                                            border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                                            fontSize: 14,
+                                            color: '#ffffff',
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
+                                        }}
+                                        onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                                        onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                        Email
+                                    </label>
+                                    <input
+                                        type="email"
+                                        placeholder="Email address"
+                                        value={customFormData.email}
+                                        onChange={e => setCustomFormData({ ...customFormData, email: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '11px 14px',
+                                            borderRadius: 12,
+                                            background: 'rgba(15, 23, 42, 0.85)',
+                                            border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                                            fontSize: 14,
+                                            color: '#ffffff',
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
+                                        }}
+                                        onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                                        onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Construction Company Name & City */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                        Company Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Your construction company"
+                                        value={customFormData.companyName}
+                                        onChange={e => setCustomFormData({ ...customFormData, companyName: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '11px 14px',
+                                            borderRadius: 12,
+                                            background: 'rgba(15, 23, 42, 0.85)',
+                                            border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                                            fontSize: 14,
+                                            color: '#ffffff',
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
+                                        }}
+                                        onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                                        onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                        City
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Your city"
+                                        value={customFormData.city}
+                                        onChange={e => setCustomFormData({ ...customFormData, city: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '11px 14px',
+                                            borderRadius: 12,
+                                            background: 'rgba(15, 23, 42, 0.85)',
+                                            border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                                            fontSize: 14,
+                                            color: '#ffffff',
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
+                                        }}
+                                        onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                                        onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Interested Plan Dropdown */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                    Interested Plan
+                                </label>
+                                <select
+                                    value={customFormData.interestedPlan}
+                                    onChange={e => setCustomFormData({ ...customFormData, interestedPlan: e.target.value })}
+                                    style={{
+                                        width: '100%',
+                                        padding: '11px 14px',
+                                        borderRadius: 12,
+                                        background: '#0f172a',
+                                        border: '1.5px solid rgba(59, 130, 246, 0.25)',
+                                        fontSize: 14,
+                                        color: '#ffffff',
+                                        outline: 'none',
+                                        boxSizing: 'border-box'
+                                    }}
+                                    onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                                    onBlur={e => e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)'}
+                                >
+                                    <option value="" style={{ background: '#0f172a', color: '#ffffff' }}>-- Select a plan (optional) --</option>
+                                    <option value="Custom Enterprise Plan" style={{ background: '#0f172a', color: '#ffffff' }}>Custom Enterprise Plan</option>
+                                    <option value="White-label & Custom Domain" style={{ background: '#0f172a', color: '#ffffff' }}>White-label & Custom Domain</option>
+                                    <option value="Custom Android & iOS Mobile App" style={{ background: '#0f172a', color: '#ffffff' }}>Custom Android & iOS Mobile App</option>
+                                    <option value="Pro Plan (₹1,499/mo)" style={{ background: '#0f172a', color: '#ffffff' }}>Pro Plan (₹1,499/mo)</option>
+                                    <option value="Standard Plan (₹1,299/mo)" style={{ background: '#0f172a', color: '#ffffff' }}>Standard Plan (₹1,299/mo)</option>
+                                </select>
+                            </div>
+
+                            {/* Submit Button */}
+                            <div style={{ marginTop: 4 }}>
+                                <button
+                                    type="submit"
+                                    style={{
+                                        width: '100%',
+                                        padding: '14px 20px',
+                                        borderRadius: 14,
+                                        background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%)',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        fontSize: 14.5,
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 6px 24px rgba(37, 99, 235, 0.5)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: 8,
+                                        transition: 'all 0.2s ease',
+                                        letterSpacing: '0.02em'
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = '0 8px 30px rgba(37, 99, 235, 0.7)';
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                        e.currentTarget.style.boxShadow = '0 6px 24px rgba(37, 99, 235, 0.5)';
+                                    }}
+                                >
+                                    <span>🚀 Submit Customization Request + Open WhatsApp</span>
+                                </button>
+                                <p style={{ textAlign: 'center', fontSize: 11.5, color: '#64748b', margin: '8px 0 0' }}>
+                                    We'll also send a WhatsApp message confirmation
+                                </p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ══ FLOATING WHATSAPP PILL BUTTON (MATCHING SCREENSHOT 2) ══ */}
+            <a
+                href="https://api.whatsapp.com/send?phone=919752100980&text=Hello%20KT%20Construct%20Team%2C%20I%20am%20interested%20in%20your%20Construction%20Management%20SaaS%20platform."
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    right: '24px',
+                    background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                    color: '#ffffff',
+                    padding: '10px 22px 10px 16px',
+                    borderRadius: '9999px',
+                    boxShadow: '0 8px 25px rgba(37, 211, 102, 0.45)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    zIndex: 9999,
+                    cursor: 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                    textDecoration: 'none',
+                    border: '1.5px solid rgba(255, 255, 255, 0.3)'
+                }}
+                onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translateY(-4px) scale(1.04)';
+                    e.currentTarget.style.boxShadow = '0 12px 32px rgba(37, 211, 102, 0.6)';
+                }}
+                onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(37, 211, 102, 0.45)';
+                }}
+                title="Chat on WhatsApp (+91 97521 00980)"
+            >
+                {/* WhatsApp Logo Icon with Speech Bubble Outline */}
+                <div style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                        <path d="M12.0003 2.00003C6.47734 2.00003 2.00034 6.47703 2.00034 12C2.00034 13.847 2.50334 15.602 3.42434 17.112L2.08634 21.999L7.10034 20.686C8.57134 21.528 10.2453 22 12.0003 22C17.5233 22 22.0003 17.523 22.0003 12C22.0003 6.47703 17.5233 2.00003 12.0003 2.00003Z" fill="white" />
+                        <path fillRule="evenodd" clipRule="evenodd" d="M12.0003 3.5C7.30588 3.5 3.5 7.30588 3.5 12C3.5 13.5937 3.93888 15.1092 4.74313 16.4179L3.71475 20.1706L7.60337 19.1517C8.88212 19.8974 10.3951 20.5 12.0003 20.5C16.6946 20.5 20.5 16.6946 20.5 12C20.5 7.30588 16.6946 3.5 12.0003 3.5ZM16.6508 14.4886C16.4578 14.3926 15.5074 13.926 15.3306 13.8622C15.1538 13.7977 15.0254 13.7653 14.897 13.9583C14.7686 14.1513 14.3989 14.5873 14.2867 14.7157C14.1745 14.8441 14.0623 14.8602 13.8693 14.7642C13.6763 14.6682 12.885 14.4089 11.9466 13.5727C11.2173 12.9225 10.7261 12.1192 10.5816 11.8735C10.4371 11.6279 10.5663 11.4953 10.6632 11.3992C10.7499 11.3134 10.857 11.174 10.9531 11.0618C11.0491 10.9496 11.0815 10.869 11.1461 10.7406C11.2107 10.6122 11.1783 10.5 11.1299 10.404C11.0815 10.3079 10.6965 9.35994 10.5358 8.97412C10.3794 8.59842 10.2205 8.64942 10.1023 8.64347C9.99014 8.63752 9.86174 8.63667 9.73334 8.63667C9.60494 8.63667 9.39584 8.68512 9.21904 8.87812C9.04224 9.07112 8.54414 9.53777 8.54414 10.4854C8.54414 11.4331 9.23514 12.3494 9.33124 12.4778C9.42734 12.6062 10.6886 14.5316 12.6212 15.3671C13.081 15.566 13.4406 15.685 13.7202 15.7743C14.1816 15.9213 14.6015 15.9 14.9338 15.8507C15.3044 15.7954 16.0752 15.384 16.2358 14.9344C16.3965 14.4847 16.3965 14.0989 16.3481 14.0183C16.2997 13.9384 16.1713 13.8899 15.9783 13.7939L16.6508 14.4886Z" fill="#25D366" />
+                    </svg>
+                </div>
+
+                {/* Thin Vertical Divider */}
+                <div style={{ width: '1.5px', height: '18px', background: 'rgba(255, 255, 255, 0.45)', margin: '0 1px' }} />
+
+                {/* Text Label */}
+                <span style={{
+                    fontWeight: 800,
+                    fontSize: '15px',
+                    letterSpacing: '0.01em',
+                    whiteSpace: 'nowrap',
+                    color: '#ffffff'
+                }}>
+                    Chat with us
+                </span>
+            </a>
         </div>
     );
 

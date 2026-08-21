@@ -3,7 +3,7 @@ import { Download, CheckCircle, Clock, AlertTriangle, Loader } from 'lucide-reac
 import api from '../../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../../assets/images/logo.png.jpeg';
+import logo from '../../assets/images/Logo.png';
 
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);

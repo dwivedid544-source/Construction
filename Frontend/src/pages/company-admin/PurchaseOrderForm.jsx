@@ -307,27 +307,27 @@ const PurchaseOrderForm = () => {
                                                     onChange={e => handleItemChange(index, 'quantity', e.target.value)}
                                                 />
                                             </div>
-                                            {/* Price fields commented out as per client request */}
-                                            {/* <div className="w-32">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Unit Price</label>
+                                            <div className="w-32">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Unit Price ($)</label>
                                                 <div className="relative">
                                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
                                                     <input
                                                         type="number"
+                                                        step="0.01"
                                                         placeholder="0.00"
-                                                        className="w-full bg-white border border-slate-200 rounded-xl pl-6 pr-3 py-2.5 font-black text-slate-800 text-sm text-right outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                                        className="w-full bg-white border border-slate-200 rounded-xl pl-7 pr-3 py-2.5 font-black text-slate-800 text-sm text-right outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 transition-all"
                                                         value={item.unitPrice}
                                                         onChange={e => handleItemChange(index, 'unitPrice', e.target.value)}
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="min-w-[100px]">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 text-right mr-1">Total</label>
-                                                <div className="py-2.5 px-3 bg-blue-50/50 border border-blue-100/50 rounded-xl text-right font-black text-blue-600 text-sm">
-                                                    ${item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            <div className="min-w-[110px]">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 text-right mr-1">Total ($)</label>
+                                                <div className="py-2.5 px-3 bg-blue-50/70 border border-blue-100/50 rounded-xl text-right font-black text-blue-600 text-sm">
+                                                    ${(item.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </div>
-                                            </div> */}
-                                            <div className="pt-8">
+                                            </div>
+                                            <div className="pt-7">
                                                 <button
                                                     onClick={() => handleRemoveItem(index)}
                                                     className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
@@ -347,23 +347,23 @@ const PurchaseOrderForm = () => {
                 {/* Right Side: Summary & Actions */}
                 <div className="space-y-6">
                     <div className="bg-slate-900 p-8 rounded-[40px] shadow-2xl text-white space-y-8 sticky top-6">
-                        {/* Summary section commented out as per client request */}
-                        {/* <div className="space-y-4">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">PO Summary</h3>
+                        {/* PO Summary */}
+                        <div className="space-y-4">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">PO Cost Breakdown</h3>
                             <div className="flex justify-between items-center text-sm">
-                                <span className="font-bold text-slate-400">Subtotal</span>
-                                <span className="font-black text-slate-200">${formData.subtotal.toLocaleString()}</span>
+                                <span className="font-bold text-slate-400">Items Subtotal</span>
+                                <span className="font-black text-slate-200">${(formData.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm">
-                                <span className="font-bold text-slate-400">Tax (15%)</span>
-                                <span className="font-black text-slate-200">${formData.tax.toLocaleString()}</span>
+                                <span className="font-bold text-slate-400">Estimated Tax (15%)</span>
+                                <span className="font-black text-slate-200">${(formData.tax || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                             <div className="h-px bg-slate-800 my-4" />
                             <div className="flex justify-between items-center">
-                                <span className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Total Amount</span>
-                                <span className="text-2xl font-black text-blue-400 tracking-tighter">${formData.totalAmount.toLocaleString()}</span>
+                                <span className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Grand Total</span>
+                                <span className="text-2xl font-black text-emerald-400 tracking-tighter">${(formData.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
-                        </div> */}
+                        </div>
 
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Quick Notes</h3>

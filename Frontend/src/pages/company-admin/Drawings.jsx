@@ -96,7 +96,8 @@ const SearchableSelect = ({ options, value, onChange }) => {
 
 const Drawings = () => {
   const { user } = useAuth();
-  const canManage = ['COMPANY_OWNER', 'PM'].includes(user?.role);
+  const canManage = ['COMPANY_OWNER', 'PM', 'SUPER_ADMIN'].includes(user?.role);
+  const canUploadDrawing = ['PM', 'ENGINEER', 'SUPER_ADMIN'].includes(user?.role);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const projectFilter = searchParams.get('projectId');
@@ -198,9 +199,10 @@ const Drawings = () => {
       setLoading(true);
       const data = new FormData();
       data.append('projectId', formData.projectId);
-      data.append('title', formData.title);
-      data.append('drawingNumber', formData.drawingNumber);
-      data.append('category', formData.category);
+      data.append('title', formData.title || 'Untitled Drawing');
+      data.append('drawingNumber', formData.drawingNumber || 'A-0001');
+      data.append('category', formData.category || 'Architectural');
+      data.append('status', formData.status || 'In Review');
       data.append('file', formData.file);
 
       await api.post('/drawings', data, {
@@ -223,7 +225,12 @@ const Drawings = () => {
   };
 
   const handleView = (drawing) => {
-    const latestVersion = drawing.versions?.[drawing.versions.length - 1];
+    const latestVersion = drawing.versions?.[drawing.versions.length - 1] || {
+      _id: drawing._id || drawing.id,
+      versionNumber: 1,
+      fileUrl: drawing.fileUrl,
+      uploadedAt: drawing.createdAt
+    };
     setSelectedDrawing(drawing);
     setSelectedVersion(latestVersion);
     setIsFullViewerOpen(true);
@@ -318,7 +325,7 @@ const Drawings = () => {
 
   const handleDownload = async (drawing) => {
     const latestVersion = drawing.versions?.[drawing.versions.length - 1];
-    const fileUrl = latestVersion?.fileUrl;
+    const fileUrl = latestVersion?.fileUrl || drawing.fileUrl;
 
     if (fileUrl) {
       try {
@@ -329,15 +336,14 @@ const Drawings = () => {
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        const extension = fileUrl.substring(fileUrl.lastIndexOf('.'));
-        link.setAttribute('download', `${drawing.title}_v${drawing.currentVersion}${extension}`);
+        const extension = fileUrl.lastIndexOf('.') !== -1 ? fileUrl.substring(fileUrl.lastIndexOf('.')) : '.jpg';
+        link.setAttribute('download', `${drawing.title || 'drawing'}_v${drawing.version || drawing.currentVersion || '1.0'}${extension}`);
         document.body.appendChild(link);
         link.click();
         link.remove();
         window.URL.revokeObjectURL(url);
       } catch (error) {
         console.error('Download error:', error);
-        // Fallback to old method if fetch fails
         window.open(getServerUrl(fileUrl), '_blank');
       } finally {
         setLoading(false);
@@ -354,7 +360,7 @@ const Drawings = () => {
           <h1 className="text-2xl font-bold text-slate-800">Drawings & Blueprints</h1>
           <p className="text-slate-500 text-sm">Manage latest revisions and architectural plans.</p>
         </div>
-        {canManage && (
+        {canUploadDrawing && (
           <button
             onClick={handleUploadClick}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center gap-2 transition"
@@ -446,21 +452,31 @@ const Drawings = () => {
                         </div>
                         <div>
                           <span className="font-semibold text-slate-800 block">{drawing.title}</span>
-                          <span className="text-xs text-slate-400 uppercase tracking-tighter font-bold">{drawing.category} • {drawing.drawingNumber || 'No #'}</span>
+                          <span className="text-xs text-slate-400 uppercase tracking-tighter font-bold">{(drawing.category || 'Architectural')} • {drawing.drawingNumber || 'A-0001'}</span>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 font-medium">{drawing.projectId?.name || '---'}</td>
-                    <td className="px-6 py-4 font-bold text-slate-700 capitalize">{drawing.category || '---'}</td>
+                    <td className="px-6 py-4 font-bold text-slate-700 capitalize">{drawing.category || 'Architectural'}</td>
                     <td className="px-6 py-4">{new Date(drawing.createdAt).toLocaleDateString()}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase inline-flex items-center gap-1
-                        ${drawing.status === 'active' ? 'bg-emerald-100 text-emerald-700' :
-                          drawing.status === 'superseded' ? 'bg-orange-100 text-orange-700' :
-                            'bg-slate-100 text-slate-600'}`}>
-                        {drawing.status === 'active' && <CheckCircle size={10} />}
-                        {drawing.status}
-                      </span>
+                      {(() => {
+                        const displayStatus = drawing.status || 'In Review';
+                        const statusLower = displayStatus.toLowerCase();
+                        const isApproved = statusLower.includes('approved') || statusLower === 'active';
+                        const isReview = statusLower.includes('review');
+                        const isSuperseded = statusLower.includes('superseded');
+                        return (
+                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase inline-flex items-center gap-1
+                            ${isApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                              isReview ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                              isSuperseded ? 'bg-orange-100 text-orange-700 border border-orange-200' :
+                                'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                            {isApproved && <CheckCircle size={10} />}
+                            {displayStatus}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2 text-blue-600">
@@ -502,12 +518,18 @@ const Drawings = () => {
           <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50 hover:bg-slate-100 transition cursor-pointer relative">
             <input
               type="file"
-              accept=".pdf,.dwg,.dxf"
+              accept=".pdf,.dwg,.dxf,.jpg,.jpeg,.png,.gif,.webp,.heic,image/*"
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               onChange={(e) => {
                 const file = e.target.files[0];
                 if (file) {
-                  setFormData({ ...formData, file: file, name: file.name });
+                  const cleanName = file.name.replace(/\.[^/.]+$/, "");
+                  setFormData({
+                    ...formData,
+                    file: file,
+                    name: file.name,
+                    title: formData.title || cleanName
+                  });
                 }
               }}
             />
@@ -520,7 +542,7 @@ const Drawings = () => {
             ) : (
               <>
                 <p className="text-sm font-medium text-slate-600">Click to upload or drag and drop</p>
-                <p className="text-xs text-slate-400">PDF, DWG, DXF up to 10MB</p>
+                <p className="text-xs text-slate-400">PDF, DWG, DXF, PNG, JPG up to 25MB</p>
               </>
             )}
           </div>

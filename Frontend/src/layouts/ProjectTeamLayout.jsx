@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Bell
 } from 'lucide-react';
 import api, { BASE_URL } from '../utils/api';
-import Logo from '../assets/images/logo.png.jpeg';
+import Logo from '../assets/images/Logo.png';
 import { playSound } from '../utils/notificationSound';
 import toast from 'react-hot-toast';
 
