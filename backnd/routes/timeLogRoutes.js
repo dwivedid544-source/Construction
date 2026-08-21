@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { clockIn, clockOut, getTimeLogs, updateTimeLog, deleteTimeLog } = require('../controllers/timeLogController');
+const { clockIn, clockOut, getTimeLogs, getActiveSelf, updateTimeLog, deleteTimeLog } = require('../controllers/timeLogController');
 const { protect, checkPermission } = require('../middlewares/authMiddleware');
 
 router.use(protect);
 
 router.get('/', getTimeLogs);
+router.get('/active-self', getActiveSelf);
 router.post('/clock-in', (req, res, next) => {
     if (req.body.userId && req.body.userId !== req.user._id.toString()) {
         return checkPermission('CLOCK_IN_CREW')(req, res, next);

@@ -325,6 +325,33 @@ const getTimeLogs = async (req, res, next) => {
     }
 };
 
+// Returns only the current authenticated user's open (not yet clocked-out) time log.
+// Used by ClockContext so the timer/status is always tied to THIS user, not any other user.
+const getActiveSelf = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const log = await prisma.timeLog.findFirst({
+            where: { userId, clockOut: null },
+            include: {
+                projectId: { select: { name: true, location: true } },
+                jobId: { select: { name: true } }
+            }
+        });
+
+        if (!log) return res.json(null);
+
+        res.json({
+            ...log,
+            _id: log.id,
+            userId: log.userId,
+            projectId: log.projectId || log.project || null,
+            jobId: log.jobId || log.job || null
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const updateTimeLog = async (req, res, next) => {
     try {
         const log = await prisma.timeLog.findFirst({
@@ -385,6 +412,7 @@ module.exports = {
     clockIn,
     clockOut,
     getTimeLogs,
+    getActiveSelf,
     updateTimeLog,
     deleteTimeLog
 };
