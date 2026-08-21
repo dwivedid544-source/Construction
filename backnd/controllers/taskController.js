@@ -22,30 +22,34 @@ const validateAssignmentHierarchy = async (assignerRole, assigneeIds) => {
     return null;
 };
 
-const createSubTasksRecursive = async (taskId, onModel, steps, companyId, createdBy, parentId = null, assignedTo = null, startDate = null, dueDate = null) => {
+const createSubTasksRecursive = async (taskId, onModel, steps, companyId, createdBy, parentSubTaskId = null, assignedTo = null, startDate = null, dueDate = null) => {
     if (!steps || !Array.isArray(steps) || steps.length === 0) return 0;
     let count = 0;
+    const cleanAssignedTo = typeof assignedTo === 'object' && assignedTo !== null ? (assignedTo._id || assignedTo.id) : (assignedTo || null);
+
     for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
+        const stepAssignee = step.assignedTo ? (typeof step.assignedTo === 'object' ? (step.assignedTo._id || step.assignedTo.id) : step.assignedTo) : cleanAssignedTo;
+
         const subTask = await prisma.subTask.create({
             data: {
+                taskId: taskId,
+                onModel: onModel === 'JobTask' ? 'JobTask' : 'Task',
+                parentSubTaskId: parentSubTaskId || null,
                 companyId,
-                parentId: taskId,
-                parentType: onModel === 'JobTask' ? 'JobTask' : 'Task',
-                title: step.title,
-                description: step.remarks || step.description || '',
-                priority: step.priority || 'Medium',
+                title: (step.title || 'Untitled Subtask').trim(),
+                remarks: step.remarks || step.description || '',
+                priority: step.priority ? (step.priority.charAt(0).toUpperCase() + step.priority.slice(1).toLowerCase()) : 'Medium',
                 createdBy,
-                assignedTo: step.assignedTo || assignedTo || null,
+                assignedTo: stepAssignee || null,
                 startDate: step.startDate ? new Date(step.startDate) : (startDate ? new Date(startDate) : null),
                 dueDate: step.dueDate ? new Date(step.dueDate) : (dueDate ? new Date(dueDate) : null),
-                status: 'todo',
-                estimatedHours: step.estimatedHours ? Number(step.estimatedHours) : 0.0
+                status: 'todo'
             }
         });
         count++;
         if (step.steps && step.steps.length > 0) {
-            const childCount = await createSubTasksRecursive(taskId, onModel, step.steps, companyId, createdBy, subTask.id, assignedTo, startDate, dueDate);
+            const childCount = await createSubTasksRecursive(taskId, onModel, step.steps, companyId, createdBy, subTask.id, stepAssignee, startDate, dueDate);
             count += childCount;
         }
     }
@@ -58,68 +62,101 @@ const createSubTasksRecursive = async (taskId, onModel, steps, companyId, create
 const getTasks = async (req, res, next) => {
     try {
         const { role, id: userId, companyId } = req.user;
-        const whereClause = { companyId };
+        const userCompanyId = String(companyId || req.companyId || (typeof companyId === 'object' ? (companyId._id || companyId.id) : ''));
 
+        const taskWhere = {};
+        if (role !== 'SUPER_ADMIN' && userCompanyId) {
+            taskWhere.companyId = userCompanyId;
+        }
         if (req.query.projectId) {
-            whereClause.projectId = req.query.projectId;
+            taskWhere.projectId = req.query.projectId;
         }
-        
         if (req.query.status) {
-            whereClause.status = req.query.status;
+            taskWhere.status = req.query.status;
         }
-        
-        if (req.query.priority) {
-            whereClause.priority = req.query.priority;
-        }
-
-        if (req.query.excludeCompleted === 'true') {
-            whereClause.NOT = { status: { in: ['completed', 'cancelled'] } };
-        }
-
-        if (req.query.q) {
-            whereClause.OR = [
-                { title: { contains: req.query.q } },
-                { description: { contains: req.query.q } }
-            ];
-        }
-
-        if (['WORKER', 'SUBCONTRACTOR'].includes(role)) {
-            whereClause.OR = [
-                { assignedTo: userId },
-                { createdBy: userId }
-            ];
-        } else if (role === 'FOREMAN') {
-            const managedJobs = await prisma.job.findMany({
-                where: { foremanId: userId, companyId },
-                include: { assignedWorkers: true }
-            });
-            const workerIds = managedJobs.flatMap(j => j.assignedWorkers.map(w => w.id));
-            const allIds = [userId, ...workerIds];
-            whereClause.OR = [
-                { assignedTo: { in: allIds } },
-                { createdBy: userId }
-            ];
+        if (req.query.category) {
+            taskWhere.category = req.query.category;
         }
 
         const tasks = await prisma.task.findMany({
-            where: whereClause,
+            where: taskWhere,
             include: {
-                assignee: { select: { fullName: true, role: true } },
-                creator: { select: { fullName: true } },
                 project: { select: { name: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        const mappedTasks = tasks.map(task => ({
-            ...task,
-            _id: task.id,
-            assignedTo: task.assignee,
-            createdBy: task.creator,
-            projectId: task.project
-        }));
+        // Also fetch JobTasks for unified view
+        const jobTaskWhere = {};
+        if (role !== 'SUPER_ADMIN' && userCompanyId) {
+            jobTaskWhere.companyId = userCompanyId;
+        }
+        if (req.query.status) {
+            jobTaskWhere.status = req.query.status;
+        }
 
-        res.json(mappedTasks);
+        const jobTasks = await prisma.jobTask.findMany({
+            where: jobTaskWhere,
+            include: {
+                assignedTo: {
+                    select: {
+                        fullName: true,
+                        role: true
+                    }
+                },
+                job: {
+                    select: {
+                        name: true,
+                        projectId: true,
+                        project: { select: { name: true } }
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Map tasks
+        const mappedTasks = tasks.map(task => {
+            const assignees = Array.isArray(task.assignedTo) ? task.assignedTo : (task.assignedTo ? [task.assignedTo] : []);
+            return {
+                ...task,
+                _id: task.id,
+                assignedTo: assignees,
+                projectId: task.project ? { ...task.project, _id: task.projectId } : task.projectId,
+                isJobTask: false
+            };
+        });
+
+        // Map job tasks so they seamlessly display in Task Command Center
+        const mappedJobTasks = jobTasks.map(jt => {
+            const assignee = jt.assignedTo || jt.assignedWorker || jt.worker;
+            const assignees = assignee ? [assignee] : [];
+            const projectName = jt.job?.project?.name || jt.job?.name || 'Project Job';
+            const projId = jt.job?.projectId || jt.jobId;
+
+            return {
+                ...jt,
+                _id: jt.id,
+                isJobTask: true,
+                assignedTo: assignees,
+                projectId: {
+                    _id: projId,
+                    name: projectName
+                },
+                jobId: jt.jobId,
+                jobName: jt.job?.name || ''
+            };
+        });
+
+        let allResults = [...mappedTasks, ...mappedJobTasks];
+        if (req.query.projectId) {
+            allResults = allResults.filter(t => {
+                const pId = String(t.projectId?._id || t.projectId || '');
+                return pId === String(req.query.projectId);
+            });
+        }
+
+        res.json(allResults);
     } catch (error) {
         next(error);
     }
@@ -148,9 +185,9 @@ const getProjectTasks = async (req, res, next) => {
     try {
         const tasks = await prisma.task.findMany({
             where: { projectId: req.params.projectId },
-            include: { assignee: { select: { fullName: true } } }
+            include: { project: { select: { name: true } } }
         });
-        res.json(tasks.map(t => ({ ...t, _id: t.id, assignedTo: t.assignee })));
+        res.json(tasks.map(t => ({ ...t, _id: t.id, projectId: t.project })));
     } catch (error) {
         next(error);
     }
@@ -161,22 +198,62 @@ const getProjectTasks = async (req, res, next) => {
 // @access  Private
 const createTask = async (req, res, next) => {
     try {
-        const { title, description, assignedTo, projectId, priority, startDate, dueDate, estimatedHours, steps } = req.body;
+        const {
+            title,
+            description,
+            assignedTo,
+            projectId,
+            priority,
+            startDate,
+            dueDate,
+            estimatedHours,
+            steps,
+            subTasksList,
+            category,
+            assignedRoleType
+        } = req.body;
 
-        const validationErr = await validateAssignmentHierarchy(req.user.role, assignedTo ? [assignedTo] : []);
-        if (validationErr) {
-            res.status(400);
-            throw new Error(validationErr);
+        if (!title || !title.trim()) {
+            return res.status(400).json({ message: 'Task title is required' });
         }
+
+        // If no projectId provided or 'undefined', handle gracefully
+        let resolvedProjectId = projectId;
+        if (!resolvedProjectId || resolvedProjectId === 'undefined' || resolvedProjectId === '') {
+            const firstProject = await prisma.project.findFirst({
+                where: { companyId: req.user.companyId },
+                select: { id: true }
+            });
+            if (firstProject) {
+                resolvedProjectId = firstProject.id;
+            } else {
+                return res.status(400).json({ message: 'A project must be selected to create a task' });
+            }
+        }
+
+        const assignees = Array.isArray(assignedTo) 
+            ? assignedTo.map(u => (typeof u === 'object' && u !== null ? (u._id || u.id) : u)).filter(Boolean)
+            : (assignedTo ? [(typeof assignedTo === 'object' ? (assignedTo._id || assignedTo.id) : assignedTo)] : []);
+
+        const validationErr = await validateAssignmentHierarchy(req.user.role, assignees);
+        if (validationErr) {
+            return res.status(400).json({ message: validationErr });
+        }
+
+        const normPriority = priority 
+            ? (priority.charAt(0).toUpperCase() + priority.slice(1).toLowerCase())
+            : 'Medium';
 
         const task = await prisma.task.create({
             data: {
                 companyId: req.user.companyId,
-                projectId,
-                title,
+                projectId: resolvedProjectId,
+                title: title.trim(),
                 description: description || '',
-                assignedTo,
-                priority: priority || 'medium',
+                assignedTo: assignees,
+                assignedRoleType: assignedRoleType || '',
+                priority: normPriority,
+                category: category || 'TASK',
                 status: 'todo',
                 startDate: startDate ? new Date(startDate) : null,
                 dueDate: dueDate ? new Date(dueDate) : null,
@@ -185,21 +262,40 @@ const createTask = async (req, res, next) => {
             }
         });
 
-        if (steps && Array.isArray(steps) && steps.length > 0) {
-            await createSubTasksRecursive(task.id, 'Task', steps, req.user.companyId, req.user.id, null, assignedTo, startDate, dueDate);
+        // Handle subTasksList or steps from Create Task modal
+        const subTasksToCreate = (subTasksList && Array.isArray(subTasksList) && subTasksList.length > 0)
+            ? subTasksList
+            : steps;
+
+        if (subTasksToCreate && Array.isArray(subTasksToCreate) && subTasksToCreate.length > 0) {
+            await createSubTasksRecursive(task.id, 'Task', subTasksToCreate, req.user.companyId, req.user.id, null, assignees[0], startDate, dueDate);
         }
 
-        if (assignedTo) {
-            await dispatchNotification(req, {
-                userId: assignedTo,
-                title: 'New Task Assigned',
-                message: `You have been assigned to task: "${title}"`,
-                link: `/company-admin/tasks`,
-                type: 'task'
-            });
+        for (const assigneeId of assignees) {
+            try {
+                await dispatchNotification(req, {
+                    userId: assigneeId,
+                    title: 'New Task Assigned',
+                    message: `You have been assigned to task: "${task.title}"`,
+                    link: `/company-admin/tasks`,
+                    type: 'task'
+                });
+            } catch (notifErr) {
+                console.warn('Task notification warning:', notifErr.message);
+            }
         }
 
-        res.status(201).json({ ...task, _id: task.id });
+        const populatedTask = await prisma.task.findUnique({
+            where: { id: task.id },
+            include: { project: { select: { name: true } } }
+        });
+
+        res.status(201).json({
+            ...populatedTask,
+            _id: populatedTask.id,
+            assignedTo: assignees,
+            projectId: populatedTask?.project
+        });
     } catch (error) {
         next(error);
     }

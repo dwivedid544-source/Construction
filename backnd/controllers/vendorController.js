@@ -80,13 +80,23 @@ exports.updateVendor = async (req, res) => {
         delete updateData._id;
         delete updateData.id;
         
+        let newAttachments = [];
         if (req.files && req.files.length > 0) {
-            const newAttachments = req.files.map(file => ({
+            newAttachments = req.files.map(file => ({
                 name: file.originalname,
                 url: file.path.replace(/\\/g, '/'),
                 fileType: file.mimetype
             }));
-            
+        }
+
+        if (req.body.keptAttachments !== undefined) {
+            let kept = [];
+            try {
+                kept = typeof req.body.keptAttachments === 'string' ? JSON.parse(req.body.keptAttachments) : req.body.keptAttachments;
+            } catch (e) {}
+            updateData.attachments = [...kept, ...newAttachments];
+            delete updateData.keptAttachments;
+        } else if (newAttachments.length > 0) {
             const existingVendor = await prisma.vendor.findUnique({ where: { id: req.params.id } });
             let existingAttachments = [];
             if (existingVendor && existingVendor.attachments) {

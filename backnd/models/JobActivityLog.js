@@ -8,23 +8,43 @@ const jobActivityLogSchema = new mongoose.Schema({
     },
     actionType: {
         type: String,
-        enum: ['CREATED', 'STATUS_CHANGED', 'WORKER_ADDED', 'WORKER_REMOVED', 'UPDATED', 'COMPLETED', 'FOREMAN_CHANGED'],
-        required: true
+        default: 'CREATED'
+    },
+    type: {
+        type: String,
+        default: 'CREATED'
     },
     description: {
         type: String,
-        required: true
+        default: ''
+    },
+    details: {
+        type: String,
+        default: ''
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        ref: 'User'
+    },
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
     }
 }, {
     timestamps: true
 });
 
-// Indexing for faster history lookups
+// Pre-save hook to normalize aliases
+jobActivityLogSchema.pre('save', function(next) {
+    if (!this.actionType && this.type) this.actionType = this.type;
+    if (!this.type && this.actionType) this.type = this.actionType;
+    if (!this.description && this.details) this.description = this.details;
+    if (!this.details && this.description) this.details = this.description;
+    if (!this.createdBy && this.userId) this.createdBy = this.userId;
+    if (!this.userId && this.createdBy) this.userId = this.createdBy;
+    next();
+});
+
 jobActivityLogSchema.index({ jobId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('JobActivityLog', jobActivityLogSchema);

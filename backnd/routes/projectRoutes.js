@@ -21,7 +21,7 @@ const {
     updateProjectNote
 } = require('../controllers/projectController');
 
-const { protect, authorize } = require('../middlewares/authMiddleware');
+const { protect, authorize, restrictAdminCreation } = require('../middlewares/authMiddleware');
 const { checkProjectLimit } = require('../middlewares/checkPlanLimits');
 const upload = require('../middlewares/uploadMiddleware');
 
@@ -33,7 +33,8 @@ router.get('/archived', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), getArchivedPr
 
 router.get('/:id', getProjectById);
 router.get('/:id/members', getProjectMembers);
-router.post('/', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), checkProjectLimit, upload.single('image'), createProject);
+// Project creation is restricted to PM (Company Owner provides oversight & approval)
+router.post('/', restrictAdminCreation('projects', ['PM', 'SUPER_ADMIN']), checkProjectLimit, upload.single('image'), createProject);
 router.post('/:id/assign-pm', authorize('SUPER_ADMIN', 'COMPANY_OWNER'), updateProject); 
 router.patch('/:id', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM'), upload.single('image'), updateProject);
 router.get('/:id/client-progress', getClientProgress);

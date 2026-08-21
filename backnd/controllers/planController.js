@@ -5,10 +5,17 @@ const prisma = require('../config/prisma');
 // @access  Public
 const getPlans = async (req, res, next) => {
     try {
-        const plans = await prisma.plan.findMany({
-            orderBy: { price: 'asc' }
+        const plans = await prisma.plan.findMany();
+        
+        const sortedPlans = [...plans].sort((a, b) => {
+            const isCustomA = a.period === 'custom' || a.name?.toLowerCase().includes('custom');
+            const isCustomB = b.period === 'custom' || b.name?.toLowerCase().includes('custom');
+            if (isCustomA && !isCustomB) return 1;
+            if (!isCustomA && isCustomB) return -1;
+            return (a.price || 0) - (b.price || 0);
         });
-        res.json(plans.map(p => ({ ...p, _id: p.id })));
+
+        res.json(sortedPlans.map(p => ({ ...p, _id: p.id })));
     } catch (error) {
         next(error);
     }

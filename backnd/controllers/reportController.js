@@ -142,9 +142,86 @@ const getDashboardStats = async (req, res, next) => {
 
 const getSidebarMetrics = async (req, res, next) => {
     try {
-        const companyId = req.user.companyId;
-        const taskCount = await prisma.task.count({ where: { companyId, NOT: { status: 'completed' } } });
-        res.json({ taskCount });
+        const { role, id: userId, companyId } = req.user;
+        const whereCompany = companyId ? { companyId } : {};
+
+        const isFieldRole = ['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(role);
+
+        const [taskCount, issueCount, poCount, projects, jobs] = await Promise.all([
+            prisma.task.count({
+                where: {
+                    ...whereCompany,
+                    NOT: { status: 'completed' }
+                }
+            }).catch(() => 0),
+            prisma.issue.count({
+                where: {
+                    ...whereCompany,
+                    status: 'open'
+                }
+            }).catch(() => 0),
+            prisma.purchaseOrder.count({
+                where: {
+                    ...whereCompany,
+                    status: { in: ['Draft', 'Pending_Approval', 'Submitted', 'Approved', 'Ordered'] }
+                }
+            }).catch(() => 0),
+            prisma.project.findMany({
+                where: {
+                    ...whereCompany,
+                    NOT: { status: 'archived' }
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    status: true,
+                    sortOrder: true
+                },
+                orderBy: { createdAt: 'desc' }
+            }).catch(() => []),
+            isFieldRole ? prisma.job.findMany({
+                where: {
+                    ...whereCompany,
+                    OR: [
+                        { foremanId: userId },
+                        { assignedWorkers: userId }
+                    ]
+                },
+                include: {
+                    project: { select: { id: true, name: true } }
+                }
+            }).catch(() => []) : Promise.resolve([])
+        ]);
+
+        let dropdownList = [];
+        if (isFieldRole) {
+            dropdownList = jobs.map(j => ({
+                _id: j.id,
+                id: j.id,
+                name: j.name,
+                status: j.status,
+                isJob: true,
+                projectId: j.projectId || j.project?.id,
+                projectName: j.project?.name || ''
+            }));
+        } else {
+            dropdownList = projects.map(p => ({
+                _id: p.id,
+                id: p.id,
+                name: p.name,
+                status: p.status,
+                isJob: false
+            }));
+        }
+
+        res.json({
+            taskCount: taskCount || 0,
+            issueCount: issueCount || 0,
+            chatUnreadCount: 0,
+            notificationCount: 0,
+            poCount: poCount || 0,
+            projects: dropdownList
+        });
     } catch (error) {
         next(error);
     }

@@ -10,46 +10,81 @@ const protect = async (req, res, next) => {
             req.headers.authorization.startsWith('Bearer')
         ) {
             token = req.headers.authorization.split(' ')[1];
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            console.log('DEBUG [protect]: Decoded userId:', decoded.userId);
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretjwtkey_kaal_construction_saas_2026');
             
-            req.user = await prisma.user.findUnique({
-                where: { id: decoded.userId }
+            const user = await prisma.user.findUnique({
+                where: { id: decoded.userId || decoded.id }
             });
             
-            if (req.user) {
-                // Equivalent to .select('-password')
-                delete req.user.password;
-                console.log('DEBUG [protect]: User found:', req.user.id, 'Role:', req.user.role);
-            } else {
-                console.log('DEBUG [protect]: User found: null');
+            if (!user) {
+                res.status(401);
+                return next(new Error('Not authorized, user account not found'));
             }
 
-            if (!req.user) {
-                res.status(401);
-                return next(new Error('Not authorized, user not found'));
+            if (user.isActive === false && user.role !== 'SUPER_ADMIN') {
+                res.status(403);
+                return next(new Error('Your account is currently under review or inactive. Please contact your administrator.'));
             }
+
+            delete user.password;
+            req.user = user;
+            req.companyId = user.companyId ? String(user.companyId) : null;
 
             return next();
         }
 
         if (!token) {
-            console.log('DEBUG [protect]: No token found in headers');
             res.status(401);
-            return next(new Error('Not authorized, no token'));
+            return next(new Error('Not authorized, no authorization token provided'));
         }
     } catch (error) {
         console.error('DEBUG [protect] error:', error.message);
         res.status(401);
-        next(new Error('Not authorized, token failed'));
+        next(new Error('Not authorized, token validation failed'));
     }
 };
 
 const authorize = (...roles) => {
     return (req, res, next) => {
         if (!roles.includes(req.user.role)) {
-            res.status(403);
-            return next(new Error(`User role ${req.user.role} is not authorized to access this route`));
+            return res.status(403).json({
+                message: `User role ${req.user.role} is not authorized to access this resource.`
+            });
+        }
+        next();
+    };
+};
+
+/**
+ * Middleware: Restricts operational creation (Projects, Tasks, Equipment, POs, Daily Logs, Issues, RFIs, Drawings, Photos)
+ * Company Owners are restricted from creating operational records; creation belongs to Project Managers & Field roles.
+ */
+const restrictAdminCreation = (moduleName = 'operational records', allowedRoles = ['PM', 'FOREMAN', 'ENGINEER', 'SUPER_ADMIN']) => {
+    return (req, res, next) => {
+        if (req.user.role === 'COMPANY_OWNER') {
+            return res.status(403).json({
+                message: `Creation of ${moduleName} is restricted to Project Managers. Company Owners provide oversight, review, and approval.`
+            });
+        }
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                message: `Your role (${req.user.role}) is not authorized to create ${moduleName}.`
+            });
+        }
+        next();
+    };
+};
+
+/**
+ * Middleware: Restricts company-level administration (Payroll, Settings, Roles/Permissions, Subscriptions/Billing)
+ * strictly to Company Owners and Super Admins.
+ */
+const restrictPMAdmin = (featureName = 'Company Administration') => {
+    return (req, res, next) => {
+        if (req.user.role !== 'COMPANY_OWNER' && req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({
+                message: `${featureName} is restricted to Company Owners.`
+            });
         }
         next();
     };
@@ -58,69 +93,32 @@ const authorize = (...roles) => {
 const checkPermission = (permissionKey) => {
     return async (req, res, next) => {
         try {
-            console.log('DEBUG [checkPermission]: User role:', req.user ? req.user.role : 'MISSING');
             if (!req.user) {
-                res.status(401);
-                return next(new Error('User not found in req. Check protect middleware.'));
+                return res.status(401).json({ message: 'User not found in request.' });
             }
 
-            if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'COMPANY_OWNER') return next();
+            if (req.user.role === 'SUPER_ADMIN') return next();
 
-            // 1. Find the permission ID by key
-            const permission = await prisma.permission.findUnique({
-                where: { key: permissionKey }
-            });
-            
-            if (!permission) {
-                // If permission key doesn't exist in DB, fallback to legacy role-based check
-                console.warn(`Permission key not found: ${permissionKey}. Falling back to default role access.`);
-                return next();
-            }
-
-            // 2. Check User-specific override
-            const userOverride = await prisma.userPermission.findUnique({
-                where: {
-                    userId_permissionId: {
-                        userId: req.user.id,
-                        permissionId: permission.id
-                    }
+            // Check if permission explicitly requires Company Owner (e.g. financials, settings)
+            if (['MANAGE_FINANCIALS', 'ACCESS_SETTINGS', 'MANAGE_ROLES', 'MANAGE_SUBSCRIPTION'].includes(permissionKey)) {
+                if (req.user.role !== 'COMPANY_OWNER') {
+                    return res.status(403).json({ message: `Access denied: ${permissionKey} is restricted to Company Owners.` });
                 }
-            });
-
-            if (userOverride) {
-                if (userOverride.isAllowed) return next();
-                res.status(403);
-                return next(new Error(`Permission denied: ${permissionKey} is explicitly revoked for this user.`));
-            }
-
-            // 3. Check Role-based permission
-            let roleId = req.user.roleId;
-            if (!roleId) {
-                const roleDoc = await prisma.role.findUnique({
-                    where: { name: req.user.role }
-                });
-                if (roleDoc) roleId = roleDoc.id;
-            }
-
-            if (roleId) {
-                const rolePerm = await prisma.rolePermission.findUnique({
-                    where: {
-                        roleId_permissionId: {
-                            roleId: roleId,
-                            permissionId: permission.id
-                        }
-                    }
-                });
-                if (rolePerm) return next();
+                return next();
             }
 
             return next();
         } catch (error) {
             console.error('Permission check error:', error);
-            res.status(500);
-            next(new Error('Internal server error during permission check'));
+            res.status(500).json({ message: 'Internal server error during permission check' });
         }
     };
 };
 
-module.exports = { protect, authorize, checkPermission };
+module.exports = { 
+    protect, 
+    authorize, 
+    checkPermission, 
+    restrictAdminCreation, 
+    restrictPMAdmin 
+};

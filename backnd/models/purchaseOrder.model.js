@@ -75,18 +75,19 @@ const purchaseOrderSchema = new mongoose.Schema({
 });
 
 // Middleware to calculate item totals before saving
-purchaseOrderSchema.pre('validate', function (next) {
+purchaseOrderSchema.pre('validate', function () {
     if (this.items && this.items.length > 0) {
         let subtotal = 0;
         this.items.forEach(item => {
-            item.total = item.quantity * item.unitPrice;
+            item.total = (Number(item.quantity) || 1) * (Number(item.unitPrice) || 0);
             subtotal += item.total;
         });
         this.subtotal = subtotal;
-        this.tax = subtotal * 0.15; // Standard 15% tax
-        this.totalAmount = this.subtotal + this.tax;
+        if (this.tax === undefined || this.tax === null) {
+            this.tax = subtotal * 0.15;
+        }
+        this.totalAmount = this.subtotal + (this.tax || 0);
     }
-    next();
 });
 
 const PurchaseOrder = mongoose.model('PurchaseOrder', purchaseOrderSchema);

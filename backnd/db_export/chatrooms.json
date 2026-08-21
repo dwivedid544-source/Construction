@@ -1,0 +1,50 @@
+[
+  {
+    "_id": "6a87e273b2382c287d3af2a5",
+    "companyId": "6a87e270b2382c287d3af2a1",
+    "projectId": "6a87e273b2382c287d3af2a4",
+    "roomType": "PROJECT_GROUP",
+    "name": "Skyline Plaza Project",
+    "isGroup": true,
+    "isActive": true,
+    "createdAt": "2026-08-21T05:30:27.948Z",
+    "updatedAt": "2026-08-21T05:30:27.948Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87e2a67ad33ab810cc9d37",
+    "companyId": "6a87e2a37ad33ab810cc9d33",
+    "projectId": "6a87e2a67ad33ab810cc9d36",
+    "roomType": "PROJECT_GROUP",
+    "name": "Skyline Plaza Project",
+    "isGroup": true,
+    "isActive": true,
+    "createdAt": "2026-08-21T05:31:18.529Z",
+    "updatedAt": "2026-08-21T05:31:18.529Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87e890bd90aea6aa487eea",
+    "companyId": "6a87e88dbd90aea6aa487ee7",
+    "projectId": "6a87e890bd90aea6aa487ee9",
+    "roomType": "PROJECT_GROUP",
+    "name": "Project 1 - Foundation Site",
+    "isGroup": true,
+    "isActive": true,
+    "createdAt": "2026-08-21T05:56:32.658Z",
+    "updatedAt": "2026-08-21T05:56:32.658Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87fed8bcf646b4f49760da",
+    "companyId": "6a87edd3ee0d6f487d0e89e9",
+    "projectId": "6a87fed8bcf646b4f49760d9",
+    "roomType": "PROJECT_GROUP",
+    "name": "Project 1",
+    "isGroup": true,
+    "isActive": true,
+    "createdAt": "2026-08-21T07:31:36.344Z",
+    "updatedAt": "2026-08-21T07:31:36.344Z",
+    "__v": 0
+  }
+]

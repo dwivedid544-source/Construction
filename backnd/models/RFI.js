@@ -72,12 +72,11 @@ const rfiSchema = new mongoose.Schema({
 });
 
 // Auto-generate RFI number per company
-rfiSchema.pre('save', async function (next) {
+rfiSchema.pre('save', async function () {
     if (this.isNew) {
         const count = await this.constructor.countDocuments({ companyId: this.companyId });
         this.rfiNumber = `RFI-${String(count + 1).padStart(4, '0')}`;
     }
-    next();
 });
 
 // Virtual: isOverdue

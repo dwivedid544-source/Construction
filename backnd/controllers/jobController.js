@@ -21,25 +21,11 @@ const getJobs = async (req, res) => {
         }
 
         // Role-based visibility
-        if (role === 'PM') {
-            const managedProjects = await prisma.project.findMany({
-                where: {
-                    companyId,
-                    OR: [
-                        { pms: { some: { id: userId } } },
-                        { pmId: userId },
-                        { createdBy: userId }
-                    ]
-                },
-                select: { id: true }
-            });
-            
-            const projectIds = managedProjects.map(p => p.id);
-            whereClause.OR = [
-                { projectId: { in: projectIds } },
-                { createdBy: userId },
-                { foremanId: userId }
-            ];
+        if (['COMPANY_OWNER', 'PM', 'SUPER_ADMIN', 'ENGINEER', 'ADMIN'].includes(role)) {
+            // Full company-level operational visibility for owners, admins, and project managers
+            if (req.query.projectId) {
+                whereClause.projectId = req.query.projectId;
+            }
         } else if (['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(role)) {
             const userTasks = await prisma.jobTask.findMany({
                 where: {
@@ -54,9 +40,20 @@ const getJobs = async (req, res) => {
             const taskJobIds = userTasks.map(t => t.jobId).filter(Boolean);
             whereClause.OR = [
                 { foremanId: userId },
-                { assignedWorkers: { some: { id: userId } } },
+                { assignedWorkers: userId },
                 { id: { in: taskJobIds } }
             ];
+        } else if (role === 'CLIENT') {
+            const clientProjects = await prisma.project.findMany({
+                where: { companyId, clientId: userId },
+                select: { id: true }
+            });
+            const clientProjectIds = clientProjects.map(p => p.id);
+            if (req.query.projectId) {
+                whereClause.projectId = req.query.projectId;
+            } else {
+                whereClause.projectId = { in: clientProjectIds };
+            }
         }
 
         const jobs = await prisma.job.findMany({
@@ -76,16 +73,26 @@ const getJobs = async (req, res) => {
         });
 
         // Map for frontend compatibility
-        const mappedJobs = jobs.map(job => ({
-            ...job,
-            _id: job.id,
-            foremanId: job.foreman,
-            projectId: {
-                ...job.project,
-                _id: job.projectId,
-                pmIds: job.project?.pms
-            }
-        }));
+        const mappedJobs = jobs.map(job => {
+            const rawProj = job.project || (typeof job.projectId === 'object' ? job.projectId : null);
+            const projId = rawProj ? (rawProj.id || rawProj._id) : (job.projectId ? String(job.projectId) : null);
+            const projName = rawProj?.name || 'Project';
+            const rawForeman = job.foreman || (typeof job.foremanId === 'object' ? job.foremanId : null);
+
+            return {
+                ...job,
+                _id: String(job.id || job._id),
+                id: String(job.id || job._id),
+                foremanId: rawForeman || job.foremanId,
+                projectId: {
+                    ...(rawProj || {}),
+                    _id: projId ? String(projId) : null,
+                    id: projId ? String(projId) : null,
+                    name: projName,
+                    pmIds: rawProj?.pms || rawProj?.pmIds || []
+                }
+            };
+        });
             
         res.json(mappedJobs);
     } catch (err) {
@@ -113,14 +120,22 @@ const getJobById = async (req, res) => {
         
         if (!job) return res.status(404).json({ message: 'Job not found' });
         
+        const rawProj = job.project || (typeof job.projectId === 'object' ? job.projectId : null);
+        const projId = rawProj ? (rawProj.id || rawProj._id) : (job.projectId ? String(job.projectId) : null);
+        const projName = rawProj?.name || 'Project';
+        const rawForeman = job.foreman || (typeof job.foremanId === 'object' ? job.foremanId : null);
+
         const mappedJob = {
             ...job,
-            _id: job.id,
-            foremanId: job.foreman,
+            _id: String(job.id || job._id),
+            id: String(job.id || job._id),
+            foremanId: rawForeman || job.foremanId,
             projectId: {
-                ...job.project,
-                _id: job.projectId,
-                pmIds: job.project?.pms
+                ...(rawProj || {}),
+                _id: projId ? String(projId) : null,
+                id: projId ? String(projId) : null,
+                name: projName,
+                pmIds: rawProj?.pms || rawProj?.pmIds || []
             }
         };
 
@@ -131,20 +146,58 @@ const getJobById = async (req, res) => {
 };
 
 // POST /jobs
+const logJobActivity = async (jobId, actionType, description, userId) => {
+    try {
+        if (!jobId) return;
+        await prisma.jobActivityLog.create({
+            data: {
+                jobId,
+                actionType,
+                type: actionType,
+                description: description || '',
+                details: description || '',
+                createdBy: userId || null,
+                userId: userId || null
+            }
+        });
+    } catch (err) {
+        console.warn('Job Activity Log Notice:', err.message);
+    }
+};
+
 const createJob = async (req, res) => {
     try {
-        const { equipmentIds, assignedWorkers, ...jobData } = req.body;
+        const { equipmentIds, assignedWorkers, title, name, ...jobData } = req.body;
+
+        const jobName = (name || title || '').trim();
+        if (!jobName) {
+            return res.status(400).json({ message: 'Job name is required' });
+        }
 
         const workerIds = Array.isArray(assignedWorkers) 
-            ? assignedWorkers.map(w => typeof w === 'object' ? w.id || w._id : w)
+            ? assignedWorkers.map(w => typeof w === 'object' ? (w.id || w._id) : w).filter(Boolean)
             : [];
+
+        const cleanBudget = jobData.budget !== undefined && jobData.budget !== null
+            ? (Number(String(jobData.budget).replace(/,/g, '').replace(/[^0-9.]/g, '')) || 0)
+            : 0;
+
+        const cleanForemanId = jobData.foremanId && jobData.foremanId !== 'null' && String(jobData.foremanId).trim() !== ''
+            ? (typeof jobData.foremanId === 'object' ? (jobData.foremanId._id || jobData.foremanId.id) : jobData.foremanId)
+            : null;
 
         const job = await prisma.job.create({
             data: {
                 ...jobData,
+                name: jobName,
                 companyId: req.user.companyId,
                 createdBy: req.user.id,
-                budget: jobData.budget ? Number(jobData.budget) : 0,
+                foremanId: cleanForemanId,
+                startDate: jobData.startDate ? new Date(jobData.startDate) : null,
+                endDate: jobData.endDate ? new Date(jobData.endDate) : null,
+                budget: cleanBudget,
+                status: jobData.status || 'planning',
+                location: jobData.location ? String(jobData.location).trim() : '',
                 assignedWorkers: {
                     connect: workerIds.map(id => ({ id }))
                 }
@@ -162,7 +215,6 @@ const createJob = async (req, res) => {
                     companyId: req.user.companyId
                 },
                 data: {
-                    // Mapped properties or json configurations depending on equipment schema
                     status: 'operational'
                 }
             });
@@ -199,36 +251,14 @@ const createJob = async (req, res) => {
         }
 
         // Create Activity Log
-        await prisma.jobActivityLog.create({
-            data: {
-                jobId: job.id,
-                type: 'CREATED',
-                details: `Job "${job.name}" was created.`,
-                userId: req.user.id
-            }
-        });
+        await logJobActivity(job.id, 'CREATED', `Job "${job.name}" was created.`, req.user.id);
 
         if (workerIds.length > 0) {
-            // Log worker additions
-            await prisma.jobActivityLog.create({
-                data: {
-                    jobId: job.id,
-                    type: 'WORKER_ADDED',
-                    details: `${workerIds.length} workers assigned at creation.`,
-                    userId: req.user.id
-                }
-            });
+            await logJobActivity(job.id, 'WORKER_ADDED', `${workerIds.length} workers assigned at creation.`, req.user.id);
         }
 
         if (job.foremanId) {
-            await prisma.jobActivityLog.create({
-                data: {
-                    jobId: job.id,
-                    type: 'FOREMAN_CHANGED',
-                    details: `Foreman assigned during creation.`,
-                    userId: req.user.id
-                }
-            });
+            await logJobActivity(job.id, 'FOREMAN_CHANGED', `Foreman assigned during creation.`, req.user.id);
         }
 
         res.status(201).json({ ...job, _id: job.id });
@@ -262,42 +292,40 @@ const updateJob = async (req, res) => {
             delete updateData.id;
             delete updateData._id;
 
-            if (req.body.assignedWorkers) {
-                const newWorkers = req.body.assignedWorkers.map(w => {
-                    if (typeof w === 'object' && w !== null) {
-                        return w.id || w._id;
-                    }
-                    return w;
-                });
+            if (req.body.name || req.body.title) {
+                updateData.name = (req.body.name || req.body.title).trim();
+            }
+            if (req.body.startDate !== undefined) {
+                updateData.startDate = req.body.startDate ? new Date(req.body.startDate) : null;
+            }
+            if (req.body.endDate !== undefined) {
+                updateData.endDate = req.body.endDate ? new Date(req.body.endDate) : null;
+            }
+            if (req.body.budget !== undefined && req.body.budget !== null) {
+                updateData.budget = Number(String(req.body.budget).replace(/,/g, '').replace(/[^0-9.]/g, '')) || 0;
+            }
+            if (req.body.location !== undefined) {
+                updateData.location = req.body.location ? String(req.body.location).trim() : '';
+            }
+            if (req.body.assignedWorkers !== undefined) {
+                const newWorkers = (Array.isArray(req.body.assignedWorkers) ? req.body.assignedWorkers : [])
+                    .map(w => (typeof w === 'object' && w !== null ? (w.id || w._id) : w))
+                    .filter(Boolean);
                 
                 workersUpdate.assignedWorkers = {
                     set: newWorkers.map(id => ({ id }))
                 };
 
                 // Log additions
-                const added = newWorkers.filter(id => !oldWorkers.includes(id));
+                const added = newWorkers.filter(id => !oldWorkers.map(String).includes(String(id)));
                 if (added.length > 0) {
-                    await prisma.jobActivityLog.create({
-                        data: {
-                            jobId: job.id,
-                            type: 'WORKER_ADDED',
-                            details: `Added ${added.length} workers to job.`,
-                            userId: req.user.id
-                        }
-                    });
+                    await logJobActivity(job.id, 'WORKER_ADDED', `Added ${added.length} workers to job.`, req.user.id);
                 }
 
                 // Log removals
-                const removed = oldWorkers.filter(id => !newWorkers.includes(id));
+                const removed = oldWorkers.filter(id => !newWorkers.map(String).includes(String(id)));
                 if (removed.length > 0) {
-                    await prisma.jobActivityLog.create({
-                        data: {
-                            jobId: job.id,
-                            type: 'WORKER_REMOVED',
-                            details: `Removed ${removed.length} workers from job.`,
-                            userId: req.user.id
-                        }
-                    });
+                    await logJobActivity(job.id, 'WORKER_REMOVED', `Removed ${removed.length} workers from job.`, req.user.id);
                 }
             }
         }
@@ -312,43 +340,22 @@ const updateJob = async (req, res) => {
                 ...workersUpdate
             },
             include: {
-                foreman: { select: { fullName: true, role: true } },
-                assignedWorkers: { select: { fullName: true, role: true } }
+                foreman: { select: { fullName: true, role: true, avatar: true } },
+                assignedWorkers: { select: { fullName: true, role: true, avatar: true } }
             }
         });
 
         // 1. Log Status Change
         if (req.body.status && req.body.status !== oldStatus) {
-            await prisma.jobActivityLog.create({
-                data: {
-                    jobId: job.id,
-                    type: 'STATUS_CHANGED',
-                    details: `Status changed from ${oldStatus} to ${req.body.status}.`,
-                    userId: req.user.id
-                }
-            });
+            await logJobActivity(job.id, 'STATUS_CHANGED', `Status changed from ${oldStatus} to ${req.body.status}.`, req.user.id);
             if (req.body.status === 'completed') {
-                await prisma.jobActivityLog.create({
-                    data: {
-                        jobId: job.id,
-                        type: 'COMPLETED',
-                        details: `Job marked as completed.`,
-                        userId: req.user.id
-                    }
-                });
+                await logJobActivity(job.id, 'COMPLETED', `Job marked as completed.`, req.user.id);
             }
         }
 
         // 2. Log Foreman Change
         if (req.body.foremanId && req.body.foremanId !== oldForemanId) {
-            await prisma.jobActivityLog.create({
-                data: {
-                    jobId: job.id,
-                    type: 'FOREMAN_CHANGED',
-                    details: `Foreman changed.`,
-                    userId: req.user.id
-                }
-            });
+            await logJobActivity(job.id, 'FOREMAN_CHANGED', `Foreman changed.`, req.user.id);
         }
 
         await updateProjectStats(updatedJob.projectId);
@@ -368,11 +375,11 @@ const updateJob = async (req, res) => {
                 });
             }
 
-            for (const worker of updatedJob.assignedWorkers) {
+            for (const worker of (updatedJob.assignedWorkers || [])) {
                 await dispatchNotification(req, {
-                    userId: worker.id,
+                    userId: worker.id || worker._id,
                     title: 'Job Updated',
-                    message: `Assignments updated for job: "${updatedJob.name}"`,
+                    message: `You are assigned to job: "${updatedJob.name}"`,
                     link: '/company-admin/projects',
                     type: 'project'
                 });
@@ -384,7 +391,11 @@ const updateJob = async (req, res) => {
         res.json({
             ...updatedJob,
             _id: updatedJob.id,
-            foremanId: updatedJob.foreman
+            foremanId: updatedJob.foreman,
+            assignedWorkers: (updatedJob.assignedWorkers || []).map(w => ({
+                ...w,
+                _id: w.id || w._id
+            }))
         });
     } catch (err) {
         res.status(400).json({ message: err.message });

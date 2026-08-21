@@ -1,0 +1,1470 @@
+
+========================================================================
+DIFF FOR: DrawingViewer.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 71579 bytes, Current: 69511 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 027d9eb..05c13a0 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -26,7 +26,7 @@ const PEN_WIDTHS = [2, 3, 5, 8];
+ 
+ const DrawingPage = React.memo(({ 
+     pdf, 
+-    imageSource,
++    imageUrl,
+     pageNumber, 
+     zoom, 
+     annotations, 
+@@ -296,74 +296,76 @@ const DrawingPage = React.memo(({
+ 
+     useEffect(() => {
+         const renderPage = async () => {
+-            const canvas = canvasRef.current;
+-            if (!canvas) return;
+-
+-            if (imageSource) {
+-                const img = imageSource;
+-                const width = (img.naturalWidth || img.width || 1200) * zoom;
+-                const height = (img.naturalHeight || img.height || 800) * zoom;
++            if (pdf) {
++                const page = await pdf.getPage(pageNumber);
++                const viewport = page.getViewport({ scale: zoom });
++                const canvas = canvasRef.current;
++                if (!canvas) return;
+                 const context = canvas.getContext('2d');
+ 
+                 const pixelRatio = window.devicePixelRatio || 1;
+-                canvas.width = width * pixelRatio;
+-                canvas.height = height * pixelRatio;
+-                canvas.style.width = `${width}px`;
+-                canvas.style.height = `${height}px`;
++                canvas.width = viewport.width * pixelRatio;
++                canvas.height = viewport.height * pixelRatio;
++                canvas.style.width = `${viewport.width}px`;
++                canvas.style.height = `${viewport.height}px`;
+ 
+                 if (containerRef.current) {
+-                    containerRef.current.style.width = `${width}px`;
+-                    containerRef.current.style.height = `${height}px`;
++                    containerRef.current.style.width = `${viewport.width}px`;
++                    containerRef.current.style.height = `${viewport.height}px`;
+                 }
+ 
+                 if (overlayRef.current) {
+-                    overlayRef.current.style.width = `${width}px`;
+-                    overlayRef.current.style.height = `${height}px`;
++                    overlayRef.current.style.width = `${viewport.width}px`;
++                    overlayRef.current.style.height = `${viewport.height}px`;
+                 }
+ 
+-                context.save();
+-                context.scale(pixelRatio, pixelRatio);
+-                context.drawImage(img, 0, 0, width, height);
+-                context.restore();
+-                return;
+-            }
+-
+-            if (!pdf) return;
+-            const page = await pdf.getPage(pageNumber);
+-            const viewport = page.getViewport({ scale: zoom });
+-            const context = canvas.getContext('2d');
+-
+-            const pixelRatio = window.devicePixelRatio || 1;
+-            canvas.width = viewport.width * pixelRatio;
+-            canvas.height = viewport.height * pixelRatio;
+-            canvas.st
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: Drawings.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 39117 bytes, Current: 39433 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index ce12b25..b67ba61 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -95,8 +95,9 @@ const SearchableSelect = ({ options, value, onChange }) => {
+ };
+ 
+ const Drawings = () => {
+-  const { user, socket } = useAuth();
+-  const canManage = ['COMPANY_OWNER', 'PM'].includes(user?.role);
++  const { user } = useAuth();
++  const canManage = ['COMPANY_OWNER', 'PM', 'SUPER_ADMIN'].includes(user?.role);
++  const canUploadDrawing = ['PM', 'ENGINEER', 'SUPER_ADMIN'].includes(user?.role);
+ 
+   const [searchParams, setSearchParams] = useSearchParams();
+   const projectFilter = searchParams.get('projectId');
+@@ -161,28 +162,6 @@ const Drawings = () => {
+ 
+   useEffect(() => {
+     fetchData();
+-
+-    if (socket) {
+-      const handleCreated = (newDrawing) => {
+-        setDrawings(prev => [newDrawing, ...prev.filter(d => d._id !== newDrawing._id)]);
+-      };
+-      const handleUpdated = (updatedDrawing) => {
+-        setDrawings(prev => prev.map(d => d._id === updatedDrawing._id ? updatedDrawing : d));
+-      };
+-      const handleDeleted = ({ _id }) => {
+-        setDrawings(prev => prev.filter(d => d._id !== _id));
+-      };
+-
+-      socket.on('drawing_created', handleCreated);
+-      socket.on('drawing_updated', handleUpdated);
+-      socket.on('drawing_deleted', handleDeleted);
+-
+-      return () => {
+-        socket.off('drawing_created', handleCreated);
+-        socket.off('drawing_updated', handleUpdated);
+-        socket.off('drawing_deleted', handleDeleted);
+-      };
+-    }
+   }, []);
+ 
+   // Derived State (Filtering)
+@@ -220,9 +199,10 @@ const Drawings = () => {
+       setLoading(true);
+       const data = new FormData();
+       data.append('projectId', formData.projectId);
+-      data.append('title', formData.title);
+-      data.append('drawingNumber', formData.drawingNumber);
+-      data.append('category', formData.category);
++      data.append('title', formData.title || 'Untitled Drawing');
++      data.append('drawingNumber', formData.drawingNumber || 'A-0001');
++      data.append('category', formData.category || 'Architectural');
++      data.append('status', formData.status || 'In Review');
+       data.append('file', formData.file);
+ 
+       await api.post('/drawings', data, {
+@@ -245,7 +225,12 @@ const Drawings = () => {
+   };
+ 
+   const handleView = (drawing) => {
+-    const latestVersion = drawing.versions?.[drawing.versions.length - 1];
++    const latestVersion = drawing.versions?.[drawing.versions.length - 1] || {
++      _id: drawing._id || drawing.id,
++      versionNumber: 1,
++      fileUrl: drawing.fileUrl,
++      uploadedAt: drawing.createdAt
++    };
+     setSelectedDrawing(drawing);
+     setSelectedVersion(latestVersion);
+     setIsFullViewerOpen(true);
+@@ -307,7 +292,7 @@ const Drawings = () => {
+             project_name: selectedDrawing.projectId?.name || 'Construction Project',
+             title: selectedDrawing.title
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: Issues.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 52731 bytes, Current: 48109 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index bbea008..c682a01 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -5,7 +5,7 @@ import {
+   ChevronRight, Info, ShieldAlert, Target, Check, Trash, LayoutGrid, List,
+   Image as ImageIcon, FileText
+ } from 'lucide-react';
+-import api, { getServerUrl } from '../../utils/api';
++import api from '../../utils/api';
+ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, useDroppable } from '@dnd-kit/core';
+ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+ import { CSS } from '@dnd-kit/utilities';
+@@ -55,7 +55,7 @@ const DraggableIssue = ({ issue, onClick }) => {
+             {issue.images[0].toLowerCase().includes('.pdf') ? (
+               <FileText size={20} className="text-red-500" />
+             ) : (
+-              <img src={getServerUrl(issue.images[0])} alt="Thumbnail" className="w-full h-full object-cover" />
++              <img src={issue.images[0]} alt="Thumbnail" className="w-full h-full object-cover" />
+             )}
+           </div>
+         )}
+@@ -356,7 +356,7 @@ const IssueForm = ({ data, setData, onSubmit, submitLabel, projects, users, proj
+                 <span className="text-[8px] font-black text-red-500 uppercase">PDF</span>
+               </div>
+             ) : (
+-              <img src={getServerUrl(img)} alt="Preview" className="w-full h-full object-cover" />
++              <img src={img} alt="Preview" className="w-full h-full object-cover" />
+             )}
+             <button
+               type="button"
+@@ -446,7 +446,7 @@ const Issues = () => {
+   const [projectMembers, setProjectMembers] = useState([]);
+   const [selectedRole, setSelectedRole] = useState('all');
+   const [showErrors, setShowErrors] = useState(false);
+-  const { user, socket } = useAuth();
++  const { user } = useAuth();
+ 
+   useEffect(() => {
+     if (formData.projectId) {
+@@ -478,35 +478,7 @@ const Issues = () => {
+ 
+   useEffect(() => {
+     fetchData();
+-
+-    if (!socket) return;
+-    const handleIssueUpdated = (updated) => {
+-      if (!updated || !updated._id) return;
+-      setIssues(prev => prev.map(i => i._id === updated._id ? { ...i, ...updated } : i));
+-      setSelectedIssue(prev => (prev && prev._id === updated._id ? { ...prev, ...updated } : prev));
+-    };
+-    const handleIssueCreated = (created) => {
+-      if (!created || !created._id) return;
+-      setIssues(prev => {
+-        if (prev.some(i => i._id === created._id)) return prev;
+-        return [created, ...prev];
+-      });
+-    };
+-    const handleIssueDeleted = ({ _id }) => {
+-      if (!_id) return;
+-      setIssues(prev => prev.filter(i => i._id !== _id));
+-    };
+-
+-    socket.on('issue_updated', handleIssueUpdated);
+-    socket.on('issue_created', handleIssueCreated);
+-    socket.on('issue_deleted', handleIssueDeleted);
+-
+-    return () => {
+-      socket.off('issue_updated', handleIssueUpd
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: Photos.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 25562 bytes, Current: 23793 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index e9aed38..1132365 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -129,7 +129,7 @@ const Lightbox = ({ photo, onClose, onDelete }) => {
+ };
+ 
+ const Photos = () => {
+-    const { user, socket } = useAuth();
++    const { user } = useAuth();
+     const [photos, setPhotos] = useState([]);
+     const [projects, setProjects] = useState([]);
+     const [loading, setLoading] = useState(true);
+@@ -160,26 +160,6 @@ const Photos = () => {
+ 
+     useEffect(() => {
+         fetchData();
+-
+-        if (socket) {
+-            const handleCreated = (newPhoto) => {
+-                setPhotos(prev => {
+-                    if (prev.some(p => p.imageUrl === newPhoto.imageUrl)) return prev;
+-                    return [newPhoto, ...prev];
+-                });
+-            };
+-            const handleDeleted = ({ _id, imageUrl }) => {
+-                setPhotos(prev => prev.filter(p => p._id !== _id && (imageUrl ? p.imageUrl !== imageUrl : true)));
+-            };
+-
+-            socket.on('photo_created', handleCreated);
+-            socket.on('photo_deleted', handleDeleted);
+-
+-            return () => {
+-                socket.off('photo_created', handleCreated);
+-                socket.off('photo_deleted', handleDeleted);
+-            };
+-        }
+     }, []);
+ 
+     const filteredPhotos = photos.filter(p => {
+@@ -191,8 +171,7 @@ const Photos = () => {
+ 
+         // Project filtering
+         if (filterProject !== 'All') {
+-            const pProjId = typeof p.projectId === 'object' ? p.projectId?._id : p.projectId;
+-            return String(pProjId) === String(filterProject);
++            return p.projectId?._id === filterProject;
+         }
+ 
+         return true;
+@@ -247,17 +226,15 @@ const Photos = () => {
+     const confirmDelete = async () => {
+         if (!photoToDelete) return;
+         try {
+-            setUploading(true);
+-            await api.delete(`/photos/${encodeURIComponent(photoToDelete._id)}`, {
+-                data: { imageUrl: photoToDelete.imageUrl }
+-            });
+-            setPhotos(prev => prev.filter(p => p._id !== photoToDelete._id));
++            setUploading(true); // Using uploading state for delete loader too or create separate
++            await api.delete(`/photos/${photoToDelete._id}`);
++            setPhotos(photos.filter(p => p._id !== photoToDelete._id));
+             setSelectedPhoto(null);
+             setIsDeleteModalOpen(false);
+             setPhotoToDelete(null);
+         } catch (error) {
+             console.error('Error deleting photo:', error);
+-            alert(error.response?.data?.message || 'Error deleting photo. Please try again.');
++            alert('Error deleting photo');
+         } finally {
+             setUploading(false);
+         }
+@@ -282,12 +259,14 @@ const Photos = () => {
+                             {projects.map(p => <option key={p._id} value={p._id}>{p.name}</option>)
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: PurchaseOrderDetail.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 40817 bytes, Current: 38792 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 9e8eff2..f00ae61 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -19,7 +19,7 @@ import Modal from '../../components/Modal';
+ const PurchaseOrderDetail = ({ isPublic = false }) => {
+     const { id } = useParams();
+     const navigate = useNavigate();
+-    const { user, socket } = useAuth();
++    const { user } = useAuth();
+ 
+     const [po, setPo] = useState(null);
+     const [loading, setLoading] = useState(true);
+@@ -57,35 +57,6 @@ const PurchaseOrderDetail = ({ isPublic = false }) => {
+         fetchPO();
+     }, [id]);
+ 
+-    // Real-time PO updates
+-    useEffect(() => {
+-        if (!socket || !id) return;
+-
+-        const handlePOUpdated = (updatedPO) => {
+-            if (!updatedPO) return;
+-            const updatedId = updatedPO._id || updatedPO.id;
+-            if (updatedId === id) {
+-                setPo(prev => ({ ...prev, ...updatedPO }));
+-            }
+-        };
+-
+-        const handleGenericUpdate = (data) => {
+-            const updatedPO = data?.po || data;
+-            const updatedId = updatedPO?._id || updatedPO?.id;
+-            if (updatedId === id) {
+-                setPo(prev => ({ ...prev, ...updatedPO }));
+-            }
+-        };
+-
+-        socket.on('po_updated', handlePOUpdated);
+-        socket.on('purchase_order_update', handleGenericUpdate);
+-
+-        return () => {
+-            socket.off('po_updated', handlePOUpdated);
+-            socket.off('purchase_order_update', handleGenericUpdate);
+-        };
+-    }, [socket, id]);
+-
+     const handleStatusUpdate = (newStatus) => {
+         setPendingStatus(newStatus);
+         setIsStatusModalOpen(true);
+@@ -119,8 +90,8 @@ const PurchaseOrderDetail = ({ isPublic = false }) => {
+             const pageWidth = doc.internal.pageSize.width;
+ 
+             // Robust data for Public View
+-            const companyName = data.companyId?.name || data.projectId?.companyId?.name || user?.companyName || "Kaal Construction";
+-            const companyEmail = data.companyId?.email || data.projectId?.companyId?.email || user?.email || "procurement@kaal.ca";
++            const companyName = data.companyId?.name || data.projectId?.companyId?.name || user?.companyName || "KT Construct";
++            const companyEmail = data.companyId?.email || data.projectId?.companyId?.email || user?.email || "procurement@ktconstruct.com";
+             const companyPhone = data.companyId?.phone || data.projectId?.companyId?.phone || user?.phone || "+1 (555) 000-0000";
+             const companyAddress = data.companyId?.address || data.projectId?.companyId?.address || user?.companyAddress || "123 Construction Road";
+ 
+@@ -249,18 +220,16 @@ const PurchaseOrderDetail = ({ isPublic = false }) => {
+             ], pageWidth / 2 + 7.5, boxY + 20);
+ 
+             // 3. Items Table Section
+-            const tableColumn = ["ITEM #", "DESCRIPTION", "QTY", "UNIT PRICE", "TOTAL"];
++ 
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: PurchaseOrderForm.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 24616 bytes, Current: 24478 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index b721cd5..01d69e1 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -296,36 +296,34 @@ const PurchaseOrderForm = () => {
+                                         </div>
+ 
+                                         {/* Pricing & Math */}
+-                                        <div className="flex flex-wrap sm:flex-nowrap items-start gap-4 md:w-auto w-full">
+-                                            <div className="w-20 sm:w-24">
++                                        <div className="flex items-start gap-4 md:w-auto w-full">
++                                            <div className="w-24">
+                                                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Qty</label>
+                                                 <input
+                                                     type="number"
+-                                                    min="1"
+-                                                    placeholder="1"
++                                                    placeholder="0"
+                                                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 font-black text-slate-800 text-sm text-center outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                                     value={item.quantity}
+                                                     onChange={e => handleItemChange(index, 'quantity', e.target.value)}
+                                                 />
+                                             </div>
+-                                            <div className="w-28 sm:w-32">
++                                            <div className="w-32">
+                                                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Unit Price ($)</label>
+                                                 <div className="relative">
+                                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
+                                                     <input
+                                                         type="number"
+                                                         step="0.01"
+-                                                        min="0"
+                                                         placeholder="0.00"
+-                                                        className="w-full bg-white border border-slate-200 rounded-xl pl-6 pr-3 py-2.5 font-black text-slate-800 text-sm text-right outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 transition-all"
++                                                        className="w-full bg-
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: DailyLogs.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 56019 bytes, Current: 61282 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index d92134c..ac0a9e9 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,7 +1,7 @@
+ import { useState, useEffect } from 'react';
+ import {
+     CloudSun, Sun, CloudRain, Wind, Thermometer,
+-    Calendar, Search, Filter, Plus, FileText, Image as ImageIcon, Camera, Users, Loader, Trash2, Edit,
++    Calendar, Search, Filter, Plus, FileText, Image as ImageIcon, Users, Loader, Trash2, Edit,
+     MapPin, Clock, ChevronRight, MoreHorizontal, ExternalLink, Hash, Check, LayoutGrid, List, Eye
+ } from 'lucide-react';
+ import Modal from '../../components/Modal';
+@@ -43,9 +43,11 @@ const DailyLogs = () => {
+         projectId: '',
+         weather: { status: 'Sunny', temperature: '' },
+         manpower: [{ role: 'General', count: 0, hours: 8 }],
+-        workPerformed: ''
++        workPerformed: '',
++        location: null
+     });
+     const [selectedFiles, setSelectedFiles] = useState([]);
++    const [isCapturingLocation, setIsCapturingLocation] = useState(false);
+     const [filters, setFilters] = useState({
+         projectId: '',
+         date: ''
+@@ -86,7 +88,8 @@ const DailyLogs = () => {
+             projectId: '',
+             weather: { status: 'Sunny', temperature: '' },
+             manpower: [{ role: 'General', count: 0, hours: 8 }],
+-            workPerformed: ''
++            workPerformed: '',
++            location: null
+         });
+         setSelectedFiles([]);
+         setIsEditing(false);
+@@ -94,6 +97,30 @@ const DailyLogs = () => {
+         setIsModalOpen(true);
+     };
+ 
++    const handleLocationCapture = () => {
++        if (!navigator.geolocation) {
++            alert("Geolocation is not supported by your browser");
++            return;
++        }
++
++        setIsCapturingLocation(true);
++        navigator.geolocation.getCurrentPosition(
++            async (position) => {
++                const { latitude, longitude } = position.coords;
++                setFormData(prev => ({
++                    ...prev,
++                    location: { latitude, longitude, address: 'Captured from GPS' }
++                }));
++                setIsCapturingLocation(false);
++            },
++            (error) => {
++                console.error("Error capturing location:", error);
++                alert("Unable to retrieve your location");
++                setIsCapturingLocation(false);
++            }
++        );
++    };
++
+     const handleFileChange = (e) => {
+         const files = Array.from(e.target.files);
+         if (files.length + selectedFiles.length > 5) {
+@@ -114,7 +141,8 @@ const DailyLogs = () => {
+             projectId: log.projectId?._id || '',
+             weather: log.weather || { status: 'Sunny', temperature: '' },
+             manpower: log.manpower?.length > 0 ? log.manpower : [{ role: 'General', count: 0, hours: 8 }],
+-            workPerformed: log.workPerformed || ''
++            workPerformed: log.workPerformed 
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: Timesheets.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 95164 bytes, Current: 94272 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 6302d3b..403cfd5 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -24,7 +24,7 @@ const Timesheets = () => {
+     const [showDatePicker, setShowDatePicker] = useState(false);
+     const [showStatusFilter, setShowStatusFilter] = useState(false);
+     const socketRef = useRef();
+-    const { user, socket } = useAuth();
++    const { user } = useAuth();
+     const isRestrictedRole = user?.role === 'WORKER' || user?.role === 'SUBCONTRACTOR' || user?.role === 'FOREMAN';
+     const isAdminOrPM = user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_OWNER' || user?.role === 'PM';
+ 
+@@ -125,31 +125,20 @@ const Timesheets = () => {
+     useEffect(() => {
+         fetchData();
+ 
+-        if (!socket) return;
+-        const handleRefresh = () => {
+-            fetchData();
+-        };
++        // Connect socket
++        const socketUrl = BASE_URL;
++        socketRef.current = io(socketUrl);
++        socketRef.current.emit('register_user', user);
+ 
+-        socket.on('attendance_update', handleRefresh);
+-        socket.on('timelog_created', handleRefresh);
+-        socket.on('timelog_updated', handleRefresh);
+-        socket.on('timelog_deleted', handleRefresh);
+-        socket.on('payroll_updated', handleRefresh);
+-
+-        // Also refresh periodically every 30s to keep in-progress elapsed time updated
+-        const interval = setInterval(() => {
++        socketRef.current.on('attendance_update', (data) => {
++            console.log('Timesheet attendance update:', data);
+             fetchData();
+-        }, 30000);
++        });
+ 
+         return () => {
+-            socket.off('attendance_update', handleRefresh);
+-            socket.off('timelog_created', handleRefresh);
+-            socket.off('timelog_updated', handleRefresh);
+-            socket.off('timelog_deleted', handleRefresh);
+-            socket.off('payroll_updated', handleRefresh);
+-            clearInterval(interval);
++            if (socketRef.current) socketRef.current.disconnect();
+         };
+-    }, [socket]);
++    }, []);
+ 
+     // Extract unique employees and projects/jobs from fetched entries for dropdowns
+     const uniqueEmployees = Array.from(new Map(
+@@ -622,14 +611,9 @@ const Timesheets = () => {
+                                     filteredEntries.map((entry) => {
+                                         const clockInDate = new Date(entry.clockIn);
+                                         const clockOutDate = entry.clockOut ? new Date(entry.clockOut) : null;
+-                                        let duration = 'In Progress';
+-                                        if (clockOutDate) {
+-                                            const diff = (clockOutDate - clockInDate) / (1000 * 60 * 60);
+-                                            duration = (diff > 0 ? diff.toFixed(1) : '0.0') + 'h';
+-                                        } else {
+-                  
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: TradeManagement.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 47910 bytes, Current: 46242 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 6f3bc3f..1fd3fbc 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -28,7 +28,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
+ };
+ 
+ const TradeManagement = () => {
+-    const { user, socket } = useAuth();
++    const { user } = useAuth();
+     const [trades, setTrades] = useState([]);
+     const [loading, setLoading] = useState(true);
+     const [isModalOpen, setIsModalOpen] = useState(false);
+@@ -51,7 +51,6 @@ const TradeManagement = () => {
+         phone: '',
+         status: 'active'
+     });
+-    const [existingAttachments, setExistingAttachments] = useState([]);
+     const [taskAttachments, setTaskAttachments] = useState([]); // Pending new attachments
+ 
+     const [filters, setFilters] = useState({
+@@ -68,7 +67,7 @@ const TradeManagement = () => {
+         try {
+             setLoading(true);
+             const res = await api.get('/vendors');
+-            setTrades(res.data || []);
++            setTrades(res.data);
+         } catch (err) {
+             console.error('Error fetching trades:', err);
+         } finally {
+@@ -79,7 +78,7 @@ const TradeManagement = () => {
+     const fetchBids = async () => {
+         try {
+             const res = await api.get('/vendors/bids');
+-            setBids(res.data || []);
++            setBids(res.data);
+         } catch (err) {
+             console.error('Error fetching bids:', err);
+         }
+@@ -88,21 +87,7 @@ const TradeManagement = () => {
+     useEffect(() => {
+         fetchTrades();
+         fetchBids();
+-
+-        if (!socket) return;
+-        const onVendorEvent = () => {
+-            fetchTrades();
+-        };
+-        socket.on('vendor_created', onVendorEvent);
+-        socket.on('vendor_updated', onVendorEvent);
+-        socket.on('vendor_deleted', onVendorEvent);
+-
+-        return () => {
+-            socket.off('vendor_created', onVendorEvent);
+-            socket.off('vendor_updated', onVendorEvent);
+-            socket.off('vendor_deleted', onVendorEvent);
+-        };
+-    }, [socket]);
++    }, []);
+ 
+     const handleSave = async (e) => {
+         e.preventDefault();
+@@ -119,12 +104,7 @@ const TradeManagement = () => {
+                 }
+             });
+ 
+-            // Retained existing attachments when editing
+-            if (editingId) {
+-                data.append('keptAttachments', JSON.stringify(existingAttachments));
+-            }
+-
+-            // Append newly uploaded files
++            // Append files
+             taskAttachments.forEach(file => {
+                 data.append('files', file);
+             });
+@@ -141,7 +121,6 @@ const TradeManagement = () => {
+ 
+             setIsModalOpen(false);
+             setEditingId(null);
+-            setExistingAttachments([]);
+             setTaskAttachments([]);
+             setFormData({
+                 name: '', category: 'Flooring', customCategory: '',
+@@ -158,8 +137,6 @@ const TradeManage
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: Invoices.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 48257 bytes, Current: 51364 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index f51917e..6a45d12 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -10,7 +10,6 @@ import api, { getServerUrl } from '../../utils/api';
+ import jsPDF from 'jspdf';
+ import autoTable from 'jspdf-autotable';
+ import logo from '../../assets/images/Logo.png';
+-// ... (rest of imports)
+ 
+ const Invoices = () => {
+     const navigate = useNavigate();
+@@ -26,6 +25,7 @@ const Invoices = () => {
+     const [invoiceToDelete, setInvoiceToDelete] = useState(null);
+     const [searchTerm, setSearchTerm] = useState('');
+     const [editingInvoice, setEditingInvoice] = useState(null);
++    const [file, setFile] = useState(null);
+ 
+     // Form State
+     const [formData, setFormData] = useState({ 
+@@ -135,6 +135,7 @@ const Invoices = () => {
+ 
+     const openCreateModal = () => {
+         setEditingInvoice(null);
++        setFile(null);
+         const nextNumber = generateNextInvoiceNumber();
+         setFormData({ 
+             projectId: '', 
+@@ -154,6 +155,7 @@ const Invoices = () => {
+ 
+     const openEditModal = (inv) => {
+         setEditingInvoice(inv);
++        setFile(null);
+         setFormData({
+             projectId: inv.projectId?._id || inv.projectId || '',
+             clientId: inv.clientId?._id || inv.clientId || '',
+@@ -182,29 +184,52 @@ const Invoices = () => {
+             }
+             setIsSubmitting(true);
+ 
+-            const payload = {
+-                projectId: formData.projectId,
+-                clientId: formData.clientId,
+-                poId: formData.poId || undefined,
+-                dueDate: formData.dueDate,
+-                invoiceNumber: formData.invoiceNumber,
+-                status: formData.status,
+-                subtotal: Number(formData.subtotal) || 0,
+-                tax: Number(formData.tax) || 0,
+-                taxRate: Number(formData.taxRate) || 0,
+-                totalAmount: Number(formData.totalAmount) || 0,
+-                items: formData.items || []
+-            };
+-
+-            if (editingInvoice) {
+-                await api.patch(`/invoices/${editingInvoice._id}`, payload);
++            if (file) {
++                const uploadFormData = new FormData();
++                uploadFormData.append('projectId', formData.projectId);
++                uploadFormData.append('clientId', formData.clientId);
++                if (formData.poId) uploadFormData.append('poId', formData.poId);
++                if (formData.dueDate) uploadFormData.append('dueDate', formData.dueDate);
++                uploadFormData.append('invoiceNumber', formData.invoiceNumber);
++                uploadFormData.append('status', formData.status);
++                uploadFormData.append('subtotal', Number(formData.subtotal) || 0);
++                uploadFormData.append('tax', Number(formData.tax) || 0);
++                uploadFormData.append('taxRate', Number(formData.taxRate) || 0);
++                uploadFormData.
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: InvoiceDetail.jsx
+========================================================================
+STATUS: DIFFERS (Commit: 29354 bytes, Current: 28311 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 7ef2510..eadd3e4 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,6 +1,6 @@
+-import { useState, useEffect, useRef } from 'react';
++import { useState, useEffect } from 'react';
+ import { useParams, useNavigate } from 'react-router-dom';
+-import { ChevronLeft, Printer, Mail, Download, DollarSign, FileText } from 'lucide-react';
++import { ChevronLeft, Printer, Download, FileText } from 'lucide-react';
+ import api, { getServerUrl } from '../../utils/api';
+ import { jsPDF } from 'jspdf';
+ import autoTable from 'jspdf-autotable';
+@@ -11,69 +11,46 @@ const InvoiceDetail = () => {
+     const navigate = useNavigate();
+     const [invoice, setInvoice] = useState(null);
+     const [loading, setLoading] = useState(true);
+-    const printRef = useRef();
+-
+-    const sampleInvoice = {
+-        invoiceNumber: '1771334618340',
+-        createdAt: new Date(),
+-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+-        clientId: { fullName: 'Demo Client', address: 'Indore, India' },
+-        projectId: { name: 'Sample Project', address: 'Project Address 123' },
+-        items: [
+-            { description: 'Construction Materials', quantity: 2, unitPrice: 500, total: 1000 },
+-            { description: 'Labor Charges', quantity: 1, unitPrice: 1500, total: 1500 }
+-        ],
+-        totalAmount: 2500,
+-        status: 'unpaid'
+-    };
+ 
+-    useEffect(() => {
+-        const fetchInvoice = async () => {
+-            try {
+-                setLoading(true);
+-                const { data } = await api.get(`/invoices/${id}`);
+-                setInvoice(data);
+-            } catch (error) {
+-                console.error('Error fetching invoice:', error);
+-                // Fallback to sample for preview
+-                setInvoice(sampleInvoice);
+-            } finally {
+-                setLoading(false);
+-            }
+-        };
+-        if (id === 'sample') {
+-            setInvoice(sampleInvoice);
++    const fetchInvoice = async () => {
++        try {
++            setLoading(true);
++            const res = await api.get(`/invoices/${id}`);
++            setInvoice(res.data);
++        } catch (error) {
++            console.error('Error fetching invoice details:', error);
++            alert('Failed to load invoice details');
++        } finally {
+             setLoading(false);
+-        } else {
+-            fetchInvoice();
+         }
+-    }, [id]);
++    };
+ 
+     useEffect(() => {
+-        if (!loading && invoice && new URLSearchParams(window.location.search).get('print') === 'true') {
+-            // Wait slightly for layout to settle
+-            setTimeout(() => {
+-                window.print();
+-            }, 500);
+-        }
+-    }, [loading, invoice]);
++        fetchInvoice();
++    }, [id]);
++
++    const handlePrint = () => {
++        window.print();
++    };
+ 
+     const getVendorDetails = (inv) => {
+-        if (!inv) 
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: Settings.jsx
+========================================================================
+STATUS: MATCHES CURRENT EXACTLY (100% IDENTICAL)
+
+========================================================================
+DIFF FOR: drawingController.js
+========================================================================
+STATUS: DIFFERS (Commit: 10338 bytes, Current: 8213 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index e2bdea1..1529fd1 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,72 +1,84 @@
+-const Drawing = require('../models/Drawing');
+-const DrawingAnnotation = require('../models/DrawingAnnotation');
+-const Job = require('../models/Job');
+-const Project = require('../models/Project');
+-const mongoose = require('mongoose');
++const prisma = require('../config/prisma');
+ 
+ // @desc    Get all drawings
+ // @route   GET /api/drawings
+ // @access  Private
+ const getDrawings = async (req, res, next) => {
+     try {
+-        const query = { companyId: req.user.companyId };
++        const whereClause = { companyId: req.user.companyId };
+ 
+-        if (['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(req.user.role)) {
++        if (['PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(req.user.role)) {
+             const jobFilter = { companyId: req.user.companyId };
+ 
+-            if (['FOREMAN', 'SUBCONTRACTOR'].includes(req.user.role)) {
+-                jobFilter.foremanId = req.user._id;
++            if (req.user.role === 'PM') {
++                jobFilter.OR = [
++                    { foremanId: req.user.id },
++                    { createdBy: req.user.id }
++                ];
++            } else if (['FOREMAN', 'SUBCONTRACTOR'].includes(req.user.role)) {
++                jobFilter.foremanId = req.user.id;
+             } else {
+-                jobFilter.assignedWorkers = req.user._id;
++                jobFilter.assignedWorkers = { some: { id: req.user.id } };
+             }
+ 
+-            const assignedJobs = await Job.find(jobFilter).select('projectId').lean();
+-            const jobProjectIds = assignedJobs
+-                .filter(j => j.projectId)
+-                .map(j => j.projectId.toString());
+-
+-            const directProjects = await Project.find({
+-                companyId: req.user.companyId,
+-                $or: [
+-                    { pmIds: req.user._id },
+-                    { pmId: req.user._id },
+-                    { createdBy: req.user._id }
+-                ]
+-            }).select('_id').lean();
+-            const directProjectIds = directProjects.map(p => p._id.toString());
+-            const allowedProjectIds = [...new Set([...jobProjectIds, ...directProjectIds])];
++            const assignedJobs = await prisma.job.findMany({
++                where: jobFilter,
++                select: { projectId: true }
++            });
++            const jobProjectIds = assignedJobs.map(j => j.projectId).filter(Boolean);
++
++            let finalAllowedProjectIds = jobProjectIds;
++
++            if (req.user.role === 'PM') {
++                const directProjects = await prisma.project.findMany({
++                    where: {
++                        companyId: req.user.companyId,
++                        OR: [
++                            { pms: { some: { id: req.user.id } } },
++                            { pmId: req.user.i
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: issueController.js
+========================================================================
+STATUS: DIFFERS (Commit: 5053 bytes, Current: 3557 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index c29ea4b..b41c387 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,34 +1,48 @@
+-const Issue = require('../models/Issue');
++const prisma = require('../config/prisma');
+ 
+ // @desc    Get all issues
+ // @route   GET /api/issues
+ // @access  Private
+ const getIssues = async (req, res, next) => {
+     try {
+-        const { role, _id: userId, companyId } = req.user;
+-        const query = { companyId };
++        const { role, id: userId, companyId } = req.user;
++        const whereClause = { companyId };
+ 
+-        // Role-based filtering
+         if (['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(role)) {
+-            query.$or = [
++            whereClause.OR = [
+                 { assignedTo: userId },
+-                { reportedBy: userId }
++                { createdBy: userId }
+             ];
+         }
+-        // PM and Admin/Owner see all issues of the company by default (query.companyId is already set)
+ 
+-        if (req.query.projectId) query.projectId = req.query.projectId;
+-        if (req.query.jobId) query.jobId = req.query.jobId;
+-        if (req.query.status) query.status = req.query.status;
++        if (req.query.projectId) whereClause.projectId = req.query.projectId;
++        if (req.query.jobId) whereClause.jobId = req.query.jobId;
++        if (req.query.status) {
++            // Prisma enum checking
++            whereClause.status = req.query.status;
++        }
++
++        const issues = await prisma.issue.findMany({
++            where: whereClause,
++            include: {
++                project: { select: { name: true } },
++                assignee: { select: { fullName: true } },
++                creator: { select: { fullName: true } },
++                photos: true
++            },
++            orderBy: { createdAt: 'desc' }
++        });
+ 
+-        const issues = await Issue.find(query)
+-            .populate('projectId', 'name')
+-            .populate('assignedTo', 'fullName')
+-            .populate('reportedBy', 'fullName')
+-            .populate('photoIds')
+-            .sort({ createdAt: -1 });
++        const mapped = issues.map(issue => ({
++            ...issue,
++            _id: issue.id,
++            projectId: issue.project,
++            assignedTo: issue.assignee,
++            reportedBy: issue.creator,
++            photoIds: issue.photos
++        }));
+ 
+-        res.json(issues);
++        res.json(mapped);
+     } catch (error) {
+         next(error);
+     }
+@@ -39,36 +53,23 @@ const getIssues = async (req, res, next) => {
+ // @access  Private
+ const createIssue = async (req, res, next) => {
+     try {
+-        const path = require('path');
+-        const images = req.files ? req.files.map(file => {
+-            if (file.path && (file.path.startsWith('http://') || file.path.startsWith('https://') || file.path.startsWith('/uploads/'))) {
+-                return file.path;
+-            } else if (fil
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: photoController.js
+========================================================================
+STATUS: DIFFERS (Commit: 12398 bytes, Current: 5308 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index a82edf2..f932ffa 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,150 +1,40 @@
+-const Photo = require('../models/Photo');
+-const Project = require('../models/Project');
+-const Job = require('../models/Job');
+-const DailyLog = require('../models/DailyLog');
+-const Issue = require('../models/Issue');
+-const ProjectUpdate = require('../models/ProjectUpdate');
+-const mongoose = require('mongoose');
++const path = require('path');
++const prisma = require('../config/prisma');
+ 
+-// @desc    Get all photos (Centralized gallery combining Photo, DailyLog, Issue, and ProjectUpdate)
++// @desc    Get all photos
+ // @route   GET /api/photos
+ // @access  Private
+ const getPhotos = async (req, res, next) => {
+     try {
+-        const companyId = req.user.companyId;
+-        const requestedProjectId = req.query.projectId;
++        const userCompanyId = String(req.user.companyId || req.companyId || (typeof req.user.companyId === 'object' ? (req.user.companyId._id || req.user.companyId.id) : ''));
++        const whereClause = {};
+ 
+-        let projectFilter = {};
+-        if (requestedProjectId && requestedProjectId !== 'All') {
+-            projectFilter = { projectId: requestedProjectId };
++        if (req.user.role !== 'SUPER_ADMIN' && userCompanyId) {
++            whereClause.companyId = userCompanyId;
+         }
+ 
+-        // 1. Direct Photos from Photo collection
+-        const photoQuery = { companyId, ...projectFilter };
+-        if (req.query.taskId) photoQuery.taskId = req.query.taskId;
+-
+-        const directPhotosPromise = Photo.find(photoQuery)
+-            .populate('projectId', 'name')
+-            .populate('uploadedBy', 'fullName role')
+-            .sort({ createdAt: -1 })
+-            .lean();
+-
+-        // 2. Photos from Daily Logs
+-        const dlQuery = { companyId, photos: { $exists: true, $ne: [] }, ...projectFilter };
+-        const dailyLogsPromise = DailyLog.find(dlQuery)
+-            .populate('projectId', 'name')
+-            .populate('reportedBy', 'fullName role')
+-            .sort({ createdAt: -1 })
+-            .lean();
+-
+-        // 3. Photos from Issues
+-        const issueQuery = { companyId, images: { $exists: true, $ne: [] }, ...projectFilter };
+-        const issuesPromise = Issue.find(issueQuery)
+-            .populate('projectId', 'name')
+-            .populate('reportedBy', 'fullName role')
+-            .sort({ createdAt: -1 })
+-            .lean();
+-
+-        // 4. Photos from ProjectUpdates
+-        const updateQuery = { images: { $exists: true, $ne: [] } };
+-        if (requestedProjectId && requestedProjectId !== 'All') {
+-            updateQuery.projectId = requestedProjectId;
++        if (req.query.projectId && req.query.projectId !== 'All' && req.query.projectId !== 'undefined' && req.query.projectId !== '') {
++            whereClause.projectId = req.query.projectId;
++        }
++        if (r
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: purchaseOrder.controller.js
+========================================================================
+STATUS: DIFFERS (Commit: 10001 bytes, Current: 8914 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index b86dfeb..ff694a4 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,48 +1,23 @@
+-const PurchaseOrder = require('../models/purchaseOrder.model');
+-const Project = require('../models/Project');
+-const Vendor = require('../models/Vendor');
+-const Counter = require('../models/Counter');
+-
+-// Helper: Emit Socket.io events across company
+-const emitSocketEvent = (req, event, data) => {
+-    try {
+-        const io = req.app.get('io') || req.app.get('socketio');
+-        if (io) {
+-            const companyId = data?.companyId?._id || data?.companyId || req.user?.companyId || req.user?.company?._id;
+-            if (companyId) {
+-                io.to(`company_${companyId}`).emit(event, data);
+-            }
+-            io.emit(event, data);
+-        }
+-    } catch (err) {
+-        console.error('Socket emission error in purchaseOrder.controller:', err);
+-    }
+-};
++const prisma = require('../config/prisma');
+ 
+ // Create PO
+ exports.createPO = async (req, res) => {
+     try {
+         const { projectId, jobId, vendorId, vendorName, vendorEmail, items, notesToVendor, internalNotes, expectedDeliveryDate, totalAmount, subtotal, tax } = req.body;
+         
+-        // Clean optional IDs
+         const cleanVendorId = vendorId || null;
+         const cleanJobId = jobId || null;
+ 
+-        // Skip strict Vendor verification if vendorName is provided
+         if (vendorId) {
+-            const vendor = await Vendor.findById(vendorId);
++            const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+             if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+         }
+ 
+-        // Auto-increment PO Number
+-        const counter = await Counter.findOneAndUpdate(
+-            { id: 'poNumber' },
+-            { $inc: { seq: 1 } },
+-            { new: true, upsert: true }
+-        );
+-        const poNumber = `PO-${String(counter.seq).padStart(6, '0')}`;
++        // Generate unique PO Number safely
++        const totalCount = await prisma.purchaseOrder.count();
++        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
++        const poNumber = `PO-${String(totalCount + 1).padStart(4, '0')}-${randomSuffix}`;
+ 
+-        // Initial Status based on role
+         let status = 'Draft';
+         if (req.user.role === 'PM' || req.user.role === 'COMPANY_OWNER') {
+             status = 'Pending Approval';
+@@ -50,41 +25,35 @@ exports.createPO = async (req, res) => {
+             status = 'Draft';
+         }
+ 
+-        const po = new PurchaseOrder({
+-            companyId: req.user.companyId || req.user.company?._id || req.body.companyId,
+-            poNumber,
+-            projectId,
+-            jobId: cleanJobId,
+-            vendorId: cleanVendorId,
+-            vendorName,
+-            vendorEmail,
+-            createdBy: req.user._id,
+-            items,
+-            notesToVendor,
+-
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: dailyLogController.js
+========================================================================
+STATUS: DIFFERS (Commit: 9968 bytes, Current: 10154 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 9d08d6d..efa5dee 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,38 +1,53 @@
+-const DailyLog = require('../models/DailyLog');
++const prisma = require('../config/prisma');
+ 
+ // @desc    Get all daily logs
+ // @route   GET /api/dailylogs
+ // @access  Private
+ const getDailyLogs = async (req, res, next) => {
+     try {
+-        const query = { companyId: req.user.companyId };
++        const whereClause = { companyId: req.user.companyId };
+ 
+-        // Filter projects for clients
+         if (req.user.role === 'CLIENT') {
+-            const Project = require('../models/Project');
+-            const clientProjects = await Project.find({ clientId: req.user._id }).select('_id');
+-            const projectIds = clientProjects.map(p => p._id);
+-            query.projectId = { $in: projectIds };
++            const clientProjects = await prisma.project.findMany({
++                where: { clientId: req.user.id },
++                select: { id: true }
++            });
++            const projectIds = clientProjects.map(p => p.id);
++            whereClause.projectId = { in: projectIds };
+         } else if (['FOREMAN', 'WORKER'].includes(req.user.role)) {
+-            // Foreman / Worker: Only show logs they reported themselves
+-            query.reportedBy = req.user._id;
++            whereClause.createdBy = req.user.id;
+         }
+ 
+         if (req.query.projectId) {
+-            // If projectId is provided, ensure it's one of the client's projects
+-            if (req.user.role === 'CLIENT' && !query.projectId.$in.some(id => id.toString() === req.query.projectId)) {
+-                return res.status(403).json({ message: 'Not authorized to access this project logs' });
++            if (req.user.role === 'CLIENT') {
++                const isAllowed = whereClause.projectId?.in?.includes(req.query.projectId);
++                if (!isAllowed) {
++                    return res.status(403).json({ message: 'Not authorized to access this project logs' });
++                }
+             }
+-            query.projectId = req.query.projectId;
++            whereClause.projectId = req.query.projectId;
++        }
++        if (req.query.date) {
++            whereClause.date = new Date(req.query.date);
+         }
+-        if (req.query.date) query.date = req.query.date;
+ 
+-        const logs = await DailyLog.find(query)
+-            .populate('projectId', 'name')
+-            .populate('reportedBy', 'fullName role')
+-            .sort({ date: -1 });
++        const logs = await prisma.dailyLog.findMany({
++            where: whereClause,
++            include: {
++                project: { select: { name: true } },
++                creator: { select: { fullName: true, role: true } }
++            },
++            orderBy: { date: 'desc' }
++        });
++
++        const mappedLogs = logs.map(l => ({
++            ...l,
++            _id: l.id,
++            
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: timeLogController.js
+========================================================================
+STATUS: DIFFERS (Commit: 15003 bytes, Current: 13957 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index f99e255..155fe1b 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,7 +1,6 @@
+-const TimeLog = require('../models/TimeLog');
+-const Project = require('../models/Project');
++const prisma = require('../config/prisma');
++const https = require('https');
+ 
+-// Helper to calculate distance between two GPS points (Haversine formula)
+ const calculateDistance = (lat1, lon1, lat2, lon2) => {
+     const R = 6371e3; // Earth radius in meters
+     const φ1 = lat1 * Math.PI / 180;
+@@ -17,8 +16,6 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
+     return R * c; // Distance in meters
+ };
+ 
+-const https = require('https');
+-
+ const reverseGeocode = async (lat, lng) => {
+     return new Promise((resolve) => {
+         if (!lat && lat !== 0) return resolve(null);
+@@ -65,15 +62,11 @@ const reverseGeocode = async (lat, lng) => {
+     });
+ };
+ 
+-// @desc    Clock In
+-// @route   POST /api/timelogs/clock-in
+-// @access  Private
+ const clockIn = async (req, res, next) => {
+     try {
+         const { projectId, jobId, taskId, latitude, longitude, accuracy, deviceInfo, userId, isManual, reason, clockIn: manualTime } = req.body;
+-        const targetUserId = userId || req.user._id;
++        const targetUserId = userId || req.user.id;
+ 
+-        // Role-based check for manual entry
+         if (isManual) {
+             const allowedRoles = ['COMPANY_OWNER', 'PM', 'SUPER_ADMIN'];
+             if (!allowedRoles.includes(req.user.role)) {
+@@ -86,10 +79,22 @@ const clockIn = async (req, res, next) => {
+             }
+         }
+ 
+-        // Check if already clocked in
+-        const activeLog = await TimeLog.findOne({
+-            userId: targetUserId,
+-            clockOut: null
++        if (!isManual && ((!latitude && latitude !== 0) || (!longitude && longitude !== 0))) {
++            if (!userId || userId === req.user.id) {
++                res.status(400);
++                throw new Error('Location access is required to clock in. Please enable GPS.');
++            }
++        }
++
++        if (!isManual && accuracy && accuracy > 200) {
++            if (!userId || userId === req.user.id) {
++                res.status(400);
++                throw new Error('GPS accuracy too low ( > 200m). Please try again in an area with better signal.');
++            }
++        }
++
++        const activeLog = await prisma.timeLog.findFirst({
++            where: { userId: targetUserId, clockOut: null }
+         });
+ 
+         if (activeLog) {
+@@ -101,19 +106,17 @@ const clockIn = async (req, res, next) => {
+         let isOutsideGeofence = false;
+ 
+         if (!isManual && projectId && latitude && longitude) {
+-            const project = await Project.findById(projectId);
++            const project = await prisma.project.findUnique({ where: { id: projectId } });
+             if (project) {
+-                // Use site coordinates if available, otherwise fallbac
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: vendorController.js
+========================================================================
+STATUS: DIFFERS (Commit: 8830 bytes, Current: 8405 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 8f2c887..dcd2829 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -1,6 +1,4 @@
+-const Vendor = require('../models/Vendor');
+-const TradeBid = require('../models/TradeBid');
+-const Drawing = require('../models/Drawing');
++const prisma = require('../config/prisma');
+ 
+ // @desc    Create new trade/vendor
+ // @route   POST /api/vendors
+@@ -15,21 +13,19 @@ exports.createVendor = async (req, res) => {
+             }));
+         }
+ 
+-        const companyId = req.user.companyId || req.user.company?._id;
+-        const vendor = new Vendor({
+-            ...req.body,
+-            companyId,
+-            createdBy: req.user._id,
+-            attachments
+-        });
+-        await vendor.save();
+-
+-        const io = req.app.get('io');
+-        if (io) {
+-            io.to(`company_${companyId}`).emit('vendor_created', vendor);
+-        }
++        const data = { ...req.body };
++        delete data._id;
++        delete data.id;
+ 
+-        res.status(201).json(vendor);
++        const vendor = await prisma.vendor.create({
++            data: {
++                ...data,
++                companyId: req.user.companyId,
++                createdBy: req.user.id,
++                attachments: attachments
++            }
++        });
++        res.status(201).json({ ...vendor, _id: vendor.id });
+     } catch (error) {
+         res.status(500).json({ message: error.message });
+     }
+@@ -39,29 +35,38 @@ exports.createVendor = async (req, res) => {
+ // @route   GET /api/vendors
+ exports.getVendors = async (req, res) => {
+     try {
+-        const companyId = req.user.companyId || req.user.company?._id;
+-        let query = { companyId };
++        const companyId = req.user.companyId;
++        const whereClause = { companyId };
+ 
+-        if (req.query.category && req.query.category !== 'All Categories') {
+-            query.category = req.query.category;
++        if (req.query.category) {
++            whereClause.category = req.query.category;
+         }
+-        if (req.query.status && req.query.status !== 'All Status') {
+-            query.status = req.query.status.toLowerCase();
++        if (req.query.status) {
++            whereClause.status = req.query.status;
+         }
+         if (req.query.search) {
+-            query.name = { $regex: req.query.search, $options: 'i' };
++            whereClause.name = { contains: req.query.search };
+         }
+ 
+-        // Role-based visibility: Foreman only sees their own trades
+         if (req.user.role === 'FOREMAN') {
+-            query.createdBy = req.user._id;
++            whereClause.createdBy = req.user.id;
+         }
+ 
+-        const vendors = await Vendor.find(query)
+-            .select('name email category status phone businessAddress address contactPerson attachments createdAt')
+-            .sort({ createdAt: -1 })
+-            .lean();
+-        res.json(vendors);
++        const vendors = await p
+...[TRUNCATED DIFF]...
+
+========================================================================
+DIFF FOR: invoiceController.js
+========================================================================
+STATUS: MATCHES CURRENT EXACTLY (100% IDENTICAL)
+
+========================================================================
+DIFF FOR: companyController.js
+========================================================================
+STATUS: MATCHES CURRENT EXACTLY (100% IDENTICAL)
+
+========================================================================
+DIFF FOR: Company.js (model)
+========================================================================
+STATUS: DIFFERS (Commit: 1592 bytes, Current: 1011 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index 1eb1138..6169d67 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -42,19 +42,6 @@ const companySchema = new mongoose.Schema({
+         type: String,
+         enum: ['Monthly', 'Yearly', 'Custom'],
+         default: 'Monthly'
+-    },
+-    invoiceSettings: {
+-        companyName: { type: String, default: '' },
+-        email: { type: String, default: '' },
+-        phone: { type: String, default: '' },
+-        address: { type: String, default: '' },
+-        taxNumber: { type: String, default: '' },
+-        logo: { type: String, default: '' },
+-        defaultTaxRate: { type: Number, default: 15 },
+-        defaultPaymentTerms: { type: String, default: 'Net 15' },
+-        bankDetails: { type: String, default: '' },
+-        notes: { type: String, default: '' },
+-        terms: { type: String, default: '' }
+     }
+ }, {
+     timestamps: true
+
+
+========================================================================
+DIFF FOR: Invoice.js (model)
+========================================================================
+STATUS: DIFFERS (Commit: 1579 bytes, Current: 1299 bytes)
+diff --git a/backnd/scratch/temp_commit.txt b/backnd/scratch/temp_current.txt
+index cbe57b5..eb68c95 100644
+--- a/backnd/scratch/temp_commit.txt
++++ b/backnd/scratch/temp_current.txt
+@@ -24,28 +24,12 @@ const invoiceSchema = new mongoose.Schema({
+         type: mongoose.Schema.Types.ObjectId,
+         ref: 'Estimate'
+     },
+-    poId: {
+-        type: mongoose.Schema.Types.ObjectId,
+-        ref: 'PurchaseOrder'
+-    },
+     items: [{
+         description: String,
+         quantity: Number,
+         unitPrice: Number,
+         total: Number
+     }],
+-    subtotal: {
+-        type: Number,
+-        default: 0
+-    },
+-    tax: {
+-        type: Number,
+-        default: 0
+-    },
+-    taxRate: {
+-        type: Number,
+-        default: 0
+-    },
+     totalAmount: {
+         type: Number,
+         required: true
+

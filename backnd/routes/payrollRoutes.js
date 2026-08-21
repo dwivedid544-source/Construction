@@ -1,14 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const { getPayrollPreview, runPayroll, getPayrollHistory, getPayrollDetails, getPayrollSlip } = require('../controllers/payrollController');
-const { protect, checkPermission } = require('../middlewares/authMiddleware');
+const { 
+    getPayrollPreview, 
+    getJobsPayroll, 
+    runPayroll, 
+    getPayrollHistory, 
+    getPayrollDetails, 
+    getPayrollSlip 
+} = require('../controllers/payrollController');
+const { protect, authorize, restrictPMAdmin } = require('../middlewares/authMiddleware');
 
 router.use(protect);
+// Payroll is strictly restricted to Company Owners (Oversight & Finance Control)
+router.use(restrictPMAdmin('Payroll management'));
 
-router.get('/preview', checkPermission('MANAGE_FINANCIALS'), getPayrollPreview);
-router.post('/run', checkPermission('MANAGE_FINANCIALS'), runPayroll);
-router.get('/history', checkPermission('MANAGE_FINANCIALS'), getPayrollHistory);
-router.get('/details', checkPermission('MANAGE_FINANCIALS'), getPayrollDetails);
-router.get('/slip/:id', checkPermission('MANAGE_FINANCIALS'), getPayrollSlip);
+router.get('/preview', getPayrollPreview);
+router.get('/jobs', getJobsPayroll);
+router.post('/run', runPayroll);
+router.get('/history', getPayrollHistory);
+router.get('/details', getPayrollDetails);
+router.get('/slip/:id', getPayrollSlip);
 
 module.exports = router;

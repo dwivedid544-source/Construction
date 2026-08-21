@@ -19,7 +19,7 @@ const getProjects = async (req, res, next) => {
                         companyId,
                         OR: [
                             { foremanId: userId },
-                            { assignedWorkers: { some: { id: userId } } }
+                            { assignedWorkers: userId }
                         ]
                     },
                     select: { projectId: true }
@@ -28,7 +28,7 @@ const getProjects = async (req, res, next) => {
                     where: {
                         companyId,
                         OR: [
-                            { pms: { some: { id: userId } } },
+                            { pmIds: userId },
                             { pmId: userId },
                             { createdBy: userId }
                         ]
@@ -133,23 +133,26 @@ const getProjectById = async (req, res, next) => {
         }
 
         // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId !== project.companyId) {
+        const userCompanyId = String(req.user.companyId || req.companyId || (typeof req.user.companyId === 'object' ? (req.user.companyId._id || req.user.companyId.id) : ''));
+        const projectCompanyId = String(project.companyId || (typeof project.companyId === 'object' ? (project.companyId._id || project.companyId.id) : ''));
+
+        if (req.user.role !== 'SUPER_ADMIN' && userCompanyId && projectCompanyId && userCompanyId !== projectCompanyId) {
             res.status(403);
             throw new Error('Not authorized to access this project');
         }
 
-        // Mapping for legacy frontend expectations
+        const loc = project.location || {};
         const mappedProject = {
             ...project,
-            _id: project.id,
-            clientId: project.client,
-            createdBy: project.creator,
-            pmIds: project.pms,
-            pmId: project.projectManager,
+            _id: project.id || project._id,
+            clientId: project.client || project.clientId,
+            createdBy: project.creator || project.createdBy,
+            pmIds: project.pms || project.pmIds,
+            pmId: project.projectManager || project.pmId,
             location: {
-                address: project.locationAddress,
-                latitude: project.locationLatitude,
-                longitude: project.locationLongitude
+                address: (typeof loc === 'object' ? loc.address : loc) || project.locationAddress || '',
+                latitude: (typeof loc === 'object' ? loc.latitude : null) || project.locationLatitude || null,
+                longitude: (typeof loc === 'object' ? loc.longitude : null) || project.locationLongitude || null
             }
         };
 
@@ -196,9 +199,10 @@ const createProject = async (req, res, next) => {
         }
         // ---------------------------
 
-        let finalImage = image;
+        let finalImage = image || '';
         if (req.file) {
-            finalImage = req.file.path;
+            const filename = req.file.filename || (req.file.path ? require('path').basename(req.file.path) : '');
+            finalImage = req.file.path && req.file.path.startsWith('http') ? req.file.path : (filename ? `/uploads/photos/${filename}` : '');
         }
 
         let finalLocation = {};
@@ -212,24 +216,41 @@ const createProject = async (req, res, next) => {
             finalLocation = location;
         }
 
-        const projectPmIds = Array.isArray(pmIds) ? pmIds : (pmId ? [pmId] : []);
+        const rawPmIds = Array.isArray(pmIds) ? pmIds : (pmId ? [pmId] : []);
+        const cleanPmIds = rawPmIds
+            .map(id => typeof id === 'object' && id !== null ? (id._id || id.id) : id)
+            .filter(id => id && id !== 'null' && id !== 'undefined' && String(id).trim() !== '');
+        const primaryPmId = cleanPmIds[0] || (pmId && pmId !== 'null' && String(pmId).trim() !== '' ? pmId : null);
+        const cleanClientId = clientId && clientId !== 'null' && clientId !== 'undefined' && String(clientId).trim() !== '' ? clientId : null;
+
+        let cleanBudget = 0;
+        if (budget !== undefined && budget !== null) {
+            const numStr = String(budget).replace(/,/g, '').replace(/[^0-9.]/g, '');
+            cleanBudget = numStr ? Number(numStr) : 0;
+        }
 
         const project = await prisma.project.create({
             data: {
                 companyId: req.user.companyId,
-                name,
-                clientId,
+                name: name ? String(name).trim() : 'Untitled Project',
+                clientId: cleanClientId,
                 startDate: startDate ? new Date(startDate) : null,
                 endDate: endDate ? new Date(endDate) : null,
-                budget: budget ? Number(budget) : 0,
+                budget: cleanBudget,
+                location: {
+                    address: finalLocation.address || '',
+                    latitude: finalLocation.latitude ? Number(finalLocation.latitude) : null,
+                    longitude: finalLocation.longitude ? Number(finalLocation.longitude) : null,
+                },
                 locationAddress: finalLocation.address || '',
                 locationLatitude: finalLocation.latitude ? Number(finalLocation.latitude) : null,
                 locationLongitude: finalLocation.longitude ? Number(finalLocation.longitude) : null,
                 geofenceRadius: geofenceRadius ? Number(geofenceRadius) : 200,
-                image: finalImage,
-                pmId: projectPmIds[0] || pmId || null,
+                image: finalImage || '',
+                pmId: primaryPmId,
+                pmIds: cleanPmIds,
                 pms: {
-                    connect: projectPmIds.map(id => ({ id }))
+                    connect: cleanPmIds.map(id => ({ id }))
                 },
                 createdBy: req.user.id
             }
@@ -237,18 +258,17 @@ const createProject = async (req, res, next) => {
 
         // CREATE CHAT ROOM FOR PROJECT
         try {
-            const { syncProjectParticipants } = require('./chatController');
-
             await prisma.chatRoom.create({
                 data: {
+                    companyId: req.user.companyId,
+                    projectId: project.id,
+                    roomType: 'PROJECT_GROUP',
                     name: project.name,
                     isGroup: true
                 }
             });
-
-            await syncProjectParticipants(project.id);
         } catch (chatError) {
-            console.error('Failed to create/sync chat room for project:', chatError);
+            console.warn('Note on project chat room setup:', chatError.message);
         }
 
         const populatedProject = await prisma.project.findUnique({
@@ -256,22 +276,20 @@ const createProject = async (req, res, next) => {
             include: {
                 client: { select: { fullName: true, email: true } },
                 creator: { select: { fullName: true } },
-                pms: { select: { id: true, fullName: true, email: true } },
-                projectManager: { select: { fullName: true, email: true } }
+                pms: { select: { id: true, fullName: true, email: true } }
             }
-        });
+        }) || project;
 
         const mappedResult = {
             ...populatedProject,
-            _id: populatedProject.id,
-            clientId: populatedProject.client,
-            createdBy: populatedProject.creator,
-            pmIds: populatedProject.pms,
-            pmId: populatedProject.projectManager,
+            _id: populatedProject.id || populatedProject._id,
+            clientId: populatedProject.client || populatedProject.clientId,
+            createdBy: populatedProject.creator || populatedProject.createdBy,
+            pmIds: populatedProject.pms || populatedProject.pmIds,
             location: {
-                address: populatedProject.locationAddress,
-                latitude: populatedProject.locationLatitude,
-                longitude: populatedProject.locationLongitude
+                address: populatedProject.locationAddress || '',
+                latitude: populatedProject.locationLatitude || null,
+                longitude: populatedProject.locationLongitude || null
             }
         };
 
@@ -296,7 +314,10 @@ const updateProject = async (req, res, next) => {
         }
 
         // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId !== project.companyId) {
+        const userCompanyId = String(req.user.companyId || req.companyId || (typeof req.user.companyId === 'object' ? (req.user.companyId._id || req.user.companyId.id) : ''));
+        const projectCompanyId = String(project.companyId || (typeof project.companyId === 'object' ? (project.companyId._id || project.companyId.id) : ''));
+
+        if (req.user.role !== 'SUPER_ADMIN' && userCompanyId && projectCompanyId && userCompanyId !== projectCompanyId) {
             res.status(403);
             throw new Error('Not authorized to update this project');
         }
@@ -336,7 +357,8 @@ const updateProject = async (req, res, next) => {
         }
 
         if (req.file) {
-            updateData.image = req.file.path;
+            const filename = req.file.filename || (req.file.path ? require('path').basename(req.file.path) : '');
+            updateData.image = req.file.path && req.file.path.startsWith('http') ? req.file.path : (filename ? `/uploads/photos/${filename}` : '');
         }
 
         const pmIdsToConnect = updateData.pmIds;
@@ -346,8 +368,13 @@ const updateProject = async (req, res, next) => {
 
         if (updateData.startDate) updateData.startDate = new Date(updateData.startDate);
         if (updateData.endDate) updateData.endDate = new Date(updateData.endDate);
-        if (updateData.budget) updateData.budget = Number(updateData.budget);
-        if (updateData.progress) updateData.progress = Number(updateData.progress);
+        if (updateData.budget !== undefined && updateData.budget !== null) {
+            const numStr = String(updateData.budget).replace(/,/g, '').replace(/[^0-9.]/g, '');
+            updateData.budget = numStr ? Number(numStr) : 0;
+        }
+        if (updateData.progress !== undefined && updateData.progress !== null) {
+            updateData.progress = Number(updateData.progress) || 0;
+        }
 
         // Disconnect existing pms, connect new ones
         const relationalUpdate = {};
@@ -415,7 +442,10 @@ const deleteProject = async (req, res, next) => {
         }
 
         // Multi-tenant authorization check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId !== project.companyId) {
+        const userCompanyId = String(req.user.companyId || req.companyId || (typeof req.user.companyId === 'object' ? (req.user.companyId._id || req.user.companyId.id) : ''));
+        const projectCompanyId = String(project.companyId || (typeof project.companyId === 'object' ? (project.companyId._id || project.companyId.id) : ''));
+
+        if (req.user.role !== 'SUPER_ADMIN' && userCompanyId && projectCompanyId && userCompanyId !== projectCompanyId) {
             res.status(403);
             throw new Error('Not authorized to archive this project');
         }

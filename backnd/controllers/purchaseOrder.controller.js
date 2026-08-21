@@ -1,5 +1,21 @@
 const prisma = require('../config/prisma');
 
+// Helper: Emit Socket.io events across company
+const emitSocketEvent = (req, event, data) => {
+    try {
+        const io = req.app.get('io') || req.app.get('socketio');
+        if (io) {
+            const companyId = data?.companyId || req.user?.companyId;
+            if (companyId) {
+                io.to(`company_${companyId}`).emit(event, data);
+            }
+            io.emit(event, data);
+        }
+    } catch (err) {
+        console.error('Socket emission error in purchaseOrder.controller:', err);
+    }
+};
+
 // Create PO
 exports.createPO = async (req, res) => {
     try {
@@ -13,13 +29,10 @@ exports.createPO = async (req, res) => {
             if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
         }
 
-        // Auto-increment PO Number
-        const counter = await prisma.counter.upsert({
-            where: { model: 'poNumber' },
-            update: { count: { increment: 1 } },
-            create: { model: 'poNumber', count: 1 }
-        });
-        const poNumber = `PO-${String(counter.count).padStart(6, '0')}`;
+        // Generate unique PO Number safely
+        const totalCount = await prisma.purchaseOrder.count();
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        const poNumber = `PO-${String(totalCount + 1).padStart(4, '0')}-${randomSuffix}`;
 
         let status = 'Draft';
         if (req.user.role === 'PM' || req.user.role === 'COMPANY_OWNER') {
@@ -28,6 +41,11 @@ exports.createPO = async (req, res) => {
             status = 'Draft';
         }
 
+        const parsedItems = typeof items === 'string' ? JSON.parse(items) : (items || []);
+        const calcSubtotal = subtotal !== undefined && subtotal !== null ? Number(subtotal) : parsedItems.reduce((s, i) => s + (Number(i.quantity || 1) * Number(i.unitPrice || 0)), 0);
+        const calcTax = tax !== undefined && tax !== null ? Number(tax) : calcSubtotal * 0.15;
+        const calcTotalAmount = totalAmount !== undefined && totalAmount !== null ? Number(totalAmount) : (calcSubtotal + calcTax);
+
         const po = await prisma.purchaseOrder.create({
             data: {
                 companyId: req.user.companyId,
@@ -35,22 +53,32 @@ exports.createPO = async (req, res) => {
                 projectId,
                 jobId: cleanJobId,
                 vendorId: cleanVendorId,
-                vendorName: vendorName || '',
-                vendorEmail: vendorEmail || '',
+                vendorName: vendorName || 'General Vendor',
+                vendorEmail: vendorEmail || 'vendor@example.com',
                 createdBy: req.user.id,
-                items: typeof items === 'string' ? JSON.parse(items) : (items || []),
+                items: parsedItems,
                 notesToVendor: notesToVendor || '',
                 internalNotes: internalNotes || '',
                 expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : null,
                 status,
-                subtotal: subtotal ? Number(subtotal) : 0,
-                tax: tax ? Number(tax) : 0,
-                totalAmount: totalAmount ? Number(totalAmount) : 0
+                subtotal: calcSubtotal,
+                tax: calcTax,
+                totalAmount: calcTotalAmount
+            },
+            include: {
+                project: { select: { name: true } },
+                vendor: { select: { name: true } },
+                creator: { select: { fullName: true, role: true } }
             }
         });
 
-        res.status(201).json({ ...po, _id: po.id });
+        const formatted = { ...po, _id: po.id, projectId: po.project ? { _id: po.projectId, name: po.project.name } : po.projectId, vendorId: po.vendor ? { _id: po.vendorId, name: po.vendor.name } : po.vendorId };
+        emitSocketEvent(req, 'po_created', formatted);
+        emitSocketEvent(req, 'purchase_order_update', { action: 'created', po: formatted });
+
+        res.status(201).json(formatted);
     } catch (error) {
+        console.error('Error creating PO:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -89,9 +117,9 @@ exports.getAllPOs = async (req, res) => {
         res.json(pos.map(po => ({
             ...po,
             _id: po.id,
-            projectId: po.project,
-            vendorId: po.vendor,
-            createdBy: po.creator
+            projectId: po.projectId || po.project || null,
+            vendorId: po.vendorId || po.vendor || null,
+            createdBy: po.createdBy || po.creator || null
         })));
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -115,10 +143,10 @@ exports.getSinglePO = async (req, res) => {
         res.json({
             ...po,
             _id: po.id,
-            companyId: po.company,
-            projectId: po.project,
-            vendorId: po.vendor,
-            createdBy: po.creator
+            companyId: po.companyId || po.company || null,
+            projectId: po.projectId || po.project || null,
+            vendorId: po.vendorId || po.vendor || null,
+            createdBy: po.createdBy || po.creator || null
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -165,10 +193,19 @@ exports.updatePO = async (req, res) => {
 
         const updated = await prisma.purchaseOrder.update({
             where: { id: req.params.id },
-            data
+            data,
+            include: {
+                project: { select: { name: true } },
+                vendor: { select: { name: true } },
+                creator: { select: { fullName: true, role: true } }
+            }
         });
 
-        res.json({ ...updated, _id: updated.id });
+        const formatted = { ...updated, _id: updated.id, projectId: updated.project ? { _id: updated.projectId, name: updated.project.name } : updated.projectId, vendorId: updated.vendor ? { _id: updated.vendorId, name: updated.vendor.name } : updated.vendorId };
+        emitSocketEvent(req, 'po_updated', formatted);
+        emitSocketEvent(req, 'purchase_order_update', { action: 'updated', po: formatted });
+
+        res.json(formatted);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -191,9 +228,19 @@ const updateStatus = async (req, res, newStatus, additionalData = {}) => {
             data: {
                 status: newStatus,
                 ...additionalData
+            },
+            include: {
+                project: { select: { name: true } },
+                vendor: { select: { name: true } },
+                creator: { select: { fullName: true, role: true } }
             }
         });
-        res.json({ ...updated, _id: updated.id });
+
+        const formatted = { ...updated, _id: updated.id, projectId: updated.project ? { _id: updated.projectId, name: updated.project.name } : updated.projectId, vendorId: updated.vendor ? { _id: updated.vendorId, name: updated.vendor.name } : updated.vendorId };
+        emitSocketEvent(req, 'po_updated', formatted);
+        emitSocketEvent(req, 'purchase_order_update', { action: 'updated', po: formatted });
+
+        res.json(formatted);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -220,9 +267,14 @@ exports.deletePO = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized to delete this Purchase Order' });
         }
 
+        const poData = { _id: po.id, id: po.id, companyId: po.companyId, projectId: po.projectId, jobId: po.jobId };
         await prisma.purchaseOrder.delete({
             where: { id: req.params.id }
         });
+
+        emitSocketEvent(req, 'po_deleted', poData);
+        emitSocketEvent(req, 'purchase_order_update', { action: 'deleted', po: poData });
+
         res.json({ message: 'Purchase Order deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: error.message });

@@ -1,0 +1,150 @@
+
+========================================================================
+  Commit 1 (ts): f9395a91f807754dfc7a42c05bcb94ac26eb135e
+========================================================================
+
+commit f9395a91f807754dfc7a42c05bcb94ac26eb135e
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 11:41:02 2026 +0530
+
+    ts
+
+ kaal_backend (1)/controllers/authController.js     |   4 +-
+ kaal_backend (1)/controllers/chatController.js     |   2 +-
+ kaal_backend (1)/controllers/dailyLogController.js |  26 +-
+ kaal_backend (1)/controllers/drawingController.js  |  61 +++--
+ kaal_backend (1)/controllers/issueController.js    |  29 +-
+ kaal_backend (1)/controllers/jobController.js      |  12 +-
+ kaal_backend (1)/controllers/payrollController.js  | 212 ++++++++++-----
+ kaal_backend (1)/controllers/photoController.js    | 299 ++++++++++++++-------
+ kaal_backend (1)/controllers/reportController.js   |  86 +++---
+ kaal_backend (1)/controllers/timeLogController.js  |  50 +++-
+ kaal_backend (1)/controllers/vendorController.js   |  65 ++++-
+ kaal_backend (1)/middlewares/authMiddleware.js     |   5 +-
+ kaal_backend (1)/models/DailyLog.js                |   5 -
+ kaal_backend (1)/models/Vendor.js                  |  12 +-
+ kaal_backend (1)/server.js                         |  80 +++++-
+ .../uploads/file-1786706378692-918037703.jpg (new) | Bin 0 -> 11787 bytes
+ .../files-1786770677244-102253651.png (new)        | Bin 0 -> 249902 bytes
+ .../files-1786771366237-608353557.png (new)        | Bin 0 -> 249902 bytes
+ .../images-1786702741772-836930322.jpg (new)       | Bin 0 -> 13809 bytes
+ .../photos-1786704656870-347120848.webp (new)      | Bin 0 -> 61090 bytes
+ .../photos-1786704656871-806420280.jpg (new)       | Bin 0 -> 12731 bytes
+ .../photos-1786705232079-197670725.jpg (new)       | Bin 0 -> 12731 bytes
+ .../photos-1786705232082-355561245.webp (new)      | Bin 0 -> 61090 bytes
+ .../photos-1786772315482-885106913.webp (new)      | Bin 0 -> 107212 bytes
+ kaal_frontend/src/layouts/ClientPortalLayout.jsx   |   4 +-
+ kaal_frontend/src/layouts/CompanyAdminLayout.jsx   |   7 +-
+ kaal_frontend/src/layouts/ProjectTeamLayout.jsx    |   4 +-
+ kaal_frontend/src/pages/company-admin/Chat.jsx     |   2 +-
+ .../src/pages/company-admin/DailyLogs.jsx          | 144 ++--------
+ .../src/pages/company-admin/DrawingViewer.jsx      | 230 ++++++++++++++--
+ kaal_frontend/src/pages/company-admin/Drawings.jsx |  60 ++++-
+ kaal_frontend/src/pages/company-admin/Issues.jsx   | 117 +++++++-
+ kaal_frontend/src/pages/company-admin/Photos.jsx   |  57 +++-
+ .../src/pages/company-admin/ProjectDetails.jsx     |  23 +-
+ .../pages/company-admin/PurchaseOrderDetail.jsx    |  64 +++--
+ .../src/pages/company-admin/PurchaseOrderForm.jsx  |  34 +--
+ kaal_frontend/src/pages/company-admin/Settings.jsx |   1 -
+ kaal_frontend/src/pages/project-team/Chat.jsx      |   2 +-
+ 38 files changed, 1174 insertions(+), 523 deletions(-)
+
+
+========================================================================
+  Commit 2 (k): f72fcff4e6b8994582be00c0a88929da95eb1b3e
+========================================================================
+
+commit f72fcff4e6b8994582be00c0a88929da95eb1b3e
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 11:41:45 2026 +0530
+
+    k
+
+ kaal_frontend/src/pages/company-admin/Payroll.jsx  | 47 ++++++++++--
+ kaal_frontend/src/pages/company-admin/Team.jsx     | 89 ++++++++++++++++------
+ .../src/pages/company-admin/Timesheets.jsx         | 42 ++++++----
+ .../src/pages/company-admin/TradeManagement.jsx    | 54 +++++++++++--
+ 4 files changed, 184 insertions(+), 48 deletions(-)
+
+
+========================================================================
+  Commit 3 (????): 7c7a3be2f6d7628c77532caada1157d5f8c32d97
+========================================================================
+
+commit 7c7a3be2f6d7628c77532caada1157d5f8c32d97
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 13:20:14 2026 +0530
+
+    ????
+
+ kaal_backend (1)/controllers/jobTaskController.js  | 174 ++++++++++++++++++---
+ .../controllers/purchaseOrder.controller.js        |  59 ++++++-
+ kaal_backend (1)/controllers/taskController.js     |  15 ++
+ kaal_backend (1)/controllers/timeLogController.js  |  28 ----
+ kaal_backend (1)/sync_all_job_progress.js (new)    |  28 ++++
+ .../image-1786776317378-745428718.jpg (new)        | Bin 0 -> 4845 bytes
+ .../image-1786776361616-131537685.jpg (new)        | Bin 0 -> 7772 bytes
+ .../image-1786776390178-473269570.jpg (new)        | Bin 0 -> 7410 bytes
+ .../uploads/image-1786776416556-63557778.jpg (new) | Bin 0 -> 4880 bytes
+ 9 files changed, 248 insertions(+), 56 deletions(-)
+
+
+========================================================================
+  Commit 4 (///??): 2795d7f787961c1a45b271f7301df39e78482baf
+========================================================================
+
+commit 2795d7f787961c1a45b271f7301df39e78482baf
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 16:46:44 2026 +0530
+
+    ///??
+
+ kaal_frontend/src/pages/company-admin/Payroll.jsx  | 967 +++++++++++++++++----
+ .../pages/company-admin/ProjectIntelligence.jsx    |   2 +-
+ kaal_frontend/src/pages/company-admin/Tasks.jsx    | 166 ++--
+ kaal_frontend/src/pages/jobs/JobDetails.jsx        | 287 ++++--
+ 4 files changed, 1114 insertions(+), 308 deletions(-)
+
+
+========================================================================
+  Commit 5 (ramm): 45e7af04ed83ef442337ddee84c12a847f7ce267
+========================================================================
+
+commit 45e7af04ed83ef442337ddee84c12a847f7ce267
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:14 2026 +0530
+
+    ramm
+
+ kaal_backend (1)/controllers/companyController.js | 82 +++++++++++++++++++++++
+ kaal_backend (1)/controllers/invoiceController.js | 67 +++++++++++++++---
+ kaal_backend (1)/controllers/jobController.js     | 11 ++-
+ kaal_backend (1)/controllers/projectController.js |  2 +-
+ kaal_backend (1)/models/Company.js                | 13 ++++
+ kaal_backend (1)/models/Invoice.js                | 16 +++++
+ kaal_backend (1)/routes/companyRoutes.js          |  5 ++
+ kaal_backend (1)/routes/jobTaskRoutes.js          |  6 +-
+ kaal_backend (1)/routes/projectDocumentRoutes.js  |  4 +-
+ kaal_backend (1)/routes/purchaseOrder.routes.js   |  6 +-
+ kaal_backend (1)/routes/reportRoutes.js           |  6 +-
+ 11 files changed, 195 insertions(+), 23 deletions(-)
+
+
+========================================================================
+  Commit 6 (///???): bdaf01ca3f16a494348525590c1d489a13262e4c
+========================================================================
+
+commit bdaf01ca3f16a494348525590c1d489a13262e4c
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:56 2026 +0530
+
+    ///???
+
+ kaal_frontend/src/App.jsx                          |   2 +-
+ .../src/pages/company-admin/Dashboard.jsx          |  17 +-
+ .../src/pages/company-admin/InvoiceDetail.jsx      | 152 ++++++--
+ kaal_frontend/src/pages/company-admin/Invoices.jsx | 425 +++++++++++++++++----
+ .../src/pages/company-admin/ProjectDetails.jsx     |   2 +-
+ kaal_frontend/src/pages/company-admin/Settings.jsx | 422 +++++++++++++++++++-
+ 6 files changed, 908 insertions(+), 112 deletions(-)
+

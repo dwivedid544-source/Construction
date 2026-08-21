@@ -1,0 +1,66 @@
+[
+  {
+    "_id": "6a87edd3ee0d6f487d0e89ea",
+    "name": "SUPER_ADMIN",
+    "description": "SUPER_ADMIN role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.332Z",
+    "updatedAt": "2026-08-21T06:18:59.332Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87edd3ee0d6f487d0e89eb",
+    "name": "COMPANY_OWNER",
+    "description": "COMPANY_OWNER role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.388Z",
+    "updatedAt": "2026-08-21T06:18:59.388Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87edd3ee0d6f487d0e89ec",
+    "name": "PM",
+    "description": "PM role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.447Z",
+    "updatedAt": "2026-08-21T06:18:59.447Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87edd3ee0d6f487d0e89ed",
+    "name": "FOREMAN",
+    "description": "FOREMAN role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.503Z",
+    "updatedAt": "2026-08-21T06:18:59.503Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87edd3ee0d6f487d0e89ee",
+    "name": "WORKER",
+    "description": "WORKER role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.560Z",
+    "updatedAt": "2026-08-21T06:18:59.560Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87edd3ee0d6f487d0e89ef",
+    "name": "ENGINEER",
+    "description": "ENGINEER role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.618Z",
+    "updatedAt": "2026-08-21T06:18:59.618Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87edd3ee0d6f487d0e89f0",
+    "name": "CLIENT",
+    "description": "CLIENT role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.677Z",
+    "updatedAt": "2026-08-21T06:18:59.677Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a87edd3ee0d6f487d0e89f1",
+    "name": "SUBCONTRACTOR",
+    "description": "SUBCONTRACTOR role in construction SaaS",
+    "createdAt": "2026-08-21T06:18:59.733Z",
+    "updatedAt": "2026-08-21T06:18:59.733Z",
+    "__v": 0
+  }
+]

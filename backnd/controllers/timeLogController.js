@@ -306,9 +306,9 @@ const getTimeLogs = async (req, res, next) => {
         const logs = await prisma.timeLog.findMany({
             where: query,
             include: {
-                user: { select: { fullName: true, email: true, role: true } },
-                project: { select: { name: true } },
-                job: { select: { name: true } }
+                userId: { select: { fullName: true, email: true, role: true } },
+                projectId: { select: { name: true, location: true } },
+                jobId: { select: { name: true } }
             },
             orderBy: { clockIn: 'desc' }
         });
@@ -316,9 +316,9 @@ const getTimeLogs = async (req, res, next) => {
         res.json(logs.map(l => ({
             ...l,
             _id: l.id,
-            userId: l.user,
-            projectId: l.project,
-            jobId: l.job
+            userId: l.userId || l.user || null,
+            projectId: l.projectId || l.project || null,
+            jobId: l.jobId || l.job || null
         })));
     } catch (error) {
         next(error);

@@ -7,7 +7,7 @@ const {
     deleteJobTask,
     getWorkerTasks
 } = require('../controllers/jobTaskController');
-const { protect, authorize } = require('../middlewares/authMiddleware');
+const { protect, authorize, restrictAdminCreation } = require('../middlewares/authMiddleware');
 
 router.use(protect);
 
@@ -18,7 +18,7 @@ router.get('/worker', authorize('WORKER', 'SUBCONTRACTOR', 'FOREMAN', 'PM', 'COM
 router.get('/job/:jobId', getJobTasks);
 
 // CRUD routes
-router.post('/', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM', 'FOREMAN', 'SUBCONTRACTOR'), createJobTask);
+router.post('/', restrictAdminCreation('job tasks', ['PM', 'FOREMAN', 'SUPER_ADMIN']), createJobTask);
 router.patch('/:id', updateJobTask); // Authorization handled inside controller for worker status updates
 router.delete('/:id', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM'), deleteJobTask);
 

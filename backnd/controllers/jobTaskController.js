@@ -14,30 +14,34 @@ const validateAssignmentHierarchy = async (assignerRole, assigneeId) => {
     return null;
 };
 
-const createSubTasksRecursive = async (taskId, onModel, steps, companyId, createdBy, parentId = null, assignedTo = null, startDate = null, dueDate = null) => {
+const createSubTasksRecursive = async (taskId, onModel, steps, companyId, createdBy, parentSubTaskId = null, assignedTo = null, startDate = null, dueDate = null) => {
     if (!steps || !Array.isArray(steps) || steps.length === 0) return 0;
     let count = 0;
+    const cleanAssignedTo = typeof assignedTo === 'object' && assignedTo !== null ? (assignedTo._id || assignedTo.id) : (assignedTo || null);
+
     for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
+        const stepAssignee = step.assignedTo ? (typeof step.assignedTo === 'object' ? (step.assignedTo._id || step.assignedTo.id) : step.assignedTo) : cleanAssignedTo;
+
         const subTask = await prisma.subTask.create({
             data: {
+                taskId: taskId,
+                onModel: onModel === 'JobTask' ? 'JobTask' : 'Task',
+                parentSubTaskId: parentSubTaskId || null,
                 companyId,
-                parentId: taskId,
-                parentType: onModel === 'JobTask' ? 'JobTask' : 'Task',
-                title: step.title,
-                description: step.remarks || step.description || '',
-                priority: step.priority || 'Medium',
+                title: (step.title || 'Untitled Subtask').trim(),
+                remarks: step.remarks || step.description || '',
+                priority: step.priority ? (step.priority.charAt(0).toUpperCase() + step.priority.slice(1).toLowerCase()) : 'Medium',
                 createdBy,
-                assignedTo: step.assignedTo || assignedTo || null,
+                assignedTo: stepAssignee || null,
                 startDate: step.startDate ? new Date(step.startDate) : (startDate ? new Date(startDate) : null),
                 dueDate: step.dueDate ? new Date(step.dueDate) : (dueDate ? new Date(dueDate) : null),
-                status: 'todo',
-                estimatedHours: step.estimatedHours ? Number(step.estimatedHours) : 0.0
+                status: 'todo'
             }
         });
         count++;
         if (step.steps && step.steps.length > 0) {
-            const childCount = await createSubTasksRecursive(taskId, onModel, step.steps, companyId, createdBy, subTask.id, assignedTo, startDate, dueDate);
+            const childCount = await createSubTasksRecursive(taskId, onModel, step.steps, companyId, createdBy, subTask.id, stepAssignee, startDate, dueDate);
             count += childCount;
         }
     }
@@ -95,13 +99,16 @@ const createJobTask = async (req, res) => {
 
         const normalizedPriority = (priority || 'medium').toLowerCase();
 
+        const assigneeId = typeof assignedTo === 'object' && assignedTo !== null ? (assignedTo._id || assignedTo.id) : (assignedTo || null);
+
         const task = await prisma.jobTask.create({
             data: {
                 jobId,
                 companyId: req.user.companyId,
-                title,
+                title: title.trim(),
                 description: description || '',
-                assignedWorker: assignedTo || null,
+                assignedTo: assigneeId,
+                assignedWorker: assigneeId,
                 assignedRoleType: assignedRoleType || '',
                 assignedForeman,
                 priority: normalizedPriority,
@@ -118,40 +125,36 @@ const createJobTask = async (req, res) => {
 
         await updateJobProgress(jobId);
 
-        const job = await prisma.job.findUnique({
-            where: { id: jobId },
-            include: { project: { select: { name: true } } }
-        });
-
-        if (assignedTo) {
-            await prisma.notification.create({
-                data: {
-                    companyId: req.user.companyId,
-                    userId: assignedTo,
-                    title: 'New Task Assigned',
-                    message: `You have been assigned a new task: "${title}" for job ${job?.name || 'Unknown'}.`,
-                    type: 'task'
-                }
-            });
-
-            const io = req.app.get('io');
-            if (io) {
-                io.to(assignedTo).emit('notification', {
-                    title: 'New Task Assigned',
-                    message: `You have been assigned a new task: "${title}".`
+        // Safely send notification (don't crash if it fails)
+        try {
+            const job = await prisma.job.findUnique({ where: { id: jobId } });
+            if (assigneeId) {
+                await prisma.notification.create({
+                    data: {
+                        companyId: req.user.companyId,
+                        userId: assigneeId,
+                        title: 'New Task Assigned',
+                        message: `You have been assigned a new task: "${title}" for job ${job?.name || 'Unknown'}.`,
+                        type: 'task'
+                    }
                 });
+                const io = req.app.get('io');
+                if (io) {
+                    io.to(String(assigneeId)).emit('notification', {
+                        title: 'New Task Assigned',
+                        message: `You have been assigned a new task: "${title}".`
+                    });
+                }
             }
+        } catch (notifErr) {
+            console.warn('[createJobTask] Notification error (non-fatal):', notifErr.message);
         }
 
-        const populatedTask = await prisma.jobTask.findUnique({
-            where: { id: task.id },
-            include: { worker: { select: { fullName: true, role: true } } }
-        });
-
         res.status(201).json({
-            ...populatedTask,
-            _id: populatedTask.id,
-            assignedTo: populatedTask.worker
+            ...task,
+            _id: task.id,
+            assignedTo: assigneeId,
+            isJobTask: true
         });
     } catch (err) {
         console.error('Error in createJobTask:', err);
@@ -166,10 +169,10 @@ const getJobTasks = async (req, res) => {
 
         if (req.user.role === 'WORKER') {
             const subTaskJobTaskIds = await prisma.subTask.findMany({
-                where: { assignedTo: req.user.id, companyId, parentType: 'JobTask' },
-                select: { parentId: true }
+                where: { assignedTo: req.user.id, companyId, onModel: 'JobTask' },
+                select: { taskId: true }
             });
-            const taskIds = subTaskJobTaskIds.map(st => st.parentId);
+            const taskIds = subTaskJobTaskIds.map(st => st.taskId).filter(Boolean);
             whereClause.OR = [
                 { assignedWorker: req.user.id },
                 { id: { in: taskIds } }
@@ -182,9 +185,9 @@ const getJobTasks = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        const taskIds = tasks.map(t => t.id);
+        const taskIds = tasks.map(t => t.id || t._id);
         const subTasks = await prisma.subTask.findMany({
-            where: { parentId: { in: taskIds }, companyId },
+            where: { taskId: { in: taskIds }, onModel: 'JobTask', companyId },
             include: {
                 assignee: { select: { fullName: true, role: true } },
                 creator: { select: { fullName: true } }
@@ -194,16 +197,18 @@ const getJobTasks = async (req, res) => {
         const mappedSubTasks = subTasks.map(st => ({
             ...st,
             _id: st.id,
+            taskId: st.taskId?.toString ? st.taskId.toString() : String(st.taskId),
+            parentSubTaskId: st.parentSubTaskId?.toString ? st.parentSubTaskId.toString() : (st.parentSubTaskId ? String(st.parentSubTaskId) : null),
             isSubTask: true,
             isJobTask: true,
-            assignedTo: st.assignee,
-            createdBy: st.creator
+            assignedTo: st.assignee || st.assignedTo,
+            createdBy: st.creator || st.createdBy
         }));
 
         const mappedTasks = tasks.map(t => ({
             ...t,
             _id: t.id,
-            assignedTo: t.worker
+            assignedTo: t.worker || t.assignedWorker
         }));
 
         const allTasks = [...mappedTasks, ...mappedSubTasks].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -215,10 +220,54 @@ const getJobTasks = async (req, res) => {
 
 const updateJobTask = async (req, res) => {
     try {
-        const task = await prisma.jobTask.findUnique({
+        let task = await prisma.jobTask.findUnique({
             where: { id: req.params.id }
         });
-        if (!task) return res.status(404).json({ message: 'Task not found' });
+
+        // If not found in JobTask, check if it's a SubTask!
+        if (!task) {
+            const subTask = await prisma.subTask.findUnique({
+                where: { id: req.params.id }
+            });
+            if (subTask) {
+                const updateData = {};
+                if (req.body.status) updateData.status = req.body.status;
+                if (req.body.assignedTo !== undefined) updateData.assignedTo = req.body.assignedTo || null;
+                if (req.body.priority) {
+                    const p = req.body.priority;
+                    updateData.priority = p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+                }
+                if (req.body.startDate !== undefined) updateData.startDate = req.body.startDate ? new Date(req.body.startDate) : null;
+                if (req.body.dueDate !== undefined) updateData.dueDate = req.body.dueDate ? new Date(req.body.dueDate) : null;
+                if (req.body.title) updateData.title = req.body.title;
+                if (req.body.remarks !== undefined || req.body.description !== undefined) {
+                    updateData.remarks = req.body.remarks || req.body.description || '';
+                }
+
+                const updatedSub = await prisma.subTask.update({
+                    where: { id: req.params.id },
+                    data: updateData,
+                    include: { assignee: { select: { fullName: true, role: true } } }
+                });
+
+                if (subTask.taskId) {
+                    const parentJobTask = await prisma.jobTask.findUnique({ where: { id: subTask.taskId } });
+                    if (parentJobTask?.jobId) {
+                        await updateJobProgress(parentJobTask.jobId);
+                    }
+                }
+
+                return res.json({
+                    ...updatedSub,
+                    _id: updatedSub.id,
+                    isSubTask: true,
+                    isJobTask: true,
+                    assignedTo: updatedSub.assignee || updatedSub.assignedTo
+                });
+            }
+
+            return res.status(404).json({ message: 'Task not found' });
+        }
 
         const updateData = {};
 
@@ -299,10 +348,28 @@ const updateJobTask = async (req, res) => {
 
 const deleteJobTask = async (req, res) => {
     try {
-        const task = await prisma.jobTask.findUnique({
+        let task = await prisma.jobTask.findUnique({
             where: { id: req.params.id }
         });
-        if (!task) return res.status(404).json({ message: 'Task not found' });
+        
+        if (!task) {
+            const subTask = await prisma.subTask.findUnique({
+                where: { id: req.params.id }
+            });
+            if (subTask) {
+                await prisma.subTask.delete({
+                    where: { id: req.params.id }
+                });
+                if (subTask.taskId) {
+                    const parentJobTask = await prisma.jobTask.findUnique({ where: { id: subTask.taskId } });
+                    if (parentJobTask?.jobId) {
+                        await updateJobProgress(parentJobTask.jobId);
+                    }
+                }
+                return res.json({ message: 'Subtask deleted' });
+            }
+            return res.status(404).json({ message: 'Task not found' });
+        }
 
         if (req.user.role === 'WORKER') {
             if (task.assignedWorker !== req.user.id) {
@@ -316,6 +383,10 @@ const deleteJobTask = async (req, res) => {
         const jobId = task.jobId;
         await prisma.jobTask.delete({
             where: { id: req.params.id }
+        });
+        // Also delete child subtasks
+        await prisma.subTask.deleteMany({
+            where: { taskId: req.params.id }
         });
 
         await updateJobProgress(jobId);
@@ -332,10 +403,10 @@ const getWorkerTasks = async (req, res) => {
         const companyId = req.user.companyId;
 
         const subTaskJobTaskIds = await prisma.subTask.findMany({
-            where: { assignedTo: userId, companyId, parentType: 'JobTask' },
-            select: { parentId: true }
+            where: { assignedTo: userId, companyId, onModel: 'JobTask' },
+            select: { taskId: true }
         });
-        const taskIds = subTaskJobTaskIds.map(st => st.parentId);
+        const taskIds = subTaskJobTaskIds.map(st => st.taskId).filter(Boolean);
 
         const whereClause = {
             companyId,

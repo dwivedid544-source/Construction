@@ -1,0 +1,44 @@
+[
+  {
+    "_id": "6a880cd13fec9b59ce9f4034",
+    "projectId": "6a87fed8bcf646b4f49760d9",
+    "companyId": "6a87edd3ee0d6f487d0e89e9",
+    "name": "Mechanical engineer",
+    "location": "456/98, main street, Vijyanagar, Indore, MP",
+    "startDate": "2026-08-25T00:00:00.000Z",
+    "endDate": "2027-08-25T00:00:00.000Z",
+    "foremanId": null,
+    "budget": 50000,
+    "assignedWorkers": [
+      "6a87edd4ee0d6f487d0e89f6"
+    ],
+    "progress": 0,
+    "status": "active",
+    "description": "Build strong and proper",
+    "createdBy": "6a87f11cbd90aea6aa487ef1",
+    "currentPhase": "Scheduled",
+    "createdAt": "2026-08-21T08:31:13.497Z",
+    "updatedAt": "2026-08-21T09:06:11.904Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a880dcac8b8e020d53f253b",
+    "projectId": "6a87fed8bcf646b4f49760d9",
+    "companyId": "6a87edd3ee0d6f487d0e89e9",
+    "name": "Foundation Exacavation",
+    "location": "456/98, main street, Vijyanagar, Indore, MP",
+    "startDate": "2026-08-25T00:00:00.000Z",
+    "endDate": "2026-10-01T00:00:00.000Z",
+    "foremanId": "6a87edd4ee0d6f487d0e89f6",
+    "budget": 5000,
+    "assignedWorkers": [],
+    "progress": 0,
+    "status": "planning",
+    "description": "hgf",
+    "createdBy": "6a87f11cbd90aea6aa487ef1",
+    "currentPhase": "Scheduled",
+    "createdAt": "2026-08-21T08:35:22.277Z",
+    "updatedAt": "2026-08-21T09:01:14.242Z",
+    "__v": 0
+  }
+]

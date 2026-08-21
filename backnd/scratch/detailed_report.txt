@@ -1,0 +1,160 @@
+
+########################################################################
+FILE: DrawingViewer.jsx [Frontend/src/pages/company-admin/DrawingViewer.jsx]
+Commit size: 71579 | Current size: 69511 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Drawings.jsx [Frontend/src/pages/company-admin/Drawings.jsx]
+Commit size: 39117 | Current size: 39433 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Issues.jsx [Frontend/src/pages/company-admin/Issues.jsx]
+Commit size: 52731 | Current size: 48109 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Photos.jsx [Frontend/src/pages/company-admin/Photos.jsx]
+Commit size: 25562 | Current size: 23793 | Equal: false
+########################################################################
+
+########################################################################
+FILE: PurchaseOrderDetail.jsx [Frontend/src/pages/company-admin/PurchaseOrderDetail.jsx]
+Commit size: 40817 | Current size: 38792 | Equal: false
+########################################################################
+
+########################################################################
+FILE: PurchaseOrderForm.jsx [Frontend/src/pages/company-admin/PurchaseOrderForm.jsx]
+Commit size: 24616 | Current size: 24478 | Equal: false
+########################################################################
+
+########################################################################
+FILE: PurchaseOrders.jsx [Frontend/src/pages/company-admin/PurchaseOrders.jsx]
+Commit size: 24664 | Current size: 22525 | Equal: false
+########################################################################
+
+########################################################################
+FILE: DailyLogs.jsx [Frontend/src/pages/company-admin/DailyLogs.jsx]
+Commit size: 56019 | Current size: 61282 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Timesheets.jsx [Frontend/src/pages/company-admin/Timesheets.jsx]
+Commit size: 95164 | Current size: 94272 | Equal: false
+########################################################################
+
+########################################################################
+FILE: TradeManagement.jsx [Frontend/src/pages/company-admin/TradeManagement.jsx]
+Commit size: 47910 | Current size: 46242 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Invoices.jsx [Frontend/src/pages/company-admin/Invoices.jsx]
+Commit size: 48257 | Current size: 51364 | Equal: false
+########################################################################
+
+########################################################################
+FILE: InvoiceDetail.jsx [Frontend/src/pages/company-admin/InvoiceDetail.jsx]
+Commit size: 29354 | Current size: 28311 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Settings.jsx [Frontend/src/pages/company-admin/Settings.jsx]
+Commit size: 63932 | Current size: 63932 | Equal: true
+########################################################################
+
+########################################################################
+FILE: Tasks.jsx [Frontend/src/pages/company-admin/Tasks.jsx]
+Commit size: 240623 | Current size: 231756 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Team.jsx [Frontend/src/pages/company-admin/Team.jsx]
+Commit size: 39618 | Current size: 39677 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Payroll.jsx [Frontend/src/pages/company-admin/Payroll.jsx]
+Commit size: 101428 | Current size: 102196 | Equal: false
+########################################################################
+
+########################################################################
+FILE: JobDetails.jsx [Frontend/src/pages/jobs/JobDetails.jsx]
+Commit size: 102684 | Current size: 106224 | Equal: false
+########################################################################
+
+########################################################################
+FILE: drawingController.js [backnd/controllers/drawingController.js]
+Commit size: 10338 | Current size: 8213 | Equal: false
+########################################################################
+
+########################################################################
+FILE: issueController.js [backnd/controllers/issueController.js]
+Commit size: 5053 | Current size: 3557 | Equal: false
+########################################################################
+
+########################################################################
+FILE: photoController.js [backnd/controllers/photoController.js]
+Commit size: 12398 | Current size: 5308 | Equal: false
+########################################################################
+
+########################################################################
+FILE: purchaseOrder.controller.js [backnd/controllers/purchaseOrder.controller.js]
+Commit size: 10001 | Current size: 8914 | Equal: false
+########################################################################
+
+########################################################################
+FILE: dailyLogController.js [backnd/controllers/dailyLogController.js]
+Commit size: 9968 | Current size: 10154 | Equal: false
+########################################################################
+
+########################################################################
+FILE: timeLogController.js [backnd/controllers/timeLogController.js]
+Commit size: 15003 | Current size: 13957 | Equal: false
+########################################################################
+
+########################################################################
+FILE: vendorController.js [backnd/controllers/vendorController.js]
+Commit size: 8830 | Current size: 8405 | Equal: false
+########################################################################
+
+########################################################################
+FILE: invoiceController.js [backnd/controllers/invoiceController.js]
+Commit size: 6219 | Current size: 6219 | Equal: true
+########################################################################
+
+########################################################################
+FILE: companyController.js [backnd/controllers/companyController.js]
+Commit size: 18731 | Current size: 18731 | Equal: true
+########################################################################
+
+########################################################################
+FILE: jobTaskController.js [backnd/controllers/jobTaskController.js]
+Commit size: 22392 | Current size: 17531 | Equal: false
+########################################################################
+
+########################################################################
+FILE: payrollController.js [backnd/controllers/payrollController.js]
+Commit size: 22817 | Current size: 11417 | Equal: false
+########################################################################
+
+########################################################################
+FILE: taskController.js [backnd/controllers/taskController.js]
+Commit size: 65252 | Current size: 19253 | Equal: false
+########################################################################
+
+########################################################################
+FILE: reportController.js [backnd/controllers/reportController.js]
+Commit size: 66291 | Current size: 6498 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Company.js (model) [backnd/models/Company.js]
+Commit size: 1592 | Current size: 1011 | Equal: false
+########################################################################
+
+########################################################################
+FILE: Invoice.js (model) [backnd/models/Invoice.js]
+Commit size: 1579 | Current size: 1299 | Equal: false
+########################################################################

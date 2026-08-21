@@ -13,6 +13,7 @@ const {
     deleteJobNote
 } = require('../controllers/jobController');
 const { protect, authorize } = require('../middlewares/authMiddleware');
+const { checkJobLimit } = require('../middlewares/checkPlanLimits');
 
 router.use(protect);
 
@@ -26,7 +27,7 @@ router.get('/:id/notes', getJobNotes);
 router.post('/:id/notes', createJobNote);
 router.delete('/:id/notes/:noteId', deleteJobNote);
 
-router.post('/', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM'), createJob);
+router.post('/', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM'), checkJobLimit, createJob);
 router.post('/:id/assign-foreman', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM', 'FOREMAN'), updateJob);
 router.post('/:id/assign-workers', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM', 'FOREMAN'), updateJob);
 router.patch('/:id', authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'PM', 'FOREMAN', 'WORKER'), updateJob);

@@ -1,19 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const poController = require('../controllers/purchaseOrder.controller');
-const { protect, authorize } = require('../middlewares/authMiddleware');
+const { protect, authorize, restrictAdminCreation } = require('../middlewares/authMiddleware');
 
 // Base Roles: Admin, PM, Foreman
-const baseRoles = ['COMPANY_OWNER', 'PM', 'FOREMAN'];
-const adminOnly = ['COMPANY_OWNER'];
+const baseRoles = ['COMPANY_OWNER', 'PM', 'FOREMAN', 'SUPER_ADMIN'];
+const adminOnly = ['COMPANY_OWNER', 'SUPER_ADMIN'];
 
 // Public Route (No protection) - used for vendor viewing
 router.get('/public/:id', poController.getSinglePO);
 
 router.use(protect);
 
-// 1. CREATE PO
-router.post('/', authorize(...baseRoles), poController.createPO);
+// 1. CREATE PO (PM & Foreman create, Admin approves)
+router.post('/', restrictAdminCreation('purchase orders', ['PM', 'FOREMAN', 'SUPER_ADMIN']), poController.createPO);
 
 // 2. GET ALL PO
 router.get('/', authorize(...baseRoles), poController.getAllPOs);

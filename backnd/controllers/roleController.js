@@ -134,12 +134,67 @@ const updateUserOverrides = async (req, res, next) => {
     }
 };
 
+const DEFAULT_ROLE_PERMISSIONS = {
+    SUPER_ADMIN: [
+        'VIEW_DASHBOARD', 'VIEW_PROJECTS', 'CREATE_PROJECT', 'EDIT_PROJECT', 'DELETE_PROJECT', 'APPROVE_PROJECT',
+        'VIEW_TASKS', 'CREATE_TASK', 'EDIT_TASK', 'DELETE_TASK', 'VIEW_CHAT', 'CLOCK_IN_OUT', 'CLOCK_IN_CREW',
+        'VIEW_TIMESHEETS', 'APPROVE_TIMESHEETS', 'VIEW_DAILY_LOGS', 'CREATE_DAILY_LOG', 'APPROVE_DAILY_LOG',
+        'VIEW_ISSUES', 'CREATE_ISSUE', 'EDIT_ISSUE', 'VIEW_DRAWINGS', 'CREATE_DRAWING', 'VIEW_PHOTOS', 'UPLOAD_PHOTO',
+        'VIEW_EQUIPMENT', 'CREATE_EQUIPMENT', 'EDIT_EQUIPMENT', 'VIEW_RFI', 'CREATE_RFI', 'APPROVE_RFI',
+        'VIEW_PAYROLL', 'INITIATE_PAYROLL', 'APPROVE_PAYROLL', 'VIEW_PO', 'CREATE_PO', 'EDIT_PO', 'APPROVE_PO',
+        'VIEW_INVOICES', 'CREATE_INVOICE', 'EDIT_INVOICE', 'APPROVE_INVOICE', 'VIEW_REPORTS',
+        'VIEW_TEAM', 'MANAGE_USERS', 'ACCESS_SETTINGS', 'MANAGE_FINANCIALS', 'MANAGE_ROLES', 'MANAGE_SUBSCRIPTION'
+    ],
+    COMPANY_OWNER: [
+        'VIEW_DASHBOARD', 'VIEW_PROJECTS', 'EDIT_PROJECT', 'DELETE_PROJECT', 'APPROVE_PROJECT',
+        'VIEW_TASKS', 'EDIT_TASK', 'DELETE_TASK', 'VIEW_CHAT', 'CLOCK_IN_OUT',
+        'VIEW_TIMESHEETS', 'APPROVE_TIMESHEETS', 'VIEW_DAILY_LOGS', 'EDIT_DAILY_LOG', 'APPROVE_DAILY_LOG',
+        'VIEW_ISSUES', 'EDIT_ISSUE', 'VIEW_DRAWINGS', 'VIEW_PHOTOS',
+        'VIEW_EQUIPMENT', 'EDIT_EQUIPMENT', 'VIEW_RFI', 'APPROVE_RFI',
+        'VIEW_PAYROLL', 'INITIATE_PAYROLL', 'APPROVE_PAYROLL', 'VIEW_PO', 'EDIT_PO', 'APPROVE_PO',
+        'VIEW_INVOICES', 'EDIT_INVOICE', 'APPROVE_INVOICE', 'VIEW_REPORTS',
+        'VIEW_TEAM', 'MANAGE_USERS', 'ACCESS_SETTINGS', 'MANAGE_FINANCIALS', 'MANAGE_ROLES', 'MANAGE_SUBSCRIPTION'
+    ],
+    PM: [
+        'VIEW_DASHBOARD', 'VIEW_PROJECTS', 'CREATE_PROJECT', 'EDIT_PROJECT',
+        'VIEW_TASKS', 'CREATE_TASK', 'EDIT_TASK', 'VIEW_CHAT', 'CLOCK_IN_OUT', 'CLOCK_IN_CREW',
+        'VIEW_TIMESHEETS', 'EDIT_TIMESHEETS', 'VIEW_DAILY_LOGS', 'CREATE_DAILY_LOG', 'EDIT_DAILY_LOG',
+        'VIEW_ISSUES', 'CREATE_ISSUE', 'EDIT_ISSUE', 'VIEW_DRAWINGS', 'CREATE_DRAWING', 'VIEW_PHOTOS', 'UPLOAD_PHOTO',
+        'VIEW_EQUIPMENT', 'CREATE_EQUIPMENT', 'EDIT_EQUIPMENT', 'VIEW_RFI', 'CREATE_RFI',
+        'VIEW_PO', 'CREATE_PO', 'EDIT_PO', 'VIEW_INVOICES', 'CREATE_INVOICE', 'VIEW_REPORTS',
+        'VIEW_TEAM', 'MANAGE_PROJECTS', 'MANAGE_TASKS'
+    ],
+    FOREMAN: [
+        'VIEW_DASHBOARD', 'VIEW_PROJECTS', 'VIEW_TASKS', 'CREATE_TASK', 'EDIT_TASK', 'VIEW_CHAT', 'CLOCK_IN_OUT', 'CLOCK_IN_CREW',
+        'VIEW_TIMESHEETS', 'VIEW_DAILY_LOGS', 'CREATE_DAILY_LOG', 'VIEW_ISSUES', 'CREATE_ISSUE', 'VIEW_DRAWINGS', 'VIEW_PHOTOS', 'UPLOAD_PHOTO',
+        'VIEW_EQUIPMENT', 'VIEW_RFI', 'CREATE_RFI', 'VIEW_PO', 'CREATE_PO', 'MANAGE_TASKS'
+    ],
+    ENGINEER: [
+        'VIEW_DASHBOARD', 'VIEW_PROJECTS', 'VIEW_TASKS', 'VIEW_CHAT', 'CLOCK_IN_OUT',
+        'VIEW_DAILY_LOGS', 'VIEW_ISSUES', 'CREATE_ISSUE', 'VIEW_DRAWINGS', 'CREATE_DRAWING', 'VIEW_PHOTOS', 'UPLOAD_PHOTO', 'VIEW_RFI', 'VIEW_REPORTS'
+    ],
+    WORKER: [
+        'VIEW_DASHBOARD', 'VIEW_TASKS', 'VIEW_CHAT', 'CLOCK_IN_OUT',
+        'VIEW_DAILY_LOGS', 'CREATE_DAILY_LOG', 'VIEW_ISSUES', 'CREATE_ISSUE', 'VIEW_PHOTOS', 'UPLOAD_PHOTO'
+    ],
+    SUBCONTRACTOR: [
+        'VIEW_DASHBOARD', 'VIEW_TASKS', 'VIEW_CHAT', 'CLOCK_IN_OUT',
+        'VIEW_DAILY_LOGS', 'VIEW_ISSUES', 'CREATE_ISSUE', 'VIEW_PHOTOS', 'VIEW_DRAWINGS'
+    ],
+    CLIENT: [
+        'VIEW_DASHBOARD', 'VIEW_PROJECTS', 'VIEW_PHOTOS', 'VIEW_INVOICES', 'VIEW_REPORTS'
+    ]
+};
+
 // Helper function to get permissions for a user
 const fetchUserPermissions = async (user) => {
     try {
-        let roleId = user.roleId;
+        const userRole = (user.role || 'WORKER').toUpperCase();
+        const baseDefaults = DEFAULT_ROLE_PERMISSIONS[userRole] || DEFAULT_ROLE_PERMISSIONS.WORKER;
+        const permissions = new Set(baseDefaults);
 
-        if (!roleId) {
+        let roleId = user.roleId;
+        if (!roleId && user.role) {
             const roleDoc = await prisma.role.findUnique({
                 where: { name: user.role }
             });
@@ -152,19 +207,19 @@ const fetchUserPermissions = async (user) => {
                 include: { permission: true }
             }) : [],
             prisma.userPermission.findMany({
-                where: { userId: user.id },
+                where: { userId: user.id || user._id },
                 include: { permission: true }
             })
         ]);
 
-        const permissions = new Set(
-            rolePermDocs
-                .filter(rp => rp.permission)
-                .map(rp => rp.permission.key)
-        );
+        rolePermDocs.forEach(rp => {
+            if (rp.permission && rp.permission.key) {
+                permissions.add(rp.permission.key);
+            }
+        });
 
         overrideDocs.forEach(o => {
-            if (o.permission) {
+            if (o.permission && o.permission.key) {
                 if (o.isAllowed) {
                     permissions.add(o.permission.key);
                 } else {
@@ -173,54 +228,10 @@ const fetchUserPermissions = async (user) => {
             }
         });
 
-        let finalPermissions = Array.from(permissions);
-
-        if (user.companyId) {
-            let plan = null;
-            if (user.companyDetails && user.companyDetails.subscriptionPlanId) {
-                // If already loaded/passed
-                plan = user.companyDetails.subscriptionPlan || user.companyDetails.subscriptionPlanId;
-            } else {
-                const company = await prisma.company.findUnique({
-                    where: { id: user.companyId },
-                    include: { subscriptionPlan: true }
-                });
-                if (company && company.subscriptionPlan) {
-                    plan = company.subscriptionPlan;
-                }
-            }
-
-            // In Prisma, we mapped JSON columns. Let's parse rolePermissions
-            if (plan && plan.rolePermissions) {
-                const roleKey = user.role.toUpperCase().replace(/\s/g, '_');
-                
-                let allowedByPlan = null;
-                const rolePermObj = typeof plan.rolePermissions === 'string'
-                    ? JSON.parse(plan.rolePermissions)
-                    : plan.rolePermissions;
-                
-                if (rolePermObj) {
-                    allowedByPlan = rolePermObj[roleKey];
-                    if (!allowedByPlan) {
-                        if (roleKey === 'COMPANY_OWNER') {
-                            allowedByPlan = rolePermObj['ADMIN'];
-                        }
-                        if (roleKey === 'PM') {
-                            allowedByPlan = rolePermObj['PROJECT_MANAGER'];
-                        }
-                    }
-                }
-
-                if (allowedByPlan && Array.isArray(allowedByPlan)) {
-                    finalPermissions = finalPermissions.filter(p => allowedByPlan.includes(p));
-                }
-            }
-        }
-
-        return finalPermissions;
+        return Array.from(permissions);
     } catch (error) {
         console.error('Permission fetching error:', error);
-        return [];
+        return DEFAULT_ROLE_PERMISSIONS[user?.role] || [];
     }
 };
 

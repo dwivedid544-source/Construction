@@ -4,6 +4,8 @@ const {
     getDashboardStats,
     getCompanies,
     getCompanyById,
+    getMyCompany,
+    updateInvoiceTemplateSettings,
     createCompany,
     updateCompany,
     deleteCompany
@@ -12,7 +14,10 @@ const { protect, authorize } = require('../middlewares/authMiddleware');
 
 router.use(protect); // All routes protected
 
-router.get('/dashboard/stats', authorize('COMPANY_OWNER', 'COMPANY_ADMIN'), getDashboardStats);
+router.get('/dashboard/stats', authorize('COMPANY_OWNER', 'COMPANY_ADMIN', 'PM', 'SUPER_ADMIN'), getDashboardStats);
+router.get('/my-company', getMyCompany);
+router.get('/invoice-template', getMyCompany);
+router.patch('/invoice-template', authorize('COMPANY_OWNER', 'COMPANY_ADMIN', 'SUPER_ADMIN'), updateInvoiceTemplateSettings);
 
 router.get('/', authorize('SUPER_ADMIN'), getCompanies);
 router.post('/', authorize('SUPER_ADMIN'), createCompany);

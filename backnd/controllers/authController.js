@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { fetchUserPermissions } = require('./roleController');
+const { sendSubscriptionWelcomeEmail } = require('../utils/emailService');
 
 const hashPassword = async (password) => {
     const salt = await bcrypt.genSalt(10);
@@ -39,27 +40,33 @@ const registerCompany = async (req, res, next) => {
 
         // --- RESOLVE PLAN IF STRING ---
         let finalPlanId = null;
+        let resolvedPlanDoc = null;
         const searchPlan = plan || 'starter';
         
         if (searchPlan && typeof searchPlan === 'string') {
-            // Check if it is a 24-character hex ID (legacy MongoDB ObjectID check or CUID check)
             const isProbablyId = searchPlan.length >= 24;
             if (!isProbablyId) {
-                const planDoc = await prisma.plan.findFirst({
+                resolvedPlanDoc = await prisma.plan.findFirst({
                     where: {
                         name: {
-                            equals: searchPlan,
+                            contains: searchPlan,
+                            mode: 'insensitive'
                         }
                     }
                 });
-                finalPlanId = planDoc ? planDoc.id : null;
+                finalPlanId = resolvedPlanDoc ? resolvedPlanDoc.id : null;
             } else {
                 finalPlanId = searchPlan;
+                resolvedPlanDoc = await prisma.plan.findUnique({ where: { id: searchPlan } });
             }
         } else {
             finalPlanId = searchPlan;
         }
-        // ------------------------------
+        // Determine trial vs paid expiration
+        const isFreeTrial = (resolvedPlanDoc && resolvedPlanDoc.price === 0) || String(searchPlan).toLowerCase().includes('free') || String(searchPlan).toLowerCase().includes('trial');
+        const trialDays = isFreeTrial ? 7 : 30;
+        const startDate = new Date();
+        const expireDate = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
 
         // Create Company
         const company = await prisma.company.create({
@@ -67,7 +74,9 @@ const registerCompany = async (req, res, next) => {
                 name: companyName,
                 email: email, // Default to owner email
                 subscriptionPlanId: finalPlanId,
-                subscriptionStatus: 'active'
+                subscriptionStatus: 'active',
+                startDate,
+                expireDate
             }
         });
 
@@ -83,15 +92,22 @@ const registerCompany = async (req, res, next) => {
                 role: 'COMPANY_OWNER',
                 companyId: company.id,
                 phone,
-                isActive: false // Important: Needs approval
+                isActive: false // Needs approval by Super Admin or dev login
             }
         });
 
-        // Update company to pending
-        const updatedCompany = await prisma.company.update({
-            where: { id: company.id },
-            data: { subscriptionStatus: 'pending' }
-        });
+        // Trigger Brevo Welcome / Onboarding Email asynchronously
+        const planDisplayName = resolvedPlanDoc ? resolvedPlanDoc.name : (isFreeTrial ? 'Free Trial (7 Days)' : (searchPlan || 'Starter Plan'));
+        const planPrice = resolvedPlanDoc ? resolvedPlanDoc.price : (isFreeTrial ? 0 : 999);
+        sendSubscriptionWelcomeEmail({
+            toEmail: email,
+            companyName,
+            plainPassword: password,
+            planName: planDisplayName,
+            price: planPrice,
+            duration: isFreeTrial ? '7-Day Free Trial' : 'Monthly',
+            startDate
+        }).catch(err => console.error('[Auth] Brevo welcome email error:', err.message));
 
         res.status(201).json({
             message: 'Company and Owner registered successfully',
@@ -101,6 +117,184 @@ const registerCompany = async (req, res, next) => {
                 email: user.email,
                 role: user.role,
                 companyId: user.companyId
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Pre-check if email or company can register a subscription
+// @route   POST /api/auth/check-subscription-eligibility
+// @access  Public
+const checkSubscriptionEligibility = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+        const normalizedEmail = email ? email.toLowerCase().trim() : '';
+
+        if (normalizedEmail) {
+            const existingUser = await prisma.user.findUnique({
+                where: { email: normalizedEmail }
+            });
+            if (existingUser) {
+                return res.status(400).json({
+                    message: `An account with ${normalizedEmail} already exists. Please login to manage or upgrade your subscription.`
+                });
+            }
+        }
+
+        res.json({ eligible: true, message: 'Ready to proceed to payment.' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Register new company & owner directly from Subscription Modal / Razorpay payment
+// @route   POST /api/auth/register-subscription
+// @access  Public
+const registerSubscription = async (req, res, next) => {
+    try {
+        const { companyName, city, email, phone, password, planName, price, startDate, paymentId, razorpayOrderId, razorpaySignature, logo } = req.body;
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // 1. Resolve Plan Document
+        let resolvedPlanDoc = null;
+        let finalPlanId = null;
+        const searchPlan = planName || 'starter';
+
+        resolvedPlanDoc = await prisma.plan.findFirst({
+            where: {
+                name: {
+                    contains: searchPlan.replace(/plan/i, '').trim(),
+                    mode: 'insensitive'
+                }
+            }
+        });
+
+        if (!resolvedPlanDoc) {
+            resolvedPlanDoc = await prisma.plan.findFirst({
+                where: { price: { gt: 0 } }
+            });
+        }
+        finalPlanId = resolvedPlanDoc ? resolvedPlanDoc.id : null;
+
+        const isFreeTrial = (resolvedPlanDoc && resolvedPlanDoc.price === 0) || String(searchPlan).toLowerCase().includes('free') || String(searchPlan).toLowerCase().includes('trial');
+        const trialDays = isFreeTrial ? 7 : 30;
+        const start = startDate ? new Date(startDate) : new Date();
+        const expireDate = new Date(start.getTime() + trialDays * 24 * 60 * 60 * 1000);
+
+        // 2. Check or Create Company
+        let company = await prisma.company.findFirst({
+            where: { name: companyName }
+        });
+
+        if (!company) {
+            company = await prisma.company.create({
+                data: {
+                    name: companyName,
+                    logo: logo || undefined,
+                    email: normalizedEmail,
+                    address: city || 'Headquarters',
+                    phone: phone || '',
+                    subscriptionPlanId: finalPlanId,
+                    subscriptionStatus: 'active',
+                    startDate: start,
+                    expireDate
+                }
+            });
+        } else {
+            company = await prisma.company.update({
+                where: { id: company.id },
+                data: {
+                    logo: logo || company.logo,
+                    subscriptionPlanId: finalPlanId,
+                    subscriptionStatus: 'active',
+                    startDate: start,
+                    expireDate
+                }
+            });
+        }
+
+        // 3. Check or Create Owner User
+        const hashedPassword = await hashPassword(password || '123456');
+        let user = await prisma.user.findUnique({
+            where: { email: normalizedEmail }
+        });
+
+        if (user) {
+            user = await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    password: hashedPassword,
+                    companyId: company.id,
+                    avatar: logo || user.avatar,
+                    role: 'COMPANY_OWNER',
+                    phone: phone || user.phone,
+                    isActive: true,
+                    mustChangePassword: true
+                }
+            });
+        } else {
+            user = await prisma.user.create({
+                data: {
+                    fullName: companyName,
+                    email: normalizedEmail,
+                    password: hashedPassword,
+                    avatar: logo || undefined,
+                    role: 'COMPANY_OWNER',
+                    companyId: company.id,
+                    phone: phone || '',
+                    isActive: true,
+                    mustChangePassword: true
+                }
+            });
+        }
+
+        // 4. Record Subscription Payment Order if paid
+        try {
+            const SubscriptionOrder = require('../models/SubscriptionOrder');
+            const numericPaise = typeof price === 'number' ? Math.round(price * 100) : Math.round(parseFloat(String(price).replace(/[^0-9.]/g, '') || 1) * 100);
+            await SubscriptionOrder.create({
+                orderId: razorpayOrderId || `order_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                companyId: company.id,
+                planId: finalPlanId,
+                userId: user.id,
+                amountPaise: numericPaise,
+                currency: 'INR',
+                status: 'PAID',
+                paymentId: paymentId || 'pay_manual',
+                signature: razorpaySignature || '',
+                notes: { planName, companyName, email: normalizedEmail }
+            });
+        } catch (orderErr) {
+            console.warn('[registerSubscription] SubscriptionOrder record warning:', orderErr.message);
+        }
+
+        // 5. Send Custom Brevo Activation Email (Matching Screenshot 1)
+        const planDisplayName = resolvedPlanDoc ? resolvedPlanDoc.name : (isFreeTrial ? 'Free Trial (7 Days)' : (planName || 'Starter Plan'));
+        const planPriceVal = resolvedPlanDoc ? resolvedPlanDoc.price : (isFreeTrial ? 0 : 1);
+        
+        sendSubscriptionWelcomeEmail({
+            toEmail: normalizedEmail,
+            companyName: companyName,
+            fullName: companyName,
+            plainPassword: password, // Plain text password created by user
+            planName: planDisplayName,
+            price: planPriceVal,
+            duration: isFreeTrial ? '7-Day Free Trial' : 'Monthly',
+            startDate: start,
+            expiryDate: expireDate
+        }).catch(err => console.error('[Auth] Brevo welcome email error:', err.message));
+
+        res.status(201).json({
+            message: 'Account and subscription registered successfully',
+            user: {
+                _id: user.id,
+                fullName: user.fullName,
+                email: user.email,
+                role: user.role,
+                companyId: user.companyId,
+                mustChangePassword: true
             }
         });
     } catch (error) {
@@ -192,7 +386,7 @@ const loginUser = async (req, res, next) => {
                     if (emailLower.includes('foreman')) return 'FOREMAN';
                     if (emailLower.includes('worker')) return 'WORKER';
                     if (emailLower.includes('client')) return 'CLIENT';
-                    if (emailLower.includes('subcontractor') || emailLower.includes('sub')) return 'SUBCONTRACTOR';
+                    if (emailLower.includes('subcontractor') || emailLower.includes('sub') || emailLower.includes('contractor')) return 'SUBCONTRACTOR';
                     if (emailLower.includes('engineer')) return 'ENGINEER';
                     return 'COMPANY_OWNER';
                 };
@@ -262,15 +456,36 @@ const loginUser = async (req, res, next) => {
             const token = generateToken(user.id, user.role, user.companyId);
             console.log('DEBUG [login]: Token generated, sending response');
 
+            // Calculate trial and expiration state
+            let enhancedCompany = company;
+            if (company) {
+                const now = new Date();
+                const expireDateObj = company.expireDate ? new Date(company.expireDate) : null;
+                const isExpired = expireDateObj ? expireDateObj < now : false;
+                const daysRemaining = expireDateObj ? Math.max(0, Math.ceil((expireDateObj - now) / (1000 * 60 * 60 * 24))) : null;
+                const planName = company.subscriptionPlan?.name || '';
+                const isTrial = planName.toLowerCase().includes('trial') || company.subscriptionPlan?.price === 0;
+
+                enhancedCompany = {
+                    ...company,
+                    isExpired,
+                    daysRemaining,
+                    isTrialActive: isTrial && !isExpired,
+                    subscriptionStatus: isExpired ? 'expired' : (company.subscriptionStatus || 'active')
+                };
+            }
+
             res.json({
                 _id: user.id,
                 fullName: user.fullName,
                 email: user.email,
                 role: user.role,
                 companyId: user.companyId,
+                companyDetails: enhancedCompany,
                 avatar: user.avatar,
                 phone: user.phone,
                 address: user.address,
+                mustChangePassword: Boolean(user.mustChangePassword),
                 token,
                 permissions
             });
@@ -346,10 +561,27 @@ const getMe = async (req, res, next) => {
         });
 
         if (user) {
-            const companyDetails = user.companyId ? await prisma.company.findUnique({
+            let companyDetails = user.companyId ? await prisma.company.findUnique({
                 where: { id: user.companyId },
                 include: { subscriptionPlan: true }
             }) : null;
+
+            if (companyDetails) {
+                const now = new Date();
+                const expireDateObj = companyDetails.expireDate ? new Date(companyDetails.expireDate) : null;
+                const isExpired = expireDateObj ? expireDateObj < now : false;
+                const daysRemaining = expireDateObj ? Math.max(0, Math.ceil((expireDateObj - now) / (1000 * 60 * 60 * 24))) : null;
+                const planName = companyDetails.subscriptionPlan?.name || '';
+                const isTrial = planName.toLowerCase().includes('trial') || companyDetails.subscriptionPlan?.price === 0;
+
+                companyDetails = {
+                    ...companyDetails,
+                    isExpired,
+                    daysRemaining,
+                    isTrialActive: isTrial && !isExpired,
+                    subscriptionStatus: isExpired ? 'expired' : (companyDetails.subscriptionStatus || 'active')
+                };
+            }
 
             res.json({
                 _id: user.id,
@@ -360,6 +592,7 @@ const getMe = async (req, res, next) => {
                 avatar: user.avatar,
                 phone: user.phone,
                 address: user.address,
+                mustChangePassword: Boolean(user.mustChangePassword),
                 companyDetails
             });
         } else {
@@ -427,7 +660,7 @@ const updateUser = async (req, res, next) => {
         }
 
         // Multi-tenant check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId !== user.companyId) {
+        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId?.toString() !== user.companyId?.toString()) {
             res.status(403);
             throw new Error('Not authorized to update this user');
         }
@@ -440,6 +673,8 @@ const updateUser = async (req, res, next) => {
                         continue;
                     }
                     updateData.password = await hashPassword(req.body[key]);
+                } else if (key === 'hourlyRate') {
+                    updateData.hourlyRate = !isNaN(Number(req.body[key])) ? Number(req.body[key]) : 30;
                 } else {
                     updateData[key] = req.body[key];
                 }
@@ -475,7 +710,7 @@ const deleteUser = async (req, res, next) => {
         }
 
         // Multi-tenant check
-        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId !== user.companyId) {
+        if (req.user.role !== 'SUPER_ADMIN' && req.user.companyId?.toString() !== user.companyId?.toString()) {
             res.status(403);
             throw new Error('Not authorized to delete this user');
         }
@@ -489,42 +724,79 @@ const deleteUser = async (req, res, next) => {
     }
 };
 
-// @desc    Create a new user (Internal/Admin)
+// @desc    Create a new user (Internal/Admin/Team Member)
 // @route   POST /api/auth/users
 // @access  Private (Company Owner/Admin)
 const createUser = async (req, res, next) => {
     try {
-        const { fullName, email, password, role, phone } = req.body;
+        const { fullName, email, password, role, phone, roleId, hourlyRate } = req.body;
 
-        // Ensure current user has a company
-        if (!req.user.companyId) {
+        const targetCompanyId = req.body.companyId || req.user.companyId;
+
+        // Ensure current user has a company unless Super Admin
+        if (!targetCompanyId && req.user.role !== 'SUPER_ADMIN') {
             res.status(400);
             throw new Error('Current user does not belong to a company');
         }
 
+        const normalizedEmail = email.toLowerCase().trim();
+
         const userExists = await prisma.user.findUnique({
-            where: { email }
+            where: { email: normalizedEmail }
         });
 
         if (userExists) {
             res.status(400);
-            throw new Error('User already exists');
+            throw new Error('User already exists with this email address');
+        }
+
+        const targetRole = role || 'WORKER';
+        let resolvedRoleId = roleId;
+        if (!resolvedRoleId) {
+            let roleDoc = await prisma.role.findUnique({
+                where: { name: targetRole }
+            });
+            if (!roleDoc) {
+                roleDoc = await prisma.role.create({
+                    data: { name: targetRole, description: `${targetRole} Role` }
+                });
+            }
+            if (roleDoc) resolvedRoleId = roleDoc.id;
         }
 
         const hashedPassword = await hashPassword(password);
 
+        const parsedHourlyRate = hourlyRate !== undefined && hourlyRate !== '' && !isNaN(Number(hourlyRate)) 
+            ? Number(hourlyRate) 
+            : 30;
+
         const user = await prisma.user.create({
             data: {
                 fullName,
-                email,
+                email: normalizedEmail,
                 password: hashedPassword,
-                role: role || 'WORKER',
-                roleId: req.body.roleId,
-                companyId: req.user.companyId,
+                role: targetRole,
+                roleId: resolvedRoleId,
+                companyId: targetCompanyId,
                 phone,
+                hourlyRate: parsedHourlyRate,
                 isActive: true // Created by admin, so active by default
             }
         });
+
+        // Trigger Brevo Welcome Email with credentials to new team member
+        if (targetCompanyId) {
+            const company = await prisma.company.findUnique({ where: { id: targetCompanyId } });
+            sendSubscriptionWelcomeEmail({
+                toEmail: normalizedEmail,
+                companyName: company ? company.name : 'KT Construct Team',
+                plainPassword: password,
+                planName: `${targetRole} Member Access`,
+                price: '0.00',
+                duration: 'Active Team Member',
+                startDate: new Date()
+            }).catch(err => console.error('[Auth] Team member welcome email error:', err.message));
+        }
 
         res.status(201).json({
             _id: user.id,
@@ -548,10 +820,13 @@ const updatePassword = async (req, res, next) => {
 
         await prisma.user.update({
             where: { id: req.user.id },
-            data: { password: hashedPassword }
+            data: { 
+                password: hashedPassword,
+                mustChangePassword: false 
+            }
         });
         
-        res.json({ message: 'Password updated' });
+        res.json({ message: 'Password updated successfully' });
     } catch (error) {
         next(error);
     }
@@ -601,4 +876,17 @@ const updateProfile = async (req, res, next) => {
     }
 };
 
-module.exports = { loginUser, registerUser, registerCompany, getMe, getUsers, updateUser, deleteUser, createUser, updatePassword, updateProfile };
+module.exports = { 
+    loginUser, 
+    registerUser, 
+    registerCompany, 
+    registerSubscription,
+    checkSubscriptionEligibility,
+    getMe, 
+    getUsers, 
+    updateUser, 
+    deleteUser, 
+    createUser, 
+    updatePassword, 
+    updateProfile 
+};

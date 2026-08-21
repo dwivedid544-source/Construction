@@ -42,6 +42,19 @@ const companySchema = new mongoose.Schema({
         type: String,
         enum: ['Monthly', 'Yearly', 'Custom'],
         default: 'Monthly'
+    },
+    invoiceSettings: {
+        companyName: { type: String, default: '' },
+        email: { type: String, default: '' },
+        phone: { type: String, default: '' },
+        address: { type: String, default: '' },
+        taxNumber: { type: String, default: '' },
+        logo: { type: String, default: '' },
+        defaultTaxRate: { type: Number, default: 15 },
+        defaultPaymentTerms: { type: String, default: 'Net 15' },
+        bankDetails: { type: String, default: '' },
+        notes: { type: String, default: '' },
+        terms: { type: String, default: '' }
     }
 }, {
     timestamps: true

@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { sendAccountApprovalEmail } = require('../utils/emailService');
 
 const getStats = async (req, res, next) => {
     try {
@@ -121,6 +122,17 @@ const approveCompany = async (req, res, next) => {
             where: { companyId, role: 'COMPANY_OWNER' },
             data: { isActive: true }
         });
+
+        // Find owner to notify via Brevo
+        const owner = await prisma.user.findFirst({
+            where: { companyId, role: 'COMPANY_OWNER' }
+        });
+        if (owner && owner.email) {
+            sendAccountApprovalEmail({
+                toEmail: owner.email,
+                companyName: company.name
+            }).catch(err => console.error('[SuperAdmin] Brevo approval email error:', err.message));
+        }
 
         res.json({ message: `Company ${company.name} approved and activated` });
     } catch (error) {

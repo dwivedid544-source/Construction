@@ -1,0 +1,2637 @@
+
+############################################################
+COMMIT: 45e7af04ed83ef442337ddee84c12a847f7ce267 | FILE: kaal_backend (1)/routes/companyRoutes.js
+############################################################
+commit 45e7af04ed83ef442337ddee84c12a847f7ce267
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:14 2026 +0530
+
+    ramm
+
+diff --git a/kaal_backend (1)/routes/companyRoutes.js b/kaal_backend (1)/routes/companyRoutes.js
+index bbd98c0..9c69dc2 100644
+--- a/kaal_backend (1)/routes/companyRoutes.js	
++++ b/kaal_backend (1)/routes/companyRoutes.js	
+@@ -4,6 +4,8 @@ const {
+     getDashboardStats,
+     getCompanies,
+     getCompanyById,
++    getMyCompany,
++    updateInvoiceTemplateSettings,
+     createCompany,
+     updateCompany,
+     deleteCompany
+@@ -13,6 +15,9 @@ const { protect, authorize } = require('../middlewares/authMiddleware');
+ router.use(protect); // All routes protected
+ 
+ router.get('/dashboard/stats', authorize('COMPANY_OWNER', 'COMPANY_ADMIN'), getDashboardStats);
++router.get('/my-company', getMyCompany);
++router.get('/invoice-template', getMyCompany);
++router.patch('/invoice-template', authorize('COMPANY_OWNER', 'COMPANY_ADMIN'), updateInvoiceTemplateSettings);
+ 
+ router.get('/', authorize('SUPER_ADMIN'), getCompanies);
+ router.post('/', authorize('SUPER_ADMIN'), createCompany);
+
+
+############################################################
+COMMIT: 45e7af04ed83ef442337ddee84c12a847f7ce267 | FILE: kaal_backend (1)/controllers/companyController.js
+############################################################
+commit 45e7af04ed83ef442337ddee84c12a847f7ce267
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:14 2026 +0530
+
+    ramm
+
+diff --git a/kaal_backend (1)/controllers/companyController.js b/kaal_backend (1)/controllers/companyController.js
+index 5f38c14..9ef821b 100644
+--- a/kaal_backend (1)/controllers/companyController.js	
++++ b/kaal_backend (1)/controllers/companyController.js	
+@@ -392,10 +392,92 @@ const deleteCompany = async (req, res, next) => {
+     }
+ };
+ 
++// @desc    Get current user's company details & invoice settings
++// @route   GET /api/companies/my-company
++// @access  Private
++const getMyCompany = async (req, res, next) => {
++    try {
++        if (!req.user.companyId) {
++            res.status(404);
++            throw new Error('No company associated with this user');
++        }
++
++        const company = await Company.findById(req.user.companyId).populate('subscriptionPlanId');
++        if (!company) {
++            res.status(404);
++            throw new Error('Company not found');
++        }
++
++        res.json(company);
++    } catch (error) {
++        next(error);
++    }
++};
++
++// @desc    Update invoice template settings for current company
++// @route   PATCH /api/companies/invoice-template
++// @access  Private (Company Owner/Admin)
++const updateInvoiceTemplateSettings = async (req, res, next) => {
++    try {
++        if (!req.user.companyId) {
++            res.status(404);
++            throw new Error('No company associated with this user');
++        }
++
++        const {
++            companyName,
++            email,
++            phone,
++            address,
++            taxNumber,
++            logo,
++            defaultTaxRate,
++            defaultPaymentTerms,
++            bankDetails,
++            notes,
++            terms
++        } = req.body;
++
++        const company = await Company.findById(req.user.companyId);
++        if (!company) {
++            res.status(404);
++            throw new Error('Company not found');
++        }
++
++        if (!company.invoiceSettings) {
++            company.invoiceSettings = {};
++        }
++
++        if (companyName !== undefined) company.invoiceSettings.companyName = companyName;
++        if (email !== undefined) company.invoiceSettings.email = email;
++        if (phone !== undefined) company.invoiceSettings.phone = phone;
++        if (address !== undefined) company.invoiceSettings.address = address;
++        if (taxNumber !== undefined) company.invoiceSettings.taxNumber = taxNumber;
++        if (logo !== undefined) company.invoiceSettings.logo = logo;
++        if (defaultTaxRate !== undefined) company.invoiceSettings.defaultTaxRate = Number(defaultTaxRate);
++        if (defaultPaymentTerms !== undefined) company.invoiceSettings.defaultPaymentTerms = defaultPaymentTerms;
++        if (bankDetails !== undefined) company.invoiceSettings.bankDetails = bankDetails;
++        if (notes !== undefined) company.invoiceSettings.notes = notes;
++        if (terms !== undefined) company.invoiceSettings.terms = terms;
++
++        await company.save();
++
++        res.json({
++            message: 'Invoice template settings updated successfully',
++            invoiceSettings: company.invoiceSettings,
++            company
++        });
++    } catch (error) {
++        next(error);
++    }
++};
++
+ module.exports = {
+     getDashboardStats,
+     getCompanies,
+     getCompanyById,
++    getMyCompany,
++    updateInvoiceTemplateSettings,
+     createCompany,
+     updateCompany,
+     deleteCompany
+
+
+############################################################
+COMMIT: 45e7af04ed83ef442337ddee84c12a847f7ce267 | FILE: kaal_backend (1)/controllers/invoiceController.js
+############################################################
+commit 45e7af04ed83ef442337ddee84c12a847f7ce267
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:14 2026 +0530
+
+    ramm
+
+diff --git a/kaal_backend (1)/controllers/invoiceController.js b/kaal_backend (1)/controllers/invoiceController.js
+index b8d3947..d07e89e 100644
+--- a/kaal_backend (1)/controllers/invoiceController.js	
++++ b/kaal_backend (1)/controllers/invoiceController.js	
+@@ -16,10 +16,21 @@ const getInvoices = async (req, res, next) => {
+         if (req.query.status) query.status = req.query.status;
+ 
+         const invoices = await Invoice.find(query)
+-            .populate('projectId', 'name')
+-            .populate('clientId', 'fullName')
++            .populate('companyId')
++            .populate({
++                path: 'projectId',
++                select: 'name location address companyId',
++                populate: { path: 'companyId', select: 'name email phone address invoiceSettings logo' }
++            })
++            .populate('clientId', 'fullName email address')
+             .populate('estimateId', 'estimateNumber')
+-            .populate('createdBy', 'fullName');
++            .populate({
++                path: 'poId',
++                select: 'poNumber vendorName vendorEmail totalAmount subtotal tax items',
++                populate: { path: 'vendorId', select: 'name email phone address' }
++            })
++            .populate('createdBy', 'fullName')
++            .sort({ createdAt: -1 });
+ 
+         res.json(invoices);
+     } catch (error) {
+@@ -32,7 +43,7 @@ const getInvoices = async (req, res, next) => {
+ // @access  Private (PM, Owners)
+ const createInvoice = async (req, res, next) => {
+     try {
+-        const { invoiceNumber, ...rest } = req.body;
++        const { invoiceNumber, items, totalAmount, subtotal, tax, taxRate, ...rest } = req.body;
+         let finalInvoiceNumber = invoiceNumber;
+ 
+         if (!finalInvoiceNumber) {
+@@ -40,6 +51,25 @@ const createInvoice = async (req, res, next) => {
+             finalInvoiceNumber = `INV-${String(count + 1).padStart(3, '0')}`;
+         }
+ 
++        let parsedItems = [];
++        if (typeof items === 'string') {
++            try {
++                parsedItems = JSON.parse(items);
++            } catch (e) {
++                parsedItems = [];
++            }
++        } else if (Array.isArray(items)) {
++            parsedItems = items;
++        }
++
++        let computedSubtotal = Number(subtotal);
++        if (isNaN(computedSubtotal) || computedSubtotal === 0) {
++            computedSubtotal = parsedItems.reduce((acc, it) => acc + (Number(it.total) || (Number(it.quantity || 1) * Number(it.unitPrice || 0))), 0);
++        }
++
++        let computedTax = Number(tax) || 0;
++        let computedTotal = Number(totalAmount) || (computedSubtotal + computedTax);
++
+         let invoiceImage = '';
+         if (req.file) {
+             const path = require('path');
+@@ -56,9 +86,13 @@ const createInvoice = async (req, res, next) => {
+             ...rest,
+             invoiceNumber: finalInvoiceNumber,
+             invoiceImage,
++            subtotal: computedSubtotal,
++            tax: computedTax,
++            taxRate: Number(taxRate) || 0,
++            totalAmount: computedTotal,
+             companyId: req.user.companyId,
+             createdBy: req.user._id,
+-            items: rest.items || []
++            items: parsedItems
+         });
+         res.status(201).json(invoice);
+     } catch (error) {
+@@ -78,7 +112,14 @@ const updateInvoice = async (req, res, next) => {
+             throw new Error('Invoice not found');
+         }
+ 
+-        const updatedInvoice = await Invoice.findByIdAndUpdate(req.params.id, req.body, {
++        const updatePayload = { ...req.body };
++        if (typeof updatePayload.items === 'string') {
++            try {
++                updatePayload.items = JSON.parse(updatePayload.items);
++            } catch (e) {}
++        }
++
++        const updatedInvoice = await Invoice.findByIdAndUpdate(req.params.id, updatePayload, {
+             new: true,
+             runValidators: true
+         });
+@@ -95,9 +136,19 @@ const updateInvoice = async (req, res, next) => {
+ const getInvoice = async (req, res, next) => {
+     try {
+         const invoice = await Invoice.findOne({ _id: req.params.id, companyId: req.user.companyId })
+-            .populate('projectId', 'name')
+-            .populate('clientId', 'fullName')
++            .populate('companyId')
++            .populate({
++                path: 'projectId',
++                select: 'name location address companyId',
++                populate: { path: 'companyId', select: 'name email phone address invoiceSettings logo' }
++            })
++            .populate('clientId', 'fullName email address')
+             .populate('estimateId', 'estimateNumber')
++            .populate({
++                path: 'poId',
++                select: 'poNumber vendorName vendorEmail totalAmount subtotal tax items',
++                populate: { path: 'vendorId', select: 'name email phone address' }
++            })
+             .populate('createdBy', 'fullName');
+ 
+         if (!invoice) {
+
+
+############################################################
+COMMIT: bdaf01ca3f16a494348525590c1d489a13262e4c | FILE: kaal_frontend/src/pages/company-admin/InvoiceDetail.jsx
+############################################################
+commit bdaf01ca3f16a494348525590c1d489a13262e4c
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:56 2026 +0530
+
+    ///???
+
+diff --git a/kaal_frontend/src/pages/company-admin/InvoiceDetail.jsx b/kaal_frontend/src/pages/company-admin/InvoiceDetail.jsx
+index 0ebf619..7ef2510 100644
+--- a/kaal_frontend/src/pages/company-admin/InvoiceDetail.jsx
++++ b/kaal_frontend/src/pages/company-admin/InvoiceDetail.jsx
+@@ -58,12 +58,86 @@ const InvoiceDetail = () => {
+         }
+     }, [loading, invoice]);
+ 
++    const getVendorDetails = (inv) => {
++        if (!inv) return { name: 'Vendor', email: '', phone: '' };
++        if (inv.poId) {
++            const vName = inv.poId.vendorName || inv.poId.vendorId?.name || 'Vendor';
++            const vEmail = inv.poId.vendorEmail || inv.poId.vendorId?.email || '';
++            const vPhone = inv.poId.vendorId?.phone || '';
++            return { name: vName, email: vEmail, phone: vPhone };
++        }
++        if (inv.clientId) {
++            return {
++                name: inv.clientId.fullName || 'Client',
++                email: inv.clientId.email || '',
++                phone: inv.clientId.phone || ''
++            };
++        }
++        return { name: 'Vendor', email: '', phone: '' };
++    };
++
++    const getShippingAddress = (inv) => {
++        if (!inv) return 'N/A';
++        const project = inv.projectId;
++        if (project) {
++            if (typeof project.location === 'object' && project.location?.address) {
++                return project.location.address;
++            }
++            if (typeof project.location === 'string' && project.location.trim()) {
++                return project.location;
++            }
++            if (project.address) {
++                return typeof project.address === 'object' ? (project.address.address || JSON.stringify(project.address)) : project.address;
++            }
++        }
++        if (inv.clientId?.address) {
++            return typeof inv.clientId.address === 'object' ? (inv.clientId.address.address || JSON.stringify(inv.clientId.address)) : inv.clientId.address;
++        }
++        return 'Project Site Address';
++    };
++
++    const getCompanyDetails = (inv) => {
++        // Priority 1: Organization/Company linked to the project
++        const projectComp = (typeof inv?.projectId?.companyId === 'object' && inv?.projectId?.companyId !== null)
++            ? inv.projectId.companyId
++            : null;
++        // Priority 2: Direct Company linked to the invoice
++        const directComp = (typeof inv?.companyId === 'object' && inv?.companyId !== null)
++            ? inv.companyId
++            : null;
++        
++        const comp = projectComp || directComp || {};
++        const invSettings = comp.invoiceSettings || projectComp?.invoiceSettings || directComp?.invoiceSettings || {};
++
++        let orgName = invSettings.companyName || projectComp?.name || directComp?.name || 'KT Construction Ltd';
++        if (orgName === 'Kaal Construction Ltd') orgName = 'KT Construction Ltd';
++
++        const orgEmail = invSettings.email || projectComp?.email || directComp?.email || 'company@gmail.com';
++        const orgPhone = invSettings.phone || projectComp?.phone || directComp?.phone || '1234567890';
++        const orgAddress = invSettings.address || projectComp?.address || directComp?.address || '14/608, Sudama Nagar, Indore, MP';
++        const orgTaxNumber = invSettings.taxNumber || '';
++
++        return {
++            name: orgName,
++            email: orgEmail,
++            phone: orgPhone,
++            address: orgAddress,
++            taxNumber: orgTaxNumber,
++            notes: invSettings.notes || '',
++            terms: invSettings.terms || ''
++        };
++    };
++
+     const handleDownloadPDF = () => {
+         try {
+             if (!invoice) return;
+             const doc = new jsPDF();
+             const pageWidth = doc.internal.pageSize.width;
+ 
++            const company = getCompanyDetails(invoice);
++            const vendor = getVendorDetails(invoice);
++            const shippingAddress = getShippingAddress(invoice);
++
+             // 1. Header Section
+             // Company Logo
+             const img = new Image();
+@@ -74,14 +148,17 @@ const InvoiceDetail = () => {
+             doc.setFontSize(14);
+             doc.setFont('helvetica', 'bold');
+             doc.setTextColor(30, 41, 59);
+-            doc.text('KT Construction Ltd', 20, 48);
++            doc.text(company.name, 20, 48);
+ 
+             doc.setFontSize(9);
+             doc.setFont('helvetica', 'normal');
+             doc.setTextColor(100);
+-            doc.text('company@gmail.com', 20, 54);
+-            doc.text('1234567890', 20, 59);
+-            doc.text('14/608, Sudama Nagar, Indore, MP', 20, 64);
++            doc.text(company.email, 20, 54);
++            doc.text(company.phone, 20, 59);
++            doc.text(company.address, 20, 64);
++            if (company.taxNumber) {
++                doc.text(`Tax ID: ${company.taxNumber}`, 20, 69);
++            }
+ 
+             // Invoice Title & Info (Right)
+             doc.setFontSize(28);
+@@ -114,13 +191,13 @@ const InvoiceDetail = () => {
+             doc.setFontSize(11);
+             doc.setFont('helvetica', 'bold');
+             doc.setTextColor(15, 23, 42);
+-            doc.text('Adi', 20, 93);
+-            doc.text(invoice.projectId?.address || 'address23', pageWidth - 20, 93, { align: 'right' });
++            doc.text(vendor.name, 20, 93);
++            doc.text(shippingAddress, pageWidth - 20, 93, { align: 'right' });
+ 
+             doc.setFontSize(9);
+             doc.setFont('helvetica', 'normal');
+             doc.setTextColor(100);
+-            doc.text('adi@gmail.com', 20, 99);
++            if (vendor.email) doc.text(vendor.email, 20, 99);
+ 
+             // 3. Table Section
+             const tableColumn = ["ITEM DESCRIPTION", "QTY", "UNIT PRICE", "TOTAL"];
+@@ -166,9 +243,13 @@ const InvoiceDetail = () => {
+             });
+ 
+             const hasItems = invoice.items && invoice.items.length > 0;
+-            const displaySubtotal = hasItems ? (invoice.totalAmount || 0) : 1080;
+-            const displayTax = hasItems ? 0 : 162;
+-            const displayTotal = hasItems ? (invoice.totalAmount || 0) : 1242;
++            const computedSubtotal = hasItems 
++                ? invoice.items.reduce((acc, it) => acc + (Number(it.total) || (Number(it.quantity || 1) * Number(it.unitPrice || 0))), 0)
++                : 1080;
++            const displaySubtotal = (invoice.subtotal !== undefined && invoice.subtotal !== null && invoice.subtotal > 0) ? invoice.subtotal : computedSubtotal;
++            const displayTax = (invoice.tax !== undefined && invoice.tax !== null) ? invoice.tax : (hasItems ? 0 : 162);
++            const displayTotal = invoice.totalAmount || (displaySubtotal + displayTax);
++            const taxRate = invoice.taxRate || 15;
+ 
+             // 4. Summary Section
+             const finalY = doc.lastAutoTable.finalY + 15;
+@@ -180,7 +261,7 @@ const InvoiceDetail = () => {
+             doc.text(`$${displaySubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, pageWidth - 20, finalY, { align: 'right' });
+ 
+             doc.setTextColor(148, 163, 184);
+-            doc.text('Estimated Tax (15%)', pageWidth - 85, finalY + 8);
++            doc.text(`Estimated Tax (${taxRate}%)`, pageWidth - 85, finalY + 8);
+             doc.setTextColor(15, 23, 42);
+             doc.text(`$${displayTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, pageWidth - 20, finalY + 8, { align: 'right' });
+ 
+@@ -241,10 +322,17 @@ const InvoiceDetail = () => {
+         );
+     }
+ 
++    const company = getCompanyDetails(invoice);
++    const vendor = getVendorDetails(invoice);
++    const shippingAddress = getShippingAddress(invoice);
+     const hasItems = invoice.items && invoice.items.length > 0;
+-    const displaySubtotal = hasItems ? (invoice.totalAmount || 0) : 1080;
+-    const displayTax = hasItems ? 0 : 162;
+-    const displayTotal = hasItems ? (invoice.totalAmount || 0) : 1242;
++    const computedSubtotal = hasItems 
++        ? invoice.items.reduce((acc, it) => acc + (Number(it.total) || (Number(it.quantity || 1) * Number(it.unitPrice || 0))), 0)
++        : 1080;
++    const displaySubtotal = (invoice.subtotal !== undefined && invoice.subtotal !== null && invoice.subtotal > 0) ? invoice.subtotal : computedSubtotal;
++    const displayTax = (invoice.tax !== undefined && invoice.tax !== null) ? invoice.tax : (hasItems ? 0 : 162);
++    const displayTotal = invoice.totalAmount || (displaySubtotal + displayTax);
++    const displayTaxRate = invoice.taxRate || 15;
+ 
+     return (
+         <div className="space-y-6 animate-fade-in">
+@@ -292,10 +380,15 @@ const InvoiceDetail = () => {
+                                 </div>
+                             </div>
+                             <div className="space-y-1">
+-                                <h2 className="text-xl font-black text-slate-900 leading-tight">KT Construction Ltd</h2>
+-                                <p className="text-sm text-slate-500 font-medium italic">company@gmail.com</p>
+-                                <p className="text-sm text-slate-500 font-medium">1234567890</p>
+-                                <p className="text-sm text-slate-500 font-medium">14/608, Sudama Nagar, Indore, MP</p>
++                                <h2 className="text-xl font-black text-slate-900 leading-tight">{company.name}</h2>
++                                <p className="text-sm text-slate-500 font-medium italic">{company.email}</p>
++                                <p className="text-sm text-slate-500 font-medium">{company.phone}</p>
++                                <p className="text-sm text-slate-500 font-medium">{company.address}</p>
++                                {company.taxNumber && (
++                                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
++                                        Tax ID: {company.taxNumber}
++                                    </p>
++                                )}
+                             </div>
+                         </div>
+                         <div className="text-right space-y-2">
+@@ -304,6 +397,11 @@ const InvoiceDetail = () => {
+                                 <p className="text-sm font-bold text-slate-400">Number: <span className="text-slate-900 uppercase">#{invoice.invoiceNumber}</span></p>
+                                 <p className="text-sm font-bold text-slate-400">Issue: <span className="text-slate-900">{new Date(invoice.createdAt).toLocaleDateString()}</span></p>
+                                 <p className="text-sm font-bold text-slate-400">Due Date: <span className="text-slate-900">{invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}</span></p>
++                                {invoice.poId && (
++                                    <p className="text-xs font-black text-blue-600 uppercase tracking-wider pt-1">
++                                        PO Ref: {invoice.poId.poNumber || 'PO Details'}
++                                    </p>
++                                )}
+                             </div>
+                         </div>
+                     </div>
+@@ -315,14 +413,20 @@ const InvoiceDetail = () => {
+                         <div className="space-y-3">
+                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">VENDOR:</h3>
+                             <div className="space-y-1">
+-                                <p className="text-lg font-bold text-slate-900">Adi</p>
+-                                <p className="text-sm text-slate-500 font-medium">adi@gmail.com</p>
++                                <p className="text-lg font-bold text-slate-900">{vendor.name}</p>
++                                {vendor.email && <p className="text-sm text-slate-500 font-medium">{vendor.email}</p>}
++                                {vendor.phone && <p className="text-xs text-slate-400 font-medium">{vendor.phone}</p>}
+                             </div>
+                         </div>
+                         <div className="space-y-3 text-right">
+                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Ship To:</h3>
+                             <div className="space-y-1">
+-                                <p className="text-sm text-slate-500 font-medium">{invoice.projectId?.address || 'address23'}</p>
++                                <p className="text-sm font-bold text-slate-900">{shippingAddress}</p>
++                                {invoice.projectId?.name && (
++                                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
++                                        Project: {invoice.projectId.name}
++                                    </p>
++                                )}
+                             </div>
+                         </div>
+                     </div>
+@@ -335,7 +439,7 @@ const InvoiceDetail = () => {
+                                 <a 
+                                     href={getServerUrl(invoice.invoiceImage)} 
+                                     target="_blank" 
+-                                    rel="noopener noreferrer"
++                                    rel="noopener noreferrer" 
+                                     className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                                 >
+                                     <FileText size={14} /> View Original
+@@ -406,8 +510,8 @@ const InvoiceDetail = () => {
+                                 <span className="font-bold text-slate-800">${displaySubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                             </div>
+                             <div className="flex justify-between items-center text-sm">
+-                                <span className="font-bold text-slate-400">Estimated Tax (15%)</span>
+-                                <span className="font-bold text-slate-800">${displayTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
++                                <span className="font-bold text-slate-400">Estimated Tax ({displayTaxRate}%)</span>
++                                <span className="font-bold text-amber-600">+${displayTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                             </div>
+                             <div className="h-px bg-slate-200" />
+                             <div className="flex justify-between items-center">
+
+
+############################################################
+COMMIT: bdaf01ca3f16a494348525590c1d489a13262e4c | FILE: kaal_frontend/src/pages/company-admin/Invoices.jsx
+############################################################
+commit bdaf01ca3f16a494348525590c1d489a13262e4c
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:56 2026 +0530
+
+    ///???
+
+diff --git a/kaal_frontend/src/pages/company-admin/Invoices.jsx b/kaal_frontend/src/pages/company-admin/Invoices.jsx
+index 6697d1a..f51917e 100644
+--- a/kaal_frontend/src/pages/company-admin/Invoices.jsx
++++ b/kaal_frontend/src/pages/company-admin/Invoices.jsx
+@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
+ import {
+     FileText, Plus, Download, Search, Filter, DollarSign,
+     Trash2, CreditCard, Send, MoreHorizontal, Save, Loader, Eye, Upload,
+-    CheckCircle, Clock, AlertTriangle, Edit
++    CheckCircle, Clock, AlertTriangle, Edit, SlidersHorizontal
+ } from 'lucide-react';
+ import Modal from '../../components/Modal';
+ import api, { getServerUrl } from '../../utils/api';
+@@ -17,6 +17,7 @@ const Invoices = () => {
+     const [invoices, setInvoices] = useState([]);
+     const [projects, setProjects] = useState([]);
+     const [clients, setClients] = useState([]);
++    const [purchaseOrders, setPurchaseOrders] = useState([]);
+     const [loading, setLoading] = useState(true);
+     const [isSubmitting, setIsSubmitting] = useState(false);
+ 
+@@ -27,20 +28,33 @@ const Invoices = () => {
+     const [editingInvoice, setEditingInvoice] = useState(null);
+ 
+     // Form State
+-    const [formData, setFormData] = useState({ projectId: '', clientId: '', dueDate: '', invoiceNumber: '', status: 'unpaid', totalAmount: '' });
+-    const [file, setFile] = useState(null);
++    const [formData, setFormData] = useState({ 
++        projectId: '', 
++        clientId: '', 
++        poId: '',
++        dueDate: '', 
++        invoiceNumber: '', 
++        status: 'unpaid', 
++        subtotal: '',
++        tax: '',
++        taxRate: 15,
++        totalAmount: '',
++        items: []
++    });
+ 
+     const fetchData = async () => {
+         try {
+             setLoading(true);
+-            const [invRes, projRes, clientRes] = await Promise.all([
++            const [invRes, projRes, clientRes, poRes] = await Promise.all([
+                 api.get('/invoices'),
+                 api.get('/projects'),
+-                api.get('/auth/users?role=CLIENT')
++                api.get('/auth/users?role=CLIENT'),
++                api.get('/purchase-orders').catch(() => ({ data: [] }))
+             ]);
+-            setInvoices(invRes.data);
+-            setProjects(projRes.data);
+-            setClients(clientRes.data);
++            setInvoices(invRes.data || []);
++            setProjects(projRes.data || []);
++            setClients(clientRes.data || []);
++            setPurchaseOrders(poRes.data || []);
+         } catch (error) {
+             console.error('Error fetching invoices:', error);
+             alert('Failed to load data: ' + (error.response?.data?.message || error.message) + '. Please try logging out and back in.');
+@@ -65,11 +79,76 @@ const Invoices = () => {
+         return `INV-${String(nextNum).padStart(3, '0')}`;
+     };
+ 
++    const handlePOSelect = (selectedPoId) => {
++        if (!selectedPoId) {
++            setFormData(prev => ({
++                ...prev,
++                poId: '',
++                items: [],
++                subtotal: '',
++                tax: '',
++                taxRate: 15,
++                totalAmount: ''
++            }));
++            return;
++        }
++
++        const po = purchaseOrders.find(p => p._id === selectedPoId);
++        if (!po) return;
++
++        const associatedProjectId = po.projectId?._id || po.projectId || formData.projectId;
++        const project = projects.find(p => p._id === associatedProjectId);
++        const associatedClientId = project?.clientId?._id || project?.clientId || formData.clientId;
++
++        const poItems = (po.items || []).map(item => ({
++            description: item.itemName || item.description || 'Material Item',
++            quantity: Number(item.quantity) || 1,
++            unitPrice: Number(item.unitPrice) || 0,
++            total: Number(item.total) || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0))
++        }));
++
++        const computedSubtotal = Number(po.subtotal) || poItems.reduce((acc, it) => acc + it.total, 0);
++        let computedTax = Number(po.tax);
++        if (isNaN(computedTax) || computedTax === 0) {
++            if (po.totalAmount && po.totalAmount > computedSubtotal) {
++                computedTax = Number((po.totalAmount - computedSubtotal).toFixed(2));
++            } else {
++                computedTax = Number((computedSubtotal * 0.15).toFixed(2));
++            }
++        }
++        const computedTaxRate = computedSubtotal > 0 ? Number(((computedTax / computedSubtotal) * 100).toFixed(0)) : 15;
++        const totalAmt = Number(po.totalAmount) || Number((computedSubtotal + computedTax).toFixed(2));
++
++        setFormData(prev => ({
++            ...prev,
++            poId: po._id,
++            projectId: associatedProjectId,
++            clientId: associatedClientId,
++            dueDate: po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate).toISOString().split('T')[0] : prev.dueDate,
++            items: poItems,
++            subtotal: computedSubtotal.toFixed(2),
++            tax: computedTax.toFixed(2),
++            taxRate: computedTaxRate,
++            totalAmount: totalAmt.toFixed(2)
++        }));
++    };
++
+     const openCreateModal = () => {
+         setEditingInvoice(null);
+         const nextNumber = generateNextInvoiceNumber();
+-        setFormData({ projectId: '', clientId: '', dueDate: '', invoiceNumber: nextNumber, status: 'unpaid', totalAmount: '' });
+-        setFile(null);
++        setFormData({ 
++            projectId: '', 
++            clientId: '', 
++            poId: '',
++            dueDate: '', 
++            invoiceNumber: nextNumber, 
++            status: 'unpaid', 
++            subtotal: '',
++            tax: '',
++            taxRate: 15,
++            totalAmount: '',
++            items: []
++        });
+         setIsModalOpen(true);
+     };
+ 
+@@ -78,12 +157,16 @@ const Invoices = () => {
+         setFormData({
+             projectId: inv.projectId?._id || inv.projectId || '',
+             clientId: inv.clientId?._id || inv.clientId || '',
++            poId: inv.poId?._id || inv.poId || '',
+             dueDate: inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : '',
+             invoiceNumber: inv.invoiceNumber,
+             status: inv.status || 'unpaid',
+-            totalAmount: inv.totalAmount || ''
++            subtotal: inv.subtotal ? String(inv.subtotal) : '',
++            tax: inv.tax ? String(inv.tax) : '',
++            taxRate: inv.taxRate || 15,
++            totalAmount: inv.totalAmount || '',
++            items: inv.items || []
+         });
+-        setFile(null);
+         setIsModalOpen(true);
+     };
+ 
+@@ -99,50 +182,127 @@ const Invoices = () => {
+             }
+             setIsSubmitting(true);
+ 
++            const payload = {
++                projectId: formData.projectId,
++                clientId: formData.clientId,
++                poId: formData.poId || undefined,
++                dueDate: formData.dueDate,
++                invoiceNumber: formData.invoiceNumber,
++                status: formData.status,
++                subtotal: Number(formData.subtotal) || 0,
++                tax: Number(formData.tax) || 0,
++                taxRate: Number(formData.taxRate) || 0,
++                totalAmount: Number(formData.totalAmount) || 0,
++                items: formData.items || []
++            };
++
+             if (editingInvoice) {
+-                const updateData = {
+-                    projectId: formData.projectId,
+-                    clientId: formData.clientId,
+-                    dueDate: formData.dueDate,
+-                    invoiceNumber: formData.invoiceNumber,
+-                    status: formData.status
+-                };
+-                await api.patch(`/invoices/${editingInvoice._id}`, updateData);
++                await api.patch(`/invoices/${editingInvoice._id}`, payload);
+             } else {
+-                const uploadFormData = new FormData();
+-                uploadFormData.append('projectId', formData.projectId);
+-                uploadFormData.append('clientId', formData.clientId);
+-                uploadFormData.append('dueDate', formData.dueDate);
+-                uploadFormData.append('invoiceNumber', formData.invoiceNumber);
+-                uploadFormData.append('status', formData.status);
+-                uploadFormData.append('totalAmount', 0);
+-                if (file) {
+-                    uploadFormData.append('image', file);
+-                }
+-
+-                await api.post('/invoices', uploadFormData, {
+-                    headers: { 'Content-Type': 'multipart/form-data' }
+-                });
++                await api.post('/invoices', payload);
+             }
+ 
+             await fetchData();
+             setIsModalOpen(false);
+             setEditingInvoice(null);
+-            setFormData({ projectId: '', clientId: '', dueDate: '', invoiceNumber: '', status: 'unpaid', totalAmount: '' });
+-            setFile(null);
++            setFormData({ 
++                projectId: '', 
++                clientId: '', 
++                poId: '',
++                dueDate: '', 
++                invoiceNumber: '', 
++                status: 'unpaid', 
++                subtotal: '',
++                tax: '',
++                taxRate: 15,
++                totalAmount: '',
++                items: []
++            });
+         } catch (error) {
+             console.error('Error saving invoice:', error);
+-            alert('Error saving invoice');
++            alert('Error saving invoice: ' + (error.response?.data?.message || error.message));
+         } finally {
+             setIsSubmitting(false);
+         }
+     };
+ 
++    const getVendorDetails = (inv) => {
++        if (!inv) return { name: 'Vendor', email: '', phone: '' };
++        if (inv.poId) {
++            const vName = inv.poId.vendorName || inv.poId.vendorId?.name || 'Vendor';
++            const vEmail = inv.poId.vendorEmail || inv.poId.vendorId?.email || '';
++            const vPhone = inv.poId.vendorId?.phone || '';
++            return { name: vName, email: vEmail, phone: vPhone };
++        }
++        if (inv.clientId) {
++            return {
++                name: inv.clientId.fullName || 'Client',
++                email: inv.clientId.email || '',
++                phone: inv.clientId.phone || ''
++            };
++        }
++        return { name: 'Vendor', email: '', phone: '' };
++    };
++
++    const getShippingAddress = (inv) => {
++        if (!inv) return 'N/A';
++        const project = inv.projectId;
++        if (project) {
++            if (typeof project.location === 'object' && project.location?.address) {
++                return project.location.address;
++            }
++            if (typeof project.location === 'string' && project.location.trim()) {
++                return project.location;
++            }
++            if (project.address) {
++                return typeof project.address === 'object' ? (project.address.address || JSON.stringify(project.address)) : project.address;
++            }
++        }
++        if (inv.clientId?.address) {
++            return typeof inv.clientId.address === 'object' ? (inv.clientId.address.address || JSON.stringify(inv.clientId.address)) : inv.clientId.address;
++        }
++        return 'Project Site Address';
++    };
++
++    const getCompanyDetails = (inv) => {
++        const projectComp = (typeof inv?.projectId?.companyId === 'object' && inv?.projectId?.companyId !== null)
++            ? inv.projectId.companyId
++            : null;
++        const directComp = (typeof inv?.companyId === 'object' && inv?.companyId !== null)
++            ? inv.companyId
++            : null;
++        
++        const comp = projectComp || directComp || {};
++        const invSettings = comp.invoiceSettings || projectComp?.invoiceSettings || directComp?.invoiceSettings || {};
++
++        let orgName = invSettings.companyName || projectComp?.name || directComp?.name || 'KT Construction Ltd';
++        if (orgName === 'Kaal Construction Ltd') orgName = 'KT Construction Ltd';
++
++        const orgEmail = invSettings.email || projectComp?.email || directComp?.email || 'company@gmail.com';
++        const orgPhone = invSettings.phone || projectComp?.phone || directComp?.phone || '1234567890';
++        const orgAddress = invSettings.address || projectComp?.address || directComp?.address || '14/608, Sudama Nagar, Indore, MP';
++        const orgTaxNumber = invSettings.taxNumber || '';
++
++        return {
++            name: orgName,
++            email: orgEmail,
++            phone: orgPhone,
++            address: orgAddress,
++            taxNumber: orgTaxNumber,
++            notes: invSettings.notes || '',
++            terms: invSettings.terms || ''
++        };
++    };
++
+     const handleDownloadPDF = (inv) => {
+         try {
+             const doc = new jsPDF();
+             const pageWidth = doc.internal.pageSize.width;
+ 
++            const company = getCompanyDetails(inv);
++            const vendor = getVendorDetails(inv);
++            const shippingAddress = getShippingAddress(inv);
++
+             // 1. Header Section
+             // Company Logo
+             const img = new Image();
+@@ -153,14 +313,17 @@ const Invoices = () => {
+             doc.setFontSize(14);
+             doc.setFont('helvetica', 'bold');
+             doc.setTextColor(30, 41, 59);
+-            doc.text('KT Construction Ltd', 20, 48);
++            doc.text(company.name, 20, 48);
+ 
+             doc.setFontSize(9);
+             doc.setFont('helvetica', 'normal');
+             doc.setTextColor(100);
+-            doc.text('company@gmail.com', 20, 54);
+-            doc.text('1234567890', 20, 59);
+-            doc.text('14/608, Sudama Nagar, Indore, MP', 20, 64);
++            doc.text(company.email || 'company@gmail.com', 20, 54);
++            doc.text(company.phone || '1234567890', 20, 59);
++            doc.text(company.address || 'Corporate Office Address', 20, 64);
++            if (company.taxNumber) {
++                doc.text(`Tax ID: ${company.taxNumber}`, 20, 69);
++            }
+ 
+             // Invoice Title & Info (Right)
+             doc.setFontSize(28);
+@@ -193,13 +356,13 @@ const Invoices = () => {
+             doc.setFontSize(11);
+             doc.setFont('helvetica', 'bold');
+             doc.setTextColor(15, 23, 42);
+-            doc.text('Adi', 20, 93);
+-            doc.text(inv.projectId?.address || 'address23', pageWidth - 20, 93, { align: 'right' });
++            doc.text(vendor.name, 20, 93);
++            doc.text(shippingAddress, pageWidth - 20, 93, { align: 'right' });
+ 
+             doc.setFontSize(9);
+             doc.setFont('helvetica', 'normal');
+             doc.setTextColor(100);
+-            doc.text('adi@gmail.com', 20, 99);
++            if (vendor.email) doc.text(vendor.email, 20, 99);
+ 
+             // 3. Table Section
+             const tableColumn = ["ITEM DESCRIPTION", "QTY", "UNIT PRICE", "TOTAL"];
+@@ -335,12 +498,21 @@ const Invoices = () => {
+                     <h1 className="text-2xl font-bold text-slate-800">Invoices <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-2">Digital Tracking</span></h1>
+                     <p className="text-slate-500 text-sm">Create and manage client invoices.</p>
+                 </div>
+-                <button
+-                    onClick={openCreateModal}
+-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 font-medium"
+-                >
+-                    <Plus size={18} /> Create Invoice
+-                </button>
++                <div className="flex items-center gap-3">
++                    <button
++                        onClick={() => navigate('/company-admin/settings?tab=invoice')}
++                        className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-slate-50 transition shadow-sm font-semibold text-sm"
++                    >
++                        <SlidersHorizontal size={16} className="text-blue-600" />
++                        Invoice Template Settings
++                    </button>
++                    <button
++                        onClick={openCreateModal}
++                        className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 font-semibold text-sm"
++                    >
++                        <Plus size={18} /> Create Invoice
++                    </button>
++                </div>
+             </div>
+ 
+             {/* Stats Cards */}
+@@ -485,6 +657,26 @@ const Invoices = () => {
+ 
+             <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingInvoice(null); }} title={editingInvoice ? "Edit Invoice" : "Create New Invoice"}>
+                 <div className="space-y-6">
++                    {/* Purchase Order Selector (Autofills details) */}
++                    <div>
++                        <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
++                            <span>Select Purchase Order</span>
++                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">Auto-fetches details</span>
++                        </label>
++                        <select
++                            value={formData.poId}
++                            onChange={e => handlePOSelect(e.target.value)}
++                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-semibold outline-none focus:border-blue-500 focus:bg-white transition-all shadow-sm"
++                        >
++                            <option value="">-- Optional: Select Purchase Order to autofill --</option>
++                            {purchaseOrders.map(po => (
++                                <option key={po._id} value={po._id}>
++                                    {po.poNumber} — {po.vendorName || 'Vendor'} (${Number(po.totalAmount || 0).toLocaleString()}) {po.projectId?.name ? `[${po.projectId.name}]` : ''}
++                                </option>
++                            ))}
++                        </select>
++                    </div>
++
+                     <div className="grid grid-cols-2 gap-4">
+                         <div>
+                             <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
+@@ -504,7 +696,6 @@ const Invoices = () => {
+                                         clientId: associatedClientId
+                                     }));
+                                 }}
+-
+                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-blue-500"
+                             >
+                                 <option value="">Select Project</option>
+@@ -526,10 +717,9 @@ const Invoices = () => {
+                                     <option key={c._id} value={c._id}>{c.fullName}</option>
+                                 ))}
+                             </select>
+-                            {/* Hidden field to keep ID in form if needed, though we already have it in formData state */}
+                         </div>
+-
+                     </div>
++
+                     <div className="grid grid-cols-2 gap-4">
+                         <div>
+                             <label className="block text-sm font-medium text-slate-700 mb-1">Invoice Number</label>
+@@ -568,31 +758,120 @@ const Invoices = () => {
+                         </select>
+                     </div>
+ 
+-                    {!editingInvoice && (
+-                    <div className="pt-2">
+-                        <label className="block text-sm font-medium text-slate-700 mb-1">Upload Invoice</label>
+-                        <div className="relative">
++                    {/* Financial Summary & Breakdown */}
++                    <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
++                        <div>
++                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-500 mb-1">
++                                Subtotal ($)
++                            </label>
+                             <input
+-                                type="file"
+-                                accept="image/*,application/pdf"
+-                                onChange={e => setFile(e.target.files[0])}
+-                                className="hidden"
+-                                id="invoice-upload"
++                                type="number"
++                                step="any"
++                                value={formData.subtotal}
++                                onChange={e => {
++                                    const sub = Number(e.target.value) || 0;
++                                    const tx = Number(formData.tax) || 0;
++                                    setFormData(prev => ({
++                                        ...prev,
++                                        subtotal: e.target.value,
++                                        totalAmount: (sub + tx).toFixed(2)
++                                    }));
++                                }}
++                                placeholder="0.00"
++                                className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 shadow-sm"
+                             />
+-                            <label
+-                                htmlFor="invoice-upload"
+-                                className="flex items-center justify-center gap-3 w-full bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 cursor-pointer hover:bg-slate-100 transition text-slate-500 text-sm group"
+-                            >
+-                                <div className="p-3 bg-white rounded-full shadow-sm group-hover:scale-110 transition duration-300">
+-                                    <Upload size={24} className="text-blue-600" />
+-                                </div>
+-                                <div className="flex flex-col items-start">
+-                                    <span className="font-bold text-slate-700">{file ? file.name : 'Select Invoice File'}</span>
+-                                    <span className="text-xs text-slate-400">Click to browse or drag and drop</span>
+-                                </div>
++                        </div>
++                        <div>
++                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-500 mb-1 flex items-center justify-between">
++                                <span>Tax ($)</span>
++                                {formData.taxRate > 0 && <span className="text-[10px] text-amber-600 font-bold">({formData.taxRate}%)</span>}
+                             </label>
++                            <input
++                                type="number"
++                                step="any"
++                                value={formData.tax}
++                                onChange={e => {
++                                    const tx = Number(e.target.value) || 0;
++                                    const sub = Number(formData.subtotal) || 0;
++                                    setFormData(prev => ({
++                                        ...prev,
++                                        tax: e.target.value,
++                                        totalAmount: (sub + tx).toFixed(2)
++                                    }));
++                                }}
++                                placeholder="0.00"
++                                className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 shadow-sm"
++                            />
++                        </div>
++                        <div>
++                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-500 mb-1">
++                                Total Amount ($)
++                            </label>
++                            <input
++                                type="number"
++                                step="any"
++                                value={formData.totalAmount}
++                                onChange={e => setFormData({ ...formData, totalAmount: e.target.value })}
++                                placeholder="0.00"
++                                className="w-full bg-blue-50/70 border border-blue-200 rounded-xl p-2.5 text-sm font-black text-blue-700 outline-none focus:border-blue-500 shadow-sm"
++                            />
+                         </div>
+                     </div>
++
++                    {/* PO Line Items Summary Preview if PO is selected */}
++                    {formData.items && formData.items.length > 0 && (
++                        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-3">
++                            <div className="flex items-center justify-between">
++                                <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
++                                    Fetched PO Items ({formData.items.length})
++                                </span>
++                                <span className="text-xs font-black text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
++                                    {purchaseOrders.find(p => p._id === formData.poId)?.poNumber || 'PO Details'}
++                                </span>
++                            </div>
++                            <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
++                                <table className="w-full text-left text-xs">
++                                    <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 uppercase text-[9px] tracking-wider">
++                                        <tr>
++                                            <th className="p-2.5">Description</th>
++                                            <th className="p-2.5 text-center">Qty</th>
++                                            <th className="p-2.5 text-right">Price</th>
++                                            <th className="p-2.5 text-right">Total</th>
++                                        </tr>
++                                    </thead>
++                                    <tbody className="divide-y divide-slate-100 text-slate-700">
++                                        {formData.items.map((it, idx) => (
++                                            <tr key={idx}>
++                                                <td className="p-2.5 font-medium">{it.description}</td>
++                                                <td className="p-2.5 text-center font-bold text-slate-600">{it.quantity}</td>
++                                                <td className="p-2.5 text-right">${Number(it.unitPrice || 0).toFixed(2)}</td>
++                                                <td className="p-2.5 text-right font-bold text-slate-900">${Number(it.total || 0).toFixed(2)}</td>
++                                            </tr>
++                                        ))}
++                                    </tbody>
++                                </table>
++                            </div>
++
++                            {/* Tax & Total Summary Breakdown Card */}
++                            <div className="bg-white rounded-xl p-3 border border-slate-200 space-y-1.5 text-xs font-semibold">
++                                <div className="flex justify-between text-slate-500">
++                                    <span>Items Subtotal:</span>
++                                    <span>${Number(formData.subtotal || 0).toFixed(2)}</span>
++                                </div>
++                                <div className="flex justify-between text-slate-500">
++                                    <span className="flex items-center gap-1.5">
++                                        <span>Tax ({formData.taxRate || 15}%):</span>
++                                    </span>
++                                    <span className="text-amber-600 font-bold">+${Number(formData.tax || 0).toFixed(2)}</span>
++                                </div>
++                                <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center">
++                                    <span className="font-black text-slate-900 uppercase text-[10px] tracking-wider">Grand Total:</span>
++                                    <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-100">
++                                        ${Number(formData.totalAmount || 0).toFixed(2)}
++                                    </span>
++                                </div>
++                            </div>
++                        </div>
+                     )}
+ 
+                     <div className="flex justify-end pt-4 border-t border-slate-100">
+
+
+############################################################
+COMMIT: bdaf01ca3f16a494348525590c1d489a13262e4c | FILE: kaal_frontend/src/pages/company-admin/Settings.jsx
+############################################################
+commit bdaf01ca3f16a494348525590c1d489a13262e4c
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 18:31:56 2026 +0530
+
+    ///???
+
+diff --git a/kaal_frontend/src/pages/company-admin/Settings.jsx b/kaal_frontend/src/pages/company-admin/Settings.jsx
+index e259c3d..b1ddf8a 100644
+--- a/kaal_frontend/src/pages/company-admin/Settings.jsx
++++ b/kaal_frontend/src/pages/company-admin/Settings.jsx
+@@ -2,9 +2,11 @@ import {
+   Save, Lock, Camera, Shield, CheckCircle, Loader, RefreshCw, 
+   Trash2, ArrowLeft, MoreVertical, Archive, ShieldAlert,
+   MapPin, Users, Briefcase, Calendar, DollarSign, Eye,
+-  LayoutGrid, List, Search, TrendingUp
++  LayoutGrid, List, Search, TrendingUp, FileText, Building2,
++  Percent, CreditCard, Sparkles, SlidersHorizontal, Info
+ } from 'lucide-react';
+ import { useState, useEffect } from 'react';
++import { useSearchParams } from 'react-router-dom';
+ import api from '../../utils/api';
+ import { useAuth } from '../../context/AuthContext';
+ import toast from 'react-hot-toast';
+@@ -12,7 +14,9 @@ import Modal from '../../components/Modal';
+ 
+ const Settings = () => {
+   const { user, updateUserData } = useAuth();
+-  const [activeTab, setActiveTab] = useState('profile'); // 'profile', 'roles', 'archive'
++  const [searchParams, setSearchParams] = useSearchParams();
++  const initialTab = searchParams.get('tab') === 'invoice' || searchParams.get('tab') === 'template' ? 'invoice' : (searchParams.get('tab') || 'profile');
++  const [activeTab, setActiveTab] = useState(initialTab); // 'profile', 'invoice', 'roles', 'archive'
+   const [profile, setProfile] = useState({
+     name: user?.fullName || '',
+     email: user?.email || '',
+@@ -28,6 +32,13 @@ const Settings = () => {
+     confirm: ''
+   });
+ 
++  useEffect(() => {
++    const tabParam = searchParams.get('tab');
++    if (tabParam === 'invoice' || tabParam === 'template') {
++      setActiveTab('invoice');
++    }
++  }, [searchParams]);
++
+   useEffect(() => {
+     const fetchLatestProfile = async () => {
+       try {
+@@ -111,10 +122,10 @@ const Settings = () => {
+       </div>
+ 
+       {/* Tabs */}
+-      <div className="flex items-center gap-2 border-b border-slate-100 pb-px">
++      <div className="flex items-center gap-2 border-b border-slate-100 pb-px overflow-x-auto">
+         <button
+-          onClick={() => setActiveTab('profile')}
+-          className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative
++          onClick={() => { setActiveTab('profile'); setSearchParams({ tab: 'profile' }); }}
++          className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative whitespace-nowrap
+             ${activeTab === 'profile' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+         >
+           Profile & Security
+@@ -122,8 +133,19 @@ const Settings = () => {
+         </button>
+         {user?.role === 'COMPANY_OWNER' && (
+           <button
+-            onClick={() => setActiveTab('roles')}
+-            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative
++            onClick={() => { setActiveTab('invoice'); setSearchParams({ tab: 'invoice' }); }}
++            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-2 whitespace-nowrap
++              ${activeTab === 'invoice' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
++          >
++            <FileText size={16} />
++            Invoice Template
++            {activeTab === 'invoice' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full shadow-lg shadow-blue-200" />}
++          </button>
++        )}
++        {user?.role === 'COMPANY_OWNER' && (
++          <button
++            onClick={() => { setActiveTab('roles'); setSearchParams({ tab: 'roles' }); }}
++            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative whitespace-nowrap
+               ${activeTab === 'roles' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+           >
+             Role Management
+@@ -132,8 +154,8 @@ const Settings = () => {
+         )}
+         {user?.role === 'COMPANY_OWNER' && (
+           <button
+-            onClick={() => setActiveTab('archive')}
+-            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative
++            onClick={() => { setActiveTab('archive'); setSearchParams({ tab: 'archive' }); }}
++            className={`px-6 py-4 text-sm font-black uppercase tracking-[0.2em] transition-all relative whitespace-nowrap
+               ${activeTab === 'archive' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+           >
+             Project Archive
+@@ -267,6 +289,13 @@ const Settings = () => {
+           </>
+         }
+ 
++        {/* Invoice Template Section - Only for Company Admin */}
++        {activeTab === 'invoice' && user?.role === 'COMPANY_OWNER' && (
++          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
++            <InvoiceTemplateSettings />
++          </div>
++        )}
++
+         {/* Role Management Section - Only for Company Admin */}
+         {activeTab === 'roles' && user?.role === 'COMPANY_OWNER' && <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-300">
+             <h3 className="font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4 flex items-center gap-2">
+@@ -893,4 +922,379 @@ const ProjectArchive = () => {
+   );
+ };
+ 
++const InvoiceTemplateSettings = () => {
++  const [template, setTemplate] = useState({
++    companyName: '',
++    email: '',
++    phone: '',
++    address: '',
++    taxNumber: '',
++    defaultTaxRate: 15,
++    defaultPaymentTerms: 'Net 15',
++    bankDetails: '',
++    notes: '',
++    terms: ''
++  });
++  const [loading, setLoading] = useState(true);
++  const [isSaving, setIsSaving] = useState(false);
++
++  useEffect(() => {
++    const fetchTemplateSettings = async () => {
++      try {
++        setLoading(true);
++        const { data } = await api.get('/companies/my-company');
++        if (data) {
++          const inv = data.invoiceSettings || {};
++          setTemplate({
++            companyName: inv.companyName || data.name || 'KT Construction Ltd',
++            email: inv.email || data.email || 'company@gmail.com',
++            phone: inv.phone || data.phone || '1234567890',
++            address: inv.address || data.address || 'Corporate Suite 402, Apex Business Park, Indore, MP',
++            taxNumber: inv.taxNumber || '',
++            defaultTaxRate: inv.defaultTaxRate !== undefined ? inv.defaultTaxRate : 15,
++            defaultPaymentTerms: inv.defaultPaymentTerms || 'Net 15',
++            bankDetails: inv.bankDetails || 'Bank: HDFC Bank | A/C: 50200012345678 | IFSC: HDFC0000240',
++            notes: inv.notes || 'Thank you for your business. Please ensure timely payment by the due date.',
++            terms: inv.terms || 'This accounting software is designed to assist users in managing financial data such as invoices, expenses, payments, reports, and tax-related records. All information and reports generated by the system depend on the data entered by the user.'
++          });
++        }
++      } catch (error) {
++        console.error('Error fetching invoice template settings:', error);
++        toast.error('Failed to load invoice template settings.');
++      } finally {
++        setLoading(false);
++      }
++    };
++
++    fetchTemplateSettings();
++  }, []);
++
++  const handleSaveTemplate = async (e) => {
++    e.preventDefault();
++    try {
++      setIsSaving(true);
++      await api.patch('/companies/invoice-template', template);
++      toast.success('Invoice template settings updated successfully!');
++    } catch (error) {
++      console.error('Error updating invoice template:', error);
++      toast.error(error.response?.data?.message || 'Failed to update invoice template.');
++    } finally {
++      setIsSaving(false);
++    }
++  };
++
++  if (loading) {
++    return (
++      <div className="bg-white p-12 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center">
++        <div className="flex flex-col items-center gap-3">
++          <Loader className="animate-spin text-blue-600" size={32} />
++          <p className="text-slate-500 text-sm font-semibold">Loading Invoice Template Configuration...</p>
++        </div>
++      </div>
++    );
++  }
++
++  return (
++    <div className="space-y-6">
++      {/* Header Info */}
++      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-2xl text-white shadow-lg shadow-blue-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
++        <div>
++          <div className="flex items-center gap-2 mb-1">
++            <Sparkles size={18} className="text-amber-300" />
++            <h2 className="text-xl font-black tracking-tight">Invoice Template & Branding</h2>
++          </div>
++          <p className="text-blue-100 text-xs font-medium max-w-xl">
++            Configure your official company billing address, issuer details, default tax rates, and notes printed on all client invoices and PDF downloads.
++          </p>
++        </div>
++        <button
++          onClick={handleSaveTemplate}
++          disabled={isSaving}
++          className="flex items-center gap-2 bg-white text-blue-700 hover:bg-blue-50 px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md disabled:opacity-50 whitespace-nowrap"
++        >
++          {isSaving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
++          {isSaving ? 'Saving Changes...' : 'Save Template'}
++        </button>
++      </div>
++
++      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
++        {/* Form Column */}
++        <form onSubmit={handleSaveTemplate} className="lg:col-span-7 space-y-6">
++          {/* Section 1: Company / Issuer Billing Details */}
++          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
++            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
++              <Building2 size={18} className="text-blue-600" />
++              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Company / Issuer Info (Header)</h3>
++            </div>
++
++            <div>
++              <label className="block text-xs font-bold text-slate-700 mb-1">Company Display Name</label>
++              <input
++                type="text"
++                value={template.companyName}
++                onChange={(e) => setTemplate({ ...template, companyName: e.target.value })}
++                placeholder="e.g. KT Construction Ltd"
++                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition"
++              />
++            </div>
++
++            <div>
++              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
++                <span>Official Head Office / Billing Address</span>
++                <span className="text-[10px] text-blue-600 font-black bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
++                  Printed on Invoice Header
++                </span>
++              </label>
++              <textarea
++                rows={2}
++                value={template.address}
++                onChange={(e) => setTemplate({ ...template, address: e.target.value })}
++                placeholder="e.g. Corporate Suite 402, Apex Business Park, Indore, MP 452010"
++                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++              />
++              <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-medium">
++                <Info size={12} className="text-slate-400" />
++                This is your corporate company address. Individual site / delivery addresses will appear in the <strong>"Ship To"</strong> section.
++              </p>
++            </div>
++
++            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
++              <div>
++                <label className="block text-xs font-bold text-slate-700 mb-1">Billing Contact Email</label>
++                <input
++                  type="email"
++                  value={template.email}
++                  onChange={(e) => setTemplate({ ...template, email: e.target.value })}
++                  placeholder="billing@company.com"
++                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++                />
++              </div>
++              <div>
++                <label className="block text-xs font-bold text-slate-700 mb-1">Billing Phone Number</label>
++                <input
++                  type="text"
++                  value={template.phone}
++                  onChange={(e) => setTemplate({ ...template, phone: e.target.value })}
++                  placeholder="e.g. +91 98765 43210"
++                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++                />
++              </div>
++            </div>
++
++            <div>
++              <label className="block text-xs font-bold text-slate-700 mb-1">Tax ID / GSTIN / VAT Number</label>
++              <input
++                type="text"
++                value={template.taxNumber}
++                onChange={(e) => setTemplate({ ...template, taxNumber: e.target.value })}
++                placeholder="e.g. GSTIN: 23AAAAA0000A1Z5 / Tax ID: US-98765432"
++                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 uppercase tracking-wider focus:outline-none focus:border-blue-500 focus:bg-white transition"
++              />
++            </div>
++          </div>
++
++          {/* Section 2: Financial Defaults & Bank Details */}
++          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
++            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
++              <CreditCard size={18} className="text-emerald-600" />
++              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Financial & Payment Terms</h3>
++            </div>
++
++            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
++              <div>
++                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
++                  <span>Default Tax Rate (%)</span>
++                  <Percent size={14} className="text-slate-400" />
++                </label>
++                <input
++                  type="number"
++                  step="any"
++                  value={template.defaultTaxRate}
++                  onChange={(e) => setTemplate({ ...template, defaultTaxRate: e.target.value })}
++                  placeholder="15"
++                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++                />
++              </div>
++              <div>
++                <label className="block text-xs font-bold text-slate-700 mb-1">Default Payment Terms</label>
++                <input
++                  type="text"
++                  value={template.defaultPaymentTerms}
++                  onChange={(e) => setTemplate({ ...template, defaultPaymentTerms: e.target.value })}
++                  placeholder="e.g. Net 15 Days, Due on Receipt"
++                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++                />
++              </div>
++            </div>
++
++            <div>
++              <label className="block text-xs font-bold text-slate-700 mb-1">Bank Remittance & Transfer Details</label>
++              <textarea
++                rows={2}
++                value={template.bankDetails}
++                onChange={(e) => setTemplate({ ...template, bankDetails: e.target.value })}
++                placeholder="e.g. Bank: HDFC Bank | A/C: 50200012345678 | IFSC: HDFC0000240 | UPI: ktconstruction@okhdfcbank"
++                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++              />
++            </div>
++          </div>
++
++          {/* Section 3: Notes & Legal Terms */}
++          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
++            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
++              <FileText size={18} className="text-indigo-600" />
++              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Invoice Footer Notes & Terms</h3>
++            </div>
++
++            <div>
++              <label className="block text-xs font-bold text-slate-700 mb-1">Default Invoice Notes</label>
++              <textarea
++                rows={2}
++                value={template.notes}
++                onChange={(e) => setTemplate({ ...template, notes: e.target.value })}
++                placeholder="Thank you for your business. Please make payment before the due date."
++                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++              />
++            </div>
++
++            <div>
++              <label className="block text-xs font-bold text-slate-700 mb-1">Terms & Conditions Disclaimer</label>
++              <textarea
++                rows={3}
++                value={template.terms}
++                onChange={(e) => setTemplate({ ...template, terms: e.target.value })}
++                placeholder="Standard commercial and legal terms shown on invoices..."
++                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-600 focus:outline-none focus:border-blue-500 focus:bg-white transition"
++              />
++            </div>
++
++            <div className="pt-2 flex justify-end">
++              <button
++                type="submit"
++                disabled={isSaving}
++                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
++              >
++                {isSaving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
++                {isSaving ? 'Saving...' : 'Save Template Settings'}
++              </button>
++            </div>
++          </div>
++        </form>
++
++        {/* Live Preview Column */}
++        <div className="lg:col-span-5 space-y-4">
++          <div className="sticky top-6">
++            <div className="flex items-center justify-between mb-2">
++              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
++                <Eye size={14} className="text-blue-600" />
++                Live Invoice Preview
++              </span>
++              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
++                Real-time Sync
++              </span>
++            </div>
++
++            {/* Mock Invoice Card */}
++            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden text-xs">
++              <div className="p-6 space-y-6">
++                {/* Header */}
++                <div className="flex justify-between items-start gap-4">
++                  <div className="space-y-1 max-w-[60%]">
++                    <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white font-black text-xs mb-2">
++                      KT
++                    </div>
++                    <h4 className="font-black text-slate-900 text-sm leading-tight">{template.companyName || 'Company Name'}</h4>
++                    <p className="text-[11px] text-slate-500 italic">{template.email || 'billing@company.com'}</p>
++                    <p className="text-[11px] text-slate-500">{template.phone || '+1 234 567 890'}</p>
++                    <p className="text-[11px] text-slate-600 font-medium leading-relaxed">{template.address || 'Corporate Office Address'}</p>
++                    {template.taxNumber && (
++                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-0.5">
++                        Tax ID: {template.taxNumber}
++                      </p>
++                    )}
++                  </div>
++                  <div className="text-right space-y-1">
++                    <h3 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Invoice</h3>
++                    <p className="text-[10px] font-bold text-slate-400">#INV-001</p>
++                    <p className="text-[10px] font-bold text-slate-400">Issue: {new Date().toLocaleDateString()}</p>
++                    <p className="text-[10px] font-bold text-slate-400">Terms: <span className="text-slate-800">{template.defaultPaymentTerms}</span></p>
++                  </div>
++                </div>
++
++                <div className="h-px bg-slate-100" />
++
++                {/* Billing vs Shipping Info */}
++                <div className="grid grid-cols-2 gap-4 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
++                  <div className="space-y-1">
++                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">VENDOR:</span>
++                    <p className="font-bold text-slate-900 text-[11px]">Singhaniya Materials Ltd</p>
++                    <p className="text-[10px] text-slate-500">singha@materials.com</p>
++                  </div>
++                  <div className="space-y-1 text-right">
++                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block flex items-center justify-end gap-1">
++                      <span>SHIP TO:</span>
++                      <span className="text-[8px] text-blue-600 bg-blue-50 px-1 rounded font-bold">Site</span>
++                    </span>
++                    <p className="font-bold text-slate-900 text-[11px]">House 001 Construction Site</p>
++                    <p className="text-[10px] text-slate-500">14/608, Sudama Nagar, Indore, MP</p>
++                  </div>
++                </div>
++
++                {/* Table Preview */}
++                <div className="rounded-xl border border-slate-100 overflow-hidden bg-white">
++                  <table className="w-full text-left text-[10px]">
++                    <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 uppercase">
++                      <tr>
++                        <th className="p-2">Item Description</th>
++                        <th className="p-2 text-center">Qty</th>
++                        <th className="p-2 text-right">Total</th>
++                      </tr>
++                    </thead>
++                    <tbody className="divide-y divide-slate-50 text-slate-700">
++                      <tr>
++                        <td className="p-2 font-medium">Plumbing Pipes 8 mm</td>
++                        <td className="p-2 text-center">25</td>
++                        <td className="p-2 text-right font-bold text-slate-900">$125.00</td>
++                      </tr>
++                      <tr>
++                        <td className="p-2 font-medium">Plumbing Pipes 10 mm</td>
++                        <td className="p-2 text-center">15</td>
++                        <td className="p-2 text-right font-bold text-slate-900">$150.00</td>
++                      </tr>
++                    </tbody>
++                  </table>
++                </div>
++
++                {/* Financial Summary */}
++                <div className="space-y-1.5 pt-2 border-t border-slate-100 text-[11px]">
++                  <div className="flex justify-between text-slate-500">
++                    <span>Subtotal:</span>
++                    <span className="font-semibold text-slate-800">$275.00</span>
++                  </div>
++                  <div className="flex justify-between text-slate-500">
++                    <span>Estimated Tax ({template.defaultTaxRate || 15}%):</span>
++                    <span className="text-amber-600 font-bold">+${((275 * (Number(template.defaultTaxRate) || 15)) / 100).toFixed(2)}</span>
++                  </div>
++                  <div className="flex justify-between items-center pt-2 border-t border-slate-200">
++                    <span className="font-black text-slate-900 uppercase text-[10px] tracking-wider">Grand Total:</span>
++                    <span className="text-sm font-black text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-100">
++                      ${(275 + (275 * (Number(template.defaultTaxRate) || 15)) / 100).toFixed(2)}
++                    </span>
++                  </div>
++                </div>
++
++                {/* Footer Notes Preview */}
++                <div className="pt-3 border-t border-slate-100 space-y-1">
++                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Notes & Terms</span>
++                  <p className="text-[9px] text-slate-500 leading-relaxed line-clamp-2">{template.notes}</p>
++                </div>
++              </div>
++            </div>
++          </div>
++        </div>
++      </div>
++    </div>
++  );
++};
++
+ export default Settings;
+
+
+############################################################
+COMMIT: f9395a91f807754dfc7a42c05bcb94ac26eb135e | FILE: kaal_frontend/src/pages/company-admin/DrawingViewer.jsx
+############################################################
+commit f9395a91f807754dfc7a42c05bcb94ac26eb135e
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 11:41:02 2026 +0530
+
+    ts
+
+diff --git a/kaal_frontend/src/pages/company-admin/DrawingViewer.jsx b/kaal_frontend/src/pages/company-admin/DrawingViewer.jsx
+index 82ae3ac..027d9eb 100644
+--- a/kaal_frontend/src/pages/company-admin/DrawingViewer.jsx
++++ b/kaal_frontend/src/pages/company-admin/DrawingViewer.jsx
+@@ -26,6 +26,7 @@ const PEN_WIDTHS = [2, 3, 5, 8];
+ 
+ const DrawingPage = React.memo(({ 
+     pdf, 
++    imageSource,
+     pageNumber, 
+     zoom, 
+     annotations, 
+@@ -295,11 +296,41 @@ const DrawingPage = React.memo(({
+ 
+     useEffect(() => {
+         const renderPage = async () => {
++            const canvas = canvasRef.current;
++            if (!canvas) return;
++
++            if (imageSource) {
++                const img = imageSource;
++                const width = (img.naturalWidth || img.width || 1200) * zoom;
++                const height = (img.naturalHeight || img.height || 800) * zoom;
++                const context = canvas.getContext('2d');
++
++                const pixelRatio = window.devicePixelRatio || 1;
++                canvas.width = width * pixelRatio;
++                canvas.height = height * pixelRatio;
++                canvas.style.width = `${width}px`;
++                canvas.style.height = `${height}px`;
++
++                if (containerRef.current) {
++                    containerRef.current.style.width = `${width}px`;
++                    containerRef.current.style.height = `${height}px`;
++                }
++
++                if (overlayRef.current) {
++                    overlayRef.current.style.width = `${width}px`;
++                    overlayRef.current.style.height = `${height}px`;
++                }
++
++                context.save();
++                context.scale(pixelRatio, pixelRatio);
++                context.drawImage(img, 0, 0, width, height);
++                context.restore();
++                return;
++            }
++
+             if (!pdf) return;
+             const page = await pdf.getPage(pageNumber);
+             const viewport = page.getViewport({ scale: zoom });
+-            const canvas = canvasRef.current;
+-            if (!canvas) return;
+             const context = canvas.getContext('2d');
+ 
+             const pixelRatio = window.devicePixelRatio || 1;
+@@ -332,7 +363,7 @@ const DrawingPage = React.memo(({
+         };
+ 
+         renderPage();
+-    }, [pdf, pageNumber, zoom]);
++    }, [pdf, imageSource, pageNumber, zoom]);
+ 
+     const getCoordinates = (e) => {
+         const rect = overlayRef.current.getBoundingClientRect();
+@@ -879,11 +910,61 @@ const DrawingPage = React.memo(({
+     );
+ });
+ 
++const PageThumbnail = ({ pdf, imageSource, pageNumber }) => {
++    const canvasRef = useRef(null);
++
++    useEffect(() => {
++        if (!pdf) return;
++        let isCancelled = false;
++        let renderTask = null;
++
++        const renderThumbnail = async () => {
++            try {
++                const page = await pdf.getPage(pageNumber);
++                if (isCancelled) return;
++                const viewport = page.getViewport({ scale: 0.25 });
++                const canvas = canvasRef.current;
++                if (!canvas) return;
++                const context = canvas.getContext('2d');
++                canvas.width = viewport.width;
++                canvas.height = viewport.height;
++                renderTask = page.render({ canvasContext: context, viewport });
++                await renderTask.promise;
++            } catch (err) {
++                // ignore cancelled renders
++            }
++        };
++
++        renderThumbnail();
++        return () => {
++            isCancelled = true;
++            if (renderTask) renderTask.cancel();
++        };
++    }, [pdf, pageNumber]);
++
++    if (imageSource) {
++        return (
++            <img
++                src={imageSource.src}
++                alt={`Page ${pageNumber}`}
++                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
++            />
++        );
++    }
++
++    return (
++        <div className="w-full h-full flex items-center justify-center bg-slate-900">
++            <canvas ref={canvasRef} className="max-w-full max-h-full object-contain" />
++        </div>
++    );
++};
++
+ const DrawingViewer = ({ drawing, version, onClose }) => {
+     const [numPages, setNumPages] = useState(0);
+     const [currentPage, setCurrentPage] = useState(1);
+-    const [zoom, setZoom] = useState(1.5);
++    const [zoom, setZoom] = useState(1.0);
+     const [pdf, setPdf] = useState(null);
++    const [imageSource, setImageSource] = useState(null);
+     const [loading, setLoading] = useState(true);
+     const [activeTool, setActiveTool] = useState(null);
+     const [annotations, setAnnotations] = useState([]);
+@@ -902,21 +983,31 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
+     const containerRef = useRef(null);
+     const pageRefs = useRef({});
+ 
++    const isImageFile = useMemo(() => {
++        return /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(version?.fileUrl || '');
++    }, [version?.fileUrl]);
++
+     const recalculateZoomForFitWidth = useCallback(async () => {
+-        if (!pdf || !containerRef.current) return;
++        if (!containerRef.current) return;
+         try {
+-            const page = await pdf.getPage(1);
+-            const viewport = page.getViewport({ scale: 1.0 });
+             const containerWidth = containerRef.current.clientWidth;
+             const availableWidth = containerWidth - 64; // subtract p-8 padding on left and right (32px * 2)
+             if (availableWidth > 0) {
+-                const calculatedZoom = availableWidth / viewport.width;
+-                setZoom(Math.round(calculatedZoom * 100) / 100);
++                if (imageSource) {
++                    const naturalW = imageSource.naturalWidth || imageSource.width || 1200;
++                    const calculatedZoom = availableWidth / naturalW;
++                    setZoom(Math.round(calculatedZoom * 100) / 100);
++                } else if (pdf) {
++                    const page = await pdf.getPage(1);
++                    const viewport = page.getViewport({ scale: 1.0 });
++                    const calculatedZoom = availableWidth / viewport.width;
++                    setZoom(Math.round(calculatedZoom * 100) / 100);
++                }
+             }
+         } catch (err) {
+             console.error('Error recalculating zoom:', err);
+         }
+-    }, [pdf]);
++    }, [pdf, imageSource]);
+ 
+     useEffect(() => {
+         if (isFitWidth) {
+@@ -926,7 +1017,7 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
+             }, 350);
+             return () => clearTimeout(timer);
+         }
+-    }, [pdf, showThumbnails, showComments, isFitWidth, recalculateZoomForFitWidth]);
++    }, [pdf, imageSource, showThumbnails, showComments, isFitWidth, recalculateZoomForFitWidth]);
+ 
+     useEffect(() => {
+         if (!isFitWidth) return;
+@@ -938,28 +1029,44 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
+     }, [isFitWidth, recalculateZoomForFitWidth]);
+ 
+     useEffect(() => {
+-        const loadPdf = async () => {
++        const loadDocument = async () => {
+             try {
+                 setLoading(true);
+                 const url = getServerUrl(version.fileUrl);
+-                const loadingTask = pdfjsLib.getDocument(url);
+-                const pdfInstance = await loadingTask.promise;
+-                setPdf(pdfInstance);
+-                setNumPages(pdfInstance.numPages);
++
++                if (isImageFile) {
++                    const img = new Image();
++                    img.crossOrigin = 'anonymous';
++                    await new Promise((resolve, reject) => {
++                        img.onload = () => resolve(img);
++                        img.onerror = () => reject(new Error('Failed to load drawing image'));
++                        img.src = url;
++                    });
++                    setImageSource(img);
++                    setPdf(null);
++                    setNumPages(1);
++                    setCurrentPage(1);
++                } else {
++                    const loadingTask = pdfjsLib.getDocument(url);
++                    const pdfInstance = await loadingTask.promise;
++                    setPdf(pdfInstance);
++                    setImageSource(null);
++                    setNumPages(pdfInstance.numPages);
++                }
+ 
+                 const annRes = await api.get(`/drawings/${drawing._id}/annotations`, {
+                     params: { versionId: version._id }
+                 });
+-                setAnnotations(annRes.data);
++                setAnnotations(annRes.data || []);
+             } catch (err) {
+-                console.error('Error loading PDF:', err);
+-                alert(`Failed to load PDF: ${err.message}`);
++                console.error('Error loading drawing:', err);
++                alert(`Failed to load drawing: ${err.message}`);
+             } finally {
+                 setLoading(false);
+             }
+         };
+-        if (version?.fileUrl) loadPdf();
+-    }, [drawing._id, version]);
++        if (version?.fileUrl) loadDocument();
++    }, [drawing._id, version, isImageFile]);
+ 
+     const handleSaveAnnotation = async (data) => {
+         try {
+@@ -1011,10 +1118,69 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
+     };
+ 
+     const handleExportPDF = async () => {
+-        if (!pdf) return;
++        if (!pdf && !imageSource) return;
+         try {
+             setLoading(true);
+             const exportScale = 1.5;
++
++            if (imageSource) {
++                const width = (imageSource.naturalWidth || 1200) * exportScale;
++                const height = (imageSource.naturalHeight || 800) * exportScale;
++                const doc = new jsPDF({
++                    orientation: width > height ? 'landscape' : 'portrait',
++                    unit: 'px',
++                    format: [width, height],
++                    compress: true
++                });
++
++                const canvas = document.createElement('canvas');
++                const context = canvas.getContext('2d');
++                canvas.width = width;
++                canvas.height = height;
++                context.drawImage(imageSource, 0, 0, width, height);
++
++                const pageAnns = annotations.filter(a => a.pageNumber === 1);
++                pageAnns.forEach(ann => {
++                    const s = exportScale;
++                    const { x1, y1, x2, y2, points } = ann.coordinates || {};
++                    context.lineWidth = 2 * s;
++
++                    if (ann.type === 'pen' && points && points.length >= 2) {
++                        context.strokeStyle = ann.coordinates.penColor || ann.penColor || '#ef4444';
++                        context.lineWidth = (ann.coordinates.penWidth || ann.penWidth || 3) * s;
++                        context.lineCap = 'round';
++                        context.lineJoin = 'round';
++                        context.beginPath();
++                        context.moveTo(points[0].x * s, points[0].y * s);
++                        for (let p = 1; p < points.length; p++) {
++                            context.lineTo(points[p].x * s, points[p].y * s);
++                        }
++                        context.stroke();
++                    } else if (ann.type === 'box') {
++                        context.strokeStyle = '#ef4444';
++                        context.strokeRect(Math.min(x1, x2) * s, Math.min(y1, y2) * s, Math.abs(x2 - x1) * s, Math.abs(y2 - y1) * s);
++                    } else if (ann.type === 'highlight') {
++                        context.fillStyle = 'rgba(234, 179, 8, 0.4)';
++                        context.fillRect(Math.min(x1, x2) * s, Math.min(y1, y2) * s, Math.abs(x2 - x1) * s, Math.abs(y2 - y1) * s);
++                    } else if (ann.type === 'line') {
++                        context.strokeStyle = '#ef4444';
++                        context.beginPath();
++                        context.moveTo(x1 * s, y1 * s);
++                        context.lineTo(x2 * s, y2 * s);
++                        context.stroke();
++                    } else if (ann.type === 'text') {
++                        context.font = `bold ${12 * s}px sans-serif`;
++                        context.fillStyle = '#3b82f6';
++                        context.fillText(ann.content || '', x1 * s, y1 * s);
++                    }
++                });
++
++                const imgData = canvas.toDataURL('image/jpeg', 0.95);
++                doc.addImage(imgData, 'JPEG', 0, 0, width, height);
++                doc.save(`${drawing.title || 'Drawing'}_annotated.pdf`);
++                return;
++            }
++
+             const firstPage = await pdf.getPage(1);
+             const firstViewport = firstPage.getViewport({ scale: exportScale });
+ 
+@@ -1038,7 +1204,7 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
+                 const pageAnns = annotations.filter(a => a.pageNumber === i);
+                 pageAnns.forEach(ann => {
+                     const s = exportScale;
+-                    const { x1, y1, x2, y2, x, y, points } = ann.coordinates;
++                    const { x1, y1, x2, y2, x, y, points } = ann.coordinates || {};
+                     context.lineWidth = 2 * s;
+ 
+                     if (ann.type === 'pen' && points && points.length >= 2) {
+@@ -1252,11 +1418,20 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
+                         <div 
+                             key={i + 1} 
+                             onClick={() => scrollToPage(i + 1)}
+-                            className={`aspect-[3/4] rounded-lg border-2 cursor-pointer transition-all hover:border-blue-400 relative group overflow-hidden
+-                                ${currentPage === i + 1 ? 'border-blue-600 ring-2 ring-blue-600/20' : 'border-white/5 bg-slate-900/50'}`}
++                            className={`aspect-[3/4] rounded-xl border-2 cursor-pointer transition-all hover:border-blue-400 relative group overflow-hidden bg-slate-900 shadow-md ${
++                                currentPage === i + 1 ? 'border-blue-500 ring-4 ring-blue-500/20 shadow-blue-500/20' : 'border-white/10 hover:border-white/20'
++                            }`}
+                         >
+-                            <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-500 opacity-20 group-hover:opacity-40 transition">PAGE {i + 1}</div>
+-                            <div className="absolute bottom-1 right-1 bg-black/60 px-1.5 rounded text-[8px] font-black text-white">{i + 1}</div>
++                            <PageThumbnail pdf={pdf} imageSource={imageSource} pageNumber={i + 1} />
++                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-80 group-hover:opacity-100 transition-opacity pointer-events-none" />
++                            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-none">
++                                <span className="text-[10px] font-black uppercase tracking-wider text-white drop-shadow">
++                                    Page {i + 1}
++                                </span>
++                                <span className="bg-blue-600 text-white px-2 py-0.5 rounded-md text-[9px] font-black shadow">
++                                    {i + 1}
++                                </span>
++                            </div>
+                         </div>
+                     ))}
+                 </div>
+@@ -1277,6 +1452,7 @@ const DrawingViewer = ({ drawing, version, onClose }) => {
+                         <div key={i + 1} ref={el => pageRefs.current[i + 1] = el}>
+                             <DrawingPage 
+                                 pdf={pdf}
++                                imageSource={imageSource}
+                                 pageNumber={i + 1}
+                                 zoom={zoom}
+                                 annotations={annotations}
+
+
+############################################################
+COMMIT: f9395a91f807754dfc7a42c05bcb94ac26eb135e | FILE: kaal_frontend/src/pages/company-admin/Photos.jsx
+############################################################
+commit f9395a91f807754dfc7a42c05bcb94ac26eb135e
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 11:41:02 2026 +0530
+
+    ts
+
+diff --git a/kaal_frontend/src/pages/company-admin/Photos.jsx b/kaal_frontend/src/pages/company-admin/Photos.jsx
+index c338a2c..e9aed38 100644
+--- a/kaal_frontend/src/pages/company-admin/Photos.jsx
++++ b/kaal_frontend/src/pages/company-admin/Photos.jsx
+@@ -129,7 +129,7 @@ const Lightbox = ({ photo, onClose, onDelete }) => {
+ };
+ 
+ const Photos = () => {
+-    const { user } = useAuth();
++    const { user, socket } = useAuth();
+     const [photos, setPhotos] = useState([]);
+     const [projects, setProjects] = useState([]);
+     const [loading, setLoading] = useState(true);
+@@ -160,6 +160,26 @@ const Photos = () => {
+ 
+     useEffect(() => {
+         fetchData();
++
++        if (socket) {
++            const handleCreated = (newPhoto) => {
++                setPhotos(prev => {
++                    if (prev.some(p => p.imageUrl === newPhoto.imageUrl)) return prev;
++                    return [newPhoto, ...prev];
++                });
++            };
++            const handleDeleted = ({ _id, imageUrl }) => {
++                setPhotos(prev => prev.filter(p => p._id !== _id && (imageUrl ? p.imageUrl !== imageUrl : true)));
++            };
++
++            socket.on('photo_created', handleCreated);
++            socket.on('photo_deleted', handleDeleted);
++
++            return () => {
++                socket.off('photo_created', handleCreated);
++                socket.off('photo_deleted', handleDeleted);
++            };
++        }
+     }, []);
+ 
+     const filteredPhotos = photos.filter(p => {
+@@ -171,7 +191,8 @@ const Photos = () => {
+ 
+         // Project filtering
+         if (filterProject !== 'All') {
+-            return p.projectId?._id === filterProject;
++            const pProjId = typeof p.projectId === 'object' ? p.projectId?._id : p.projectId;
++            return String(pProjId) === String(filterProject);
+         }
+ 
+         return true;
+@@ -226,15 +247,17 @@ const Photos = () => {
+     const confirmDelete = async () => {
+         if (!photoToDelete) return;
+         try {
+-            setUploading(true); // Using uploading state for delete loader too or create separate
+-            await api.delete(`/photos/${photoToDelete._id}`);
+-            setPhotos(photos.filter(p => p._id !== photoToDelete._id));
++            setUploading(true);
++            await api.delete(`/photos/${encodeURIComponent(photoToDelete._id)}`, {
++                data: { imageUrl: photoToDelete.imageUrl }
++            });
++            setPhotos(prev => prev.filter(p => p._id !== photoToDelete._id));
+             setSelectedPhoto(null);
+             setIsDeleteModalOpen(false);
+             setPhotoToDelete(null);
+         } catch (error) {
+             console.error('Error deleting photo:', error);
+-            alert('Error deleting photo');
++            alert(error.response?.data?.message || 'Error deleting photo. Please try again.');
+         } finally {
+             setUploading(false);
+         }
+@@ -277,9 +300,19 @@ const Photos = () => {
+                     {filteredPhotos.length > 0 ? (
+                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                             {filteredPhotos.map((photo) => (
+-                                <div key={photo._id} className="group relative bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition">
++                                <div key={photo._id} className="group relative bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md transition">
+                                     <div className="aspect-square relative overflow-hidden bg-slate-100 cursor-pointer" onClick={() => setSelectedPhoto(photo)}>
+                                         <img src={getServerUrl(photo.imageUrl)} alt={photo.description} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
++                                        <div className="absolute top-2 left-2 z-10">
++                                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm text-white ${
++                                                photo.sourceType === 'Daily Log' ? 'bg-amber-600/90' :
++                                                photo.sourceType === 'Issue / Snag' ? 'bg-red-600/90' :
++                                                photo.sourceType === 'Project Update' ? 'bg-indigo-600/90' :
++                                                'bg-blue-600/90'
++                                            }`}>
++                                                {photo.sourceType || 'Site Photo'}
++                                            </span>
++                                        </div>
+                                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                             <div className="bg-white/90 p-2 rounded-full text-slate-800 hover:text-blue-600 font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition">
+                                                 <Maximize2 size={20} />
+@@ -288,15 +321,15 @@ const Photos = () => {
+                                     </div>
+                                     <div className="p-3">
+                                         <div className="flex justify-between items-start">
+-                                            <h4 className="font-semibold text-slate-800 text-sm truncate pr-2">{photo.description || 'Untitled'}</h4>
+-                                            <button onClick={() => handleDelete(photo)} className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-slate-50 transition">
++                                            <h4 className="font-semibold text-slate-800 text-sm truncate pr-2" title={photo.description}>{photo.description || 'Untitled'}</h4>
++                                            <button onClick={() => handleDelete(photo)} className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-slate-50 transition" title="Delete">
+                                                 <Trash2 size={16} />
+                                             </button>
+                                         </div>
+-                                        <p className="text-xs text-blue-600 font-medium">{photo.projectId?.name || 'General'}</p>
+-                                        <div className="flex justify-between items-center mt-2 text-xs text-slate-400">
++                                        <p className="text-xs text-blue-600 font-bold mt-0.5">{photo.projectId?.name || 'General'}</p>
++                                        <div className="flex justify-between items-center mt-2 text-[11px] text-slate-400 font-medium">
+                                             <span>{new Date(photo.createdAt).toLocaleDateString()}</span>
+-                                            <span>by {photo.uploadedBy?.fullName || '---'}</span>
++                                            <span className="truncate max-w-[110px]">by {photo.uploadedBy?.fullName || 'Crew'}</span>
+                                         </div>
+                                     </div>
+                                 </div>
+
+
+############################################################
+COMMIT: f9395a91f807754dfc7a42c05bcb94ac26eb135e | FILE: kaal_backend (1)/controllers/photoController.js
+############################################################
+commit f9395a91f807754dfc7a42c05bcb94ac26eb135e
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 11:41:02 2026 +0530
+
+    ts
+
+diff --git a/kaal_backend (1)/controllers/photoController.js b/kaal_backend (1)/controllers/photoController.js
+index 52b4ee2..36c3812 100644
+--- a/kaal_backend (1)/controllers/photoController.js	
++++ b/kaal_backend (1)/controllers/photoController.js	
+@@ -1,103 +1,150 @@
+ const Photo = require('../models/Photo');
+ const Project = require('../models/Project');
+ const Job = require('../models/Job');
++const DailyLog = require('../models/DailyLog');
++const Issue = require('../models/Issue');
++const ProjectUpdate = require('../models/ProjectUpdate');
+ const mongoose = require('mongoose');
+ 
+-// @desc    Get all photos
++// @desc    Get all photos (Centralized gallery combining Photo, DailyLog, Issue, and ProjectUpdate)
+ // @route   GET /api/photos
+ // @access  Private
+ const getPhotos = async (req, res, next) => {
+     try {
+-        const query = { companyId: req.user.companyId };
++        const companyId = req.user.companyId;
++        const requestedProjectId = req.query.projectId;
+ 
+-        // Role-based Visibility Logic
+-        if (['PM', 'FOREMAN', 'WORKER', 'CLIENT'].includes(req.user.role)) {
+-            if (req.user.role === 'CLIENT') {
+-                const clientProjects = await Project.find({
+-                    companyId: req.user.companyId,
+-                    clientId: req.user._id
+-                }).select('_id').lean();
+-                const clientProjectIds = clientProjects.map(p => p._id.toString());
+-                
+-                if (req.query.projectId) {
+-                    if (!clientProjectIds.includes(req.query.projectId)) {
+-                        return res.status(403).json({ message: 'Not authorized for this project' });
+-                    }
+-                    query.projectId = req.query.projectId;
+-                } else {
+-                    query.projectId = { $in: clientProjectIds };
+-                }
+-            } else {
+-                const jobFilter = { companyId: req.user.companyId };
+-
+-                if (req.user.role === 'PM') {
+-                    jobFilter.$or = [
+-                        { foremanId: req.user._id },
+-                        { createdBy: req.user._id }
+-                    ];
+-                } else if (req.user.role === 'FOREMAN') {
+-                    jobFilter.foremanId = req.user._id;
+-                } else {
+-                    jobFilter.assignedWorkers = req.user._id;
+-                }
+-
+-                const assignedJobs = await Job.find(jobFilter).select('projectId').lean();
+-                const jobProjectIds = assignedJobs
+-                    .filter(j => j.projectId)
+-                    .map(j => j.projectId.toString());
+-
+-                let allowedProjectIds = [];
+-                if (req.user.role === 'PM') {
+-                    const directProjects = await Project.find({
+-                        companyId: req.user.companyId,
+-                        $or: [
+-                            { pmIds: req.user._id },
+-                            { pmId: req.user._id },
+-                            { createdBy: req.user._id }
+-                        ]
+-                    }).select('_id').lean();
+-                    const directProjectIds = directProjects.map(p => p._id.toString());
+-                    allowedProjectIds = [...new Set([...jobProjectIds, ...directProjectIds])];
+-                } else {
+-                    allowedProjectIds = jobProjectIds;
+-                }
+-
+-                if (req.query.projectId) {
+-                    if (!allowedProjectIds.includes(req.query.projectId)) {
+-                        // If they don't have project assignment, they can still view their own uploads on this project
+-                        query.projectId = req.query.projectId;
+-                        query.uploadedBy = req.user._id;
+-                    } else {
+-                        query.projectId = req.query.projectId;
+-                        query.$or = [
+-                            { uploadedBy: req.user._id },
+-                            { projectId: req.query.projectId }
+-                        ];
+-                    }
+-                } else {
+-                    query.$or = [
+-                        { uploadedBy: req.user._id },
+-                        { projectId: { $in: allowedProjectIds } }
+-                    ];
+-                }
+-            }
+-        } else {
+-            // Admin/Owner can view any project
+-            if (req.query.projectId) {
+-                query.projectId = req.query.projectId;
+-            }
++        let projectFilter = {};
++        if (requestedProjectId && requestedProjectId !== 'All') {
++            projectFilter = { projectId: requestedProjectId };
+         }
+ 
+-        if (req.query.taskId) query.taskId = req.query.taskId;
++        // 1. Direct Photos from Photo collection
++        const photoQuery = { companyId, ...projectFilter };
++        if (req.query.taskId) photoQuery.taskId = req.query.taskId;
+ 
+-        const photos = await Photo.find(query)
+-            .select('-companyId')
++        const directPhotosPromise = Photo.find(photoQuery)
+             .populate('projectId', 'name')
+             .populate('uploadedBy', 'fullName role')
+             .sort({ createdAt: -1 })
+             .lean();
+ 
+-        res.json(photos);
++        // 2. Photos from Daily Logs
++        const dlQuery = { companyId, photos: { $exists: true, $ne: [] }, ...projectFilter };
++        const dailyLogsPromise = DailyLog.find(dlQuery)
++            .populate('projectId', 'name')
++            .populate('reportedBy', 'fullName role')
++            .sort({ createdAt: -1 })
++            .lean();
++
++        // 3. Photos from Issues
++        const issueQuery = { companyId, images: { $exists: true, $ne: [] }, ...projectFilter };
++        const issuesPromise = Issue.find(issueQuery)
++            .populate('projectId', 'name')
++            .populate('reportedBy', 'fullName role')
++            .sort({ createdAt: -1 })
++            .lean();
++
++        // 4. Photos from ProjectUpdates
++        const updateQuery = { images: { $exists: true, $ne: [] } };
++        if (requestedProjectId && requestedProjectId !== 'All') {
++            updateQuery.projectId = requestedProjectId;
++        }
++        const updatesPromise = ProjectUpdate.find(updateQuery)
++            .populate('projectId', 'name companyId')
++            .populate('createdBy', 'fullName role')
++            .sort({ createdAt: -1 })
++            .lean();
++
++        const [directPhotos, dailyLogs, issues, projectUpdates] = await Promise.all([
++            directPhotosPromise.catch(() => []),
++            dailyLogsPromise.catch(() => []),
++            issuesPromise.catch(() => []),
++            updatesPromise.catch(() => [])
++        ]);
++
++        const allPhotos = [];
++        const seenUrls = new Set();
++
++        // Add Direct Photos
++        (directPhotos || []).forEach(p => {
++            if (p.imageUrl && !seenUrls.has(p.imageUrl)) {
++                seenUrls.add(p.imageUrl);
++                allPhotos.push({
++                    ...p,
++                    sourceType: 'Site Photo',
++                    sourceId: p._id
++                });
++            }
++        });
++
++        // Add Daily Log Photos
++        (dailyLogs || []).forEach(dl => {
++            (dl.photos || []).forEach((photoUrl, index) => {
++                if (photoUrl && !seenUrls.has(photoUrl)) {
++                    seenUrls.add(photoUrl);
++                    allPhotos.push({
++                        _id: `dl-${dl._id}-${index}`,
++                        sourceId: dl._id,
++                        sourceType: 'Daily Log',
++                        imageUrl: photoUrl,
++                        projectId: dl.projectId || { name: 'Site Progress' },
++                        uploadedBy: dl.reportedBy || { fullName: 'Site Supervisor' },
++                        description: dl.workPerformed ? `Daily Log: ${dl.workPerformed}` : 'Daily Log Progress Photo',
++                        createdAt: dl.date || dl.createdAt,
++                        timestampTaken: dl.date || dl.createdAt
++                    });
++                }
++            });
++        });
++
++        // Add Issue Images (filter out PDFs)
++        (issues || []).forEach(iss => {
++            (iss.images || []).forEach((imgUrl, index) => {
++                if (imgUrl && !imgUrl.toLowerCase().includes('.pdf') && !seenUrls.has(imgUrl)) {
++                    seenUrls.add(imgUrl);
++                    allPhotos.push({
++                        _id: `issue-${iss._id}-${index}`,
++                        sourceId: iss._id,
++                        sourceType: 'Issue / Snag',
++                        imageUrl: imgUrl,
++                        projectId: iss.projectId || { name: 'General' },
++                        uploadedBy: iss.reportedBy || { fullName: 'Site Inspector' },
++                        description: `Snag: ${iss.title}`,
++                        createdAt: iss.createdAt,
++                        timestampTaken: iss.createdAt
++                    });
++                }
++            });
++        });
++
++        // Add Project Update Images
++        (projectUpdates || []).forEach(upd => {
++            if (upd.projectId?.companyId && String(upd.projectId.companyId) !== String(companyId)) {
++                return;
++            }
++            (upd.images || []).forEach((imgUrl, index) => {
++                if (imgUrl && !seenUrls.has(imgUrl)) {
++                    seenUrls.add(imgUrl);
++                    allPhotos.push({
++                        _id: `upd-${upd._id}-${index}`,
++                        sourceId: upd._id,
++                        sourceType: 'Project Update',
++                        imageUrl: imgUrl,
++                        projectId: upd.projectId || { name: 'Project Update' },
++                        uploadedBy: upd.createdBy || { fullName: 'Project Manager' },
++                        description: `Update: ${upd.title}`,
++                        createdAt: upd.date || upd.createdAt,
++                        timestampTaken: upd.date || upd.createdAt
++                    });
++                }
++            });
++        });
++
++        // Sort all photos chronologically descending
++        allPhotos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
++
++        res.json(allPhotos);
+     } catch (error) {
+         next(error);
+     }
+@@ -164,6 +211,13 @@ const uploadPhoto = async (req, res, next) => {
+             .sort({ createdAt: -1 })
+             .lean();
+ 
++        const io = req.app.get('io');
++        if (io) {
++            populated.forEach(p => {
++                io.emit('photo_created', { ...p, sourceType: 'Site Photo' });
++            });
++        }
++
+         res.status(201).json(populated);
+     } catch (error) {
+         next(error);
+@@ -175,18 +229,83 @@ const uploadPhoto = async (req, res, next) => {
+ // @access  Private
+ const deletePhoto = async (req, res, next) => {
+     try {
+-        const photo = await Photo.findOne({ _id: req.params.id, companyId: req.user.companyId });
++        const id = req.params.id;
++        const targetImageUrl = req.body?.imageUrl;
++
++        // 1. If it's a virtual ID from DailyLog
++        if (id.startsWith('dl-')) {
++            const parts = id.split('-'); // dl-<dailyLogId>-<index>
++            const dlId = parts[1];
++            const index = parseInt(parts[2], 10);
++            
++            if (mongoose.Types.ObjectId.isValid(dlId)) {
++                const dl = await DailyLog.findOne({ _id: dlId, companyId: req.user.companyId });
++                if (dl && Array.isArray(dl.photos)) {
++                    if (targetImageUrl) {
++                        dl.photos = dl.photos.filter(url => url !== targetImageUrl);
++                    } else if (index >= 0 && index < dl.photos.length) {
++                        dl.photos.splice(index, 1);
++                    }
++                    await dl.save();
++                }
++            }
++            return res.json({ message: 'Photo removed from Daily Log' });
++        }
++
++        // 2. If it's a virtual ID from Issue
++        if (id.startsWith('issue-')) {
++            const parts = id.split('-'); // issue-<issueId>-<index>
++            const issueId = parts[1];
++            const index = parseInt(parts[2], 10);
+ 
+-        if (!photo) {
+-            res.status(404);
+-            throw new Error('Photo not found');
++            if (mongoose.Types.ObjectId.isValid(issueId)) {
++                const issue = await Issue.findOne({ _id: issueId, companyId: req.user.companyId });
++                if (issue && Array.isArray(issue.images)) {
++                    if (targetImageUrl) {
++                        issue.images = issue.images.filter(url => url !== targetImageUrl);
++                    } else if (index >= 0 && index < issue.images.length) {
++                        issue.images.splice(index, 1);
++                    }
++                    await issue.save();
++                }
++            }
++            return res.json({ message: 'Photo removed from Issue' });
+         }
+ 
+-        // Ideally, delete the physical file here too
+-        // if (photo.imageUrl.includes('uploads/')) { ... }
++        // 3. If it's a virtual ID from ProjectUpdate
++        if (id.startsWith('upd-')) {
++            const parts = id.split('-'); // upd-<updId>-<index>
++            const updId = parts[1];
++            const index = parseInt(parts[2], 10);
++
++            if (mongoose.Types.ObjectId.isValid(updId)) {
++                const upd = await ProjectUpdate.findById(updId);
++                if (upd && Array.isArray(upd.images)) {
++                    if (targetImageUrl) {
++                        upd.images = upd.images.filter(url => url !== targetImageUrl);
++                    } else if (index >= 0 && index < upd.images.length) {
++                        upd.images.splice(index, 1);
++                    }
++                    await upd.save();
++                }
++            }
++            return res.json({ message: 'Photo removed from Project Update' });
++        }
++
++        // 4. If it's a regular Photo document
++        if (mongoose.Types.ObjectId.isValid(id)) {
++            const photo = await Photo.findOne({ _id: id, companyId: req.user.companyId });
++            if (photo) {
++                await Photo.findByIdAndDelete(id);
++            }
++        }
++
++        const io = req.app.get('io');
++        if (io) {
++            io.emit('photo_deleted', { _id: id, imageUrl: targetImageUrl });
++        }
+ 
+-        await Photo.findByIdAndDelete(req.params.id);
+-        res.json({ message: 'Photo removed' });
++        res.json({ message: 'Photo removed successfully' });
+     } catch (error) {
+         next(error);
+     }
+
+
+############################################################
+COMMIT: f72fcff4e6b8994582be00c0a88929da95eb1b3e | FILE: kaal_frontend/src/pages/company-admin/TradeManagement.jsx
+############################################################
+commit f72fcff4e6b8994582be00c0a88929da95eb1b3e
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 11:41:45 2026 +0530
+
+    k
+
+diff --git a/kaal_frontend/src/pages/company-admin/TradeManagement.jsx b/kaal_frontend/src/pages/company-admin/TradeManagement.jsx
+index 88c2036..6f3bc3f 100644
+--- a/kaal_frontend/src/pages/company-admin/TradeManagement.jsx
++++ b/kaal_frontend/src/pages/company-admin/TradeManagement.jsx
+@@ -28,7 +28,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
+ };
+ 
+ const TradeManagement = () => {
+-    const { user } = useAuth();
++    const { user, socket } = useAuth();
+     const [trades, setTrades] = useState([]);
+     const [loading, setLoading] = useState(true);
+     const [isModalOpen, setIsModalOpen] = useState(false);
+@@ -51,6 +51,7 @@ const TradeManagement = () => {
+         phone: '',
+         status: 'active'
+     });
++    const [existingAttachments, setExistingAttachments] = useState([]);
+     const [taskAttachments, setTaskAttachments] = useState([]); // Pending new attachments
+ 
+     const [filters, setFilters] = useState({
+@@ -67,7 +68,7 @@ const TradeManagement = () => {
+         try {
+             setLoading(true);
+             const res = await api.get('/vendors');
+-            setTrades(res.data);
++            setTrades(res.data || []);
+         } catch (err) {
+             console.error('Error fetching trades:', err);
+         } finally {
+@@ -78,7 +79,7 @@ const TradeManagement = () => {
+     const fetchBids = async () => {
+         try {
+             const res = await api.get('/vendors/bids');
+-            setBids(res.data);
++            setBids(res.data || []);
+         } catch (err) {
+             console.error('Error fetching bids:', err);
+         }
+@@ -87,7 +88,21 @@ const TradeManagement = () => {
+     useEffect(() => {
+         fetchTrades();
+         fetchBids();
+-    }, []);
++
++        if (!socket) return;
++        const onVendorEvent = () => {
++            fetchTrades();
++        };
++        socket.on('vendor_created', onVendorEvent);
++        socket.on('vendor_updated', onVendorEvent);
++        socket.on('vendor_deleted', onVendorEvent);
++
++        return () => {
++            socket.off('vendor_created', onVendorEvent);
++            socket.off('vendor_updated', onVendorEvent);
++            socket.off('vendor_deleted', onVendorEvent);
++        };
++    }, [socket]);
+ 
+     const handleSave = async (e) => {
+         e.preventDefault();
+@@ -104,7 +119,12 @@ const TradeManagement = () => {
+                 }
+             });
+ 
+-            // Append files
++            // Retained existing attachments when editing
++            if (editingId) {
++                data.append('keptAttachments', JSON.stringify(existingAttachments));
++            }
++
++            // Append newly uploaded files
+             taskAttachments.forEach(file => {
+                 data.append('files', file);
+             });
+@@ -121,6 +141,7 @@ const TradeManagement = () => {
+ 
+             setIsModalOpen(false);
+             setEditingId(null);
++            setExistingAttachments([]);
+             setTaskAttachments([]);
+             setFormData({
+                 name: '', category: 'Flooring', customCategory: '',
+@@ -137,6 +158,8 @@ const TradeManagement = () => {
+ 
+     const handleEdit = (trade) => {
+         setEditingId(trade._id);
++        setExistingAttachments(trade.attachments || []);
++        setTaskAttachments([]);
+         setFormData({
+             name: trade.name,
+             category: categories.includes(trade.category) ? trade.category : 'Other',
+@@ -268,6 +291,8 @@ const TradeManagement = () => {
+                             <button
+                                 onClick={() => {
+                                     setEditingId(null);
++                                    setExistingAttachments([]);
++                                    setTaskAttachments([]);
+                                     setFormData({ name: '', category: 'Flooring', customCategory: '', contactPerson: '', email: '', phone: '', status: 'active' });
+                                     setIsModalOpen(true);
+                                 }}
+@@ -338,6 +363,15 @@ const TradeManagement = () => {
+                                             <tr key={trade._id} className="hover:bg-slate-50 transition group">
+                                                 <td className="px-6 py-4">
+                                                     <div className="font-bold text-slate-800">{trade.name}</div>
++                                                    {trade.attachments && trade.attachments.length > 0 ? (
++                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 mt-1">
++                                                            <ShieldCheck size={10} /> {trade.attachments.length} {trade.attachments.length === 1 ? 'doc' : 'docs'}
++                                                        </span>
++                                                    ) : (
++                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 mt-1">
++                                                            No docs
++                                                        </span>
++                                                    )}
+                                                 </td>
+                                                 <td className="px-6 py-4">
+                                                     <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-bold uppercase tracking-tight">
+@@ -573,13 +607,21 @@ const TradeManagement = () => {
+                         </label>
+                         <div className="flex flex-wrap gap-2">
+                             {/* Existing Files if editing */}
+-                            {editingId && trades.find(t => t._id === editingId)?.attachments?.map((file, idx) => (
++                            {editingId && existingAttachments.map((file, idx) => (
+                                 <div key={idx} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                                     <FileText size={14} className="text-blue-500" />
+                                     <span className="font-bold text-slate-600 truncate max-w-[100px]">{file.name}</span>
+                                     <a href={getServerUrl(file.url)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700">
+                                         <ExternalLink size={14} />
+                                     </a>
++                                    <button
++                                        type="button"
++                                        onClick={() => setExistingAttachments(prev => prev.filter((_, i) => i !== idx))}
++                                        className="text-slate-400 hover:text-red-500 transition"
++                                        title="Remove file"
++                                    >
++                                        <X size={14} />
++                                    </button>
+                                 </div>
+                             ))}
+ 
+
+
+############################################################
+COMMIT: 7c7a3be2f6d7628c77532caada1157d5f8c32d97 | FILE: kaal_backend (1)/sync_all_job_progress.js
+############################################################
+commit 7c7a3be2f6d7628c77532caada1157d5f8c32d97
+Author: Dhruv_0007 <dwivedid544@gmail.com>
+Date:   Sat Aug 15 13:20:14 2026 +0530
+
+    ????
+
+diff --git a/kaal_backend (1)/sync_all_job_progress.js b/kaal_backend (1)/sync_all_job_progress.js
+new file mode 100644
+index 0000000..2a5e649
+--- /dev/null
++++ b/kaal_backend (1)/sync_all_job_progress.js	
+@@ -0,0 +1,28 @@
++const mongoose = require('mongoose');
++const Job = require('./models/Job');
++const { updateJobProgress } = require('./controllers/jobTaskController');
++require('dotenv').config();
++
++const syncAll = async () => {
++    try {
++        await mongoose.connect(process.env.MONGO_URI);
++        console.log('Connected to MongoDB');
++
++        const jobs = await Job.find({});
++        console.log(`Recalculating progress for ${jobs.length} jobs...`);
++
++        for (const job of jobs) {
++            await updateJobProgress(job._id);
++            const updated = await Job.findById(job._id);
++            console.log(`Job "${job.name}": Progress ${updated?.progress || 0}%, Status ${updated?.status}`);
++        }
++
++        console.log('All jobs and projects synced successfully!');
++        process.exit(0);
++    } catch (err) {
++        console.error('Error syncing:', err);
++        process.exit(1);
++    }
++};
++
++syncAll();
+

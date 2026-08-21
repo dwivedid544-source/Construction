@@ -1,0 +1,67 @@
+[DIFFERS] backnd/controllers/authController.js | Commit size: 21583, Current: 32908
+[DIFFERS] backnd/controllers/chatController.js | Commit size: 43549, Current: 14517
+[DIFFERS] backnd/controllers/dailyLogController.js | Commit size: 9968, Current: 10154
+[DIFFERS] backnd/controllers/drawingController.js | Commit size: 10338, Current: 8213
+[DIFFERS] backnd/controllers/issueController.js | Commit size: 5053, Current: 3557
+[DIFFERS] backnd/controllers/jobController.js | Commit size: 26550, Current: 28902
+[DIFFERS] backnd/controllers/payrollController.js | Commit size: 22817, Current: 11417
+[DIFFERS] backnd/controllers/photoController.js | Commit size: 12398, Current: 5308
+[DIFFERS] backnd/controllers/reportController.js | Commit size: 66291, Current: 6498
+[DIFFERS] backnd/controllers/timeLogController.js | Commit size: 15003, Current: 13957
+[DIFFERS] backnd/controllers/vendorController.js | Commit size: 8830, Current: 8405
+[DIFFERS] backnd/middlewares/authMiddleware.js | Commit size: 4080, Current: 4425
+[DIFFERS] backnd/models/DailyLog.js | Commit size: 1341, Current: 1441
+[DIFFERS] backnd/models/Vendor.js | Commit size: 978, Current: 766
+[DIFFERS] backnd/server.js | Commit size: 11242, Current: 8994
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/file-1786706378692-918037703.jpg -> backnd/uploads/file-1786706378692-918037703.jpg (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/files-1786770677244-102253651.png -> backnd/uploads/files-1786770677244-102253651.png (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/files-1786771366237-608353557.png -> backnd/uploads/files-1786771366237-608353557.png (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/images-1786702741772-836930322.jpg -> backnd/uploads/images-1786702741772-836930322.jpg (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/photos-1786704656870-347120848.webp -> backnd/uploads/photos-1786704656870-347120848.webp (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/photos-1786704656871-806420280.jpg -> backnd/uploads/photos-1786704656871-806420280.jpg (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/photos-1786705232079-197670725.jpg -> backnd/uploads/photos-1786705232079-197670725.jpg (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/photos-1786705232082-355561245.webp -> backnd/uploads/photos-1786705232082-355561245.webp (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/photos-1786772315482-885106913.webp -> backnd/uploads/photos-1786772315482-885106913.webp (Exists: false)
+[DIFFERS] Frontend/src/layouts/ClientPortalLayout.jsx | Commit size: 22549, Current: 23009
+[DIFFERS] Frontend/src/layouts/CompanyAdminLayout.jsx | Commit size: 36403, Current: 63923
+[DIFFERS] Frontend/src/layouts/ProjectTeamLayout.jsx | Commit size: 20407, Current: 20837
+[DIFFERS] Frontend/src/pages/company-admin/Chat.jsx | Commit size: 49940, Current: 49910
+[DIFFERS] Frontend/src/pages/company-admin/DailyLogs.jsx | Commit size: 56019, Current: 61282
+[DIFFERS] Frontend/src/pages/company-admin/DrawingViewer.jsx | Commit size: 71579, Current: 69511
+[DIFFERS] Frontend/src/pages/company-admin/Drawings.jsx | Commit size: 39117, Current: 39433
+[DIFFERS] Frontend/src/pages/company-admin/Issues.jsx | Commit size: 52731, Current: 48109
+[DIFFERS] Frontend/src/pages/company-admin/Photos.jsx | Commit size: 25562, Current: 23793
+[DIFFERS] Frontend/src/pages/company-admin/ProjectDetails.jsx | Commit size: 242063, Current: 247681
+[DIFFERS] Frontend/src/pages/company-admin/PurchaseOrderDetail.jsx | Commit size: 40817, Current: 38792
+[DIFFERS] Frontend/src/pages/company-admin/PurchaseOrderForm.jsx | Commit size: 24616, Current: 24478
+[IDENTICAL] Frontend/src/pages/company-admin/Settings.jsx
+[DIFFERS] Frontend/src/pages/project-team/Chat.jsx | Commit size: 44460, Current: 44430
+[DIFFERS] Frontend/src/pages/company-admin/Payroll.jsx | Commit size: 101428, Current: 102196
+[DIFFERS] Frontend/src/pages/company-admin/Team.jsx | Commit size: 39618, Current: 39677
+[DIFFERS] Frontend/src/pages/company-admin/Timesheets.jsx | Commit size: 95164, Current: 94272
+[DIFFERS] Frontend/src/pages/company-admin/TradeManagement.jsx | Commit size: 47910, Current: 46242
+[DIFFERS] backnd/controllers/jobTaskController.js | Commit size: 22392, Current: 17531
+[DIFFERS] backnd/controllers/purchaseOrder.controller.js | Commit size: 10001, Current: 8914
+[DIFFERS] backnd/controllers/taskController.js | Commit size: 65252, Current: 19253
+[MISSING FILE] backnd/sync_all_job_progress.js (from kaal_backend (1)/sync_all_job_progress.js)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/image-1786776317378-745428718.jpg -> backnd/uploads/image-1786776317378-745428718.jpg (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/image-1786776361616-131537685.jpg -> backnd/uploads/image-1786776361616-131537685.jpg (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/image-1786776390178-473269570.jpg -> backnd/uploads/image-1786776390178-473269570.jpg (Exists: false)
+[MEDIA/UPLOAD] kaal_backend (1)/uploads/image-1786776416556-63557778.jpg -> backnd/uploads/image-1786776416556-63557778.jpg (Exists: false)
+[DIFFERS] Frontend/src/pages/company-admin/ProjectIntelligence.jsx | Commit size: 59929, Current: 60701
+[DIFFERS] Frontend/src/pages/company-admin/Tasks.jsx | Commit size: 240623, Current: 231756
+[DIFFERS] Frontend/src/pages/jobs/JobDetails.jsx | Commit size: 102684, Current: 106224
+[IDENTICAL] backnd/controllers/companyController.js
+[IDENTICAL] backnd/controllers/invoiceController.js
+[DIFFERS] backnd/controllers/projectController.js | Commit size: 29002, Current: 34174
+[DIFFERS] backnd/models/Company.js | Commit size: 1592, Current: 1011
+[DIFFERS] backnd/models/Invoice.js | Commit size: 1579, Current: 1299
+[DIFFERS] backnd/routes/companyRoutes.js | Commit size: 1034, Current: 803
+[DIFFERS] backnd/routes/jobTaskRoutes.js | Commit size: 967, Current: 947
+[DIFFERS] backnd/routes/projectDocumentRoutes.js | Commit size: 773, Current: 719
+[DIFFERS] backnd/routes/purchaseOrder.routes.js | Commit size: 1489, Current: 1566
+[DIFFERS] backnd/routes/reportRoutes.js | Commit size: 1280, Current: 1244
+[DIFFERS] Frontend/src/App.jsx | Commit size: 11762, Current: 11571
+[DIFFERS] Frontend/src/pages/company-admin/Dashboard.jsx | Commit size: 79937, Current: 79782
+[DIFFERS] Frontend/src/pages/company-admin/InvoiceDetail.jsx | Commit size: 29354, Current: 28311
+[DIFFERS] Frontend/src/pages/company-admin/Invoices.jsx | Commit size: 48257, Current: 51364

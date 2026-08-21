@@ -92,23 +92,26 @@ const updateTemplate = async (req, res, next) => {
     }
 };
 
-const createSubTasksFromSteps = async (taskId, onModel, steps, companyId, createdBy, parentId = null, assignedTo = null) => {
+const createSubTasksFromSteps = async (taskId, onModel, steps, companyId, createdBy, parentSubTaskId = null, assignedTo = null) => {
     if (!steps || steps.length === 0) return 0;
     let count = 0;
 
     for (let index = 0; index < steps.length; index++) {
         const step = steps[index];
+        const stepPriority = step.priority ? (step.priority.charAt(0).toUpperCase() + step.priority.slice(1).toLowerCase()) : 'Medium';
         const subTask = await prisma.subTask.create({
             data: {
-                parentId: taskId,
-                parentType: onModel === 'JobTask' ? 'JobTask' : 'Task',
+                taskId: taskId,
+                onModel: onModel === 'JobTask' ? 'JobTask' : 'Task',
+                parentSubTaskId: parentSubTaskId || null,
                 companyId,
-                title: step.title,
-                description: step.remarks || step.description || '',
-                priority: step.priority || 'Medium',
+                title: step.title || 'Subtask',
+                remarks: step.remarks || step.description || '',
+                priority: ['Low', 'Medium', 'High'].includes(stepPriority) ? stepPriority : 'Medium',
                 createdBy,
                 assignedTo: step.assignedTo || assignedTo || null,
-                status: 'todo'
+                status: 'todo',
+                position: index
             }
         });
 
@@ -116,23 +119,26 @@ const createSubTasksFromSteps = async (taskId, onModel, steps, companyId, create
 
         if (step.steps && step.steps.length > 0) {
             const childCount = await createSubTasksFromSteps(taskId, onModel, step.steps, companyId, createdBy, subTask.id, assignedTo);
+            await prisma.subTask.update({
+                where: { id: subTask.id },
+                data: { subTaskCount: childCount }
+            });
             count += childCount;
         }
     }
     return count;
 };
 
-const mapSubTasksToSteps = async (taskId, parentId = null) => {
-    // Basic mapping or lookup
+const mapSubTasksToSteps = async (taskId, parentSubTaskId = null) => {
     const subTasks = await prisma.subTask.findMany({
-        where: { parentId }
+        where: { taskId, parentSubTaskId }
     });
     const steps = [];
 
     for (const st of subTasks) {
         steps.push({
             title: st.title,
-            remarks: st.description || '',
+            remarks: st.remarks || st.description || '',
             priority: st.priority || 'Medium',
             steps: await mapSubTasksToSteps(taskId, st.id)
         });
@@ -152,19 +158,25 @@ const createTemplateFromTask = async (req, res, next) => {
             task = await prisma.task.findFirst({ where: { id: taskId, companyId: req.user.companyId } });
         }
 
+        const normPriority = (p) => {
+            if (!p) return 'Medium';
+            const cap = p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+            return ['Low', 'Medium', 'High'].includes(cap) ? cap : 'Medium';
+        };
+
         if (!task) {
             task = await prisma.subTask.findFirst({ where: { id: taskId, companyId: req.user.companyId } });
             if (task) {
-                const steps = await mapSubTasksToSteps(task.parentId, task.id);
+                const steps = await mapSubTasksToSteps(task.taskId, task.id);
                 const template = await prisma.taskTemplate.create({
                     data: {
                         companyId: req.user.companyId,
                         templateName: task.title + ' Template',
                         taskTitle: task.title,
-                        description: task.description || '',
+                        description: task.remarks || task.description || '',
                         assignedRole: 'WORKER',
                         estimatedHours: 0,
-                        priority: task.priority || 'Medium',
+                        priority: normPriority(task.priority),
                         steps,
                         createdBy: req.user.id
                     }
@@ -185,10 +197,10 @@ const createTemplateFromTask = async (req, res, next) => {
                 companyId: req.user.companyId,
                 templateName: task.title + ' Template',
                 taskTitle: task.title,
-                description: task.description || '',
-                assignedRole: 'WORKER',
+                description: task.description || task.remarks || '',
+                assignedRole: task.assignedRoleType || 'WORKER',
                 estimatedHours: 0,
-                priority: task.priority || 'Medium',
+                priority: normPriority(task.priority),
                 steps,
                 createdBy: req.user.id
             }

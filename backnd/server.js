@@ -1,4 +1,5 @@
 require('dotenv').config(); // Forced restart applied
+require('./models/index'); // Preload all Mongoose models and schemas
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -40,6 +41,7 @@ const jobTaskRoutes = require('./routes/jobTaskRoutes');
 const taskTemplateRoutes = require('./routes/taskTemplateRoutes');
 const todoRoutes = require('./routes/todoRoutes');
 const projectDocumentRoutes = require('./routes/projectDocumentRoutes');
+const billingRoutes = require('./routes/billingRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -116,6 +118,7 @@ app.use('/api/job-tasks', jobTaskRoutes);
 app.use('/api/task-templates', taskTemplateRoutes);
 app.use('/api/todos', todoRoutes);
 app.use('/api/project-documents', projectDocumentRoutes);
+app.use('/api/billing', billingRoutes);
 
 // Root Route
 app.get('/', (req, res) => {
@@ -210,17 +213,18 @@ app.set('io', io);
 // Error Handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 4000;
 
 // Connect to Database and Start Server
 connectDB().then(() => {
     server.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        // If logs do not show this line after deploy, the running container is not on the latest build.
-        console.log('[Chat policy] PM may initiate direct messages with clients (assertDirectMessagingAllowed in chatController.js)');
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`📡 MongoDB Database Connected Successfully`);
+        console.log(`💳 Razorpay Payment Gateway Initialized`);
+        console.log(`✉️  Brevo Transactional Email Service Initialized`);
     });
 }).catch(err => {
-    console.error('Failed to connect to MySQL', err);
+    console.error('Failed to connect to MongoDB', err);
     process.exit(1);
 });
 

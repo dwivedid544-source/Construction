@@ -1,3 +1,4 @@
+const path = require('path');
 const prisma = require('../config/prisma');
 
 // @desc    Get all equipment for the company
@@ -5,7 +6,8 @@ const prisma = require('../config/prisma');
 // @access  Private
 const getEquipment = async (req, res, next) => {
     try {
-        let whereClause = { companyId: req.user.companyId };
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
+        let whereClause = { companyId: userCompanyId };
 
         if (req.user.role === 'SUBCONTRACTOR') {
             whereClause.NOT = { assignedJobId: null };
@@ -51,10 +53,11 @@ const createEquipment = async (req, res, next) => {
         delete data._id;
         delete data.id;
 
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
         const equipment = await prisma.equipment.create({
             data: {
                 ...data,
-                companyId: req.user.companyId,
+                companyId: userCompanyId,
                 createdBy: req.user.id
             }
         });
@@ -72,7 +75,8 @@ const updateEquipment = async (req, res, next) => {
         const equipment = await prisma.equipment.findUnique({
             where: { id: req.params.id }
         });
-        if (!equipment || equipment.companyId !== req.user.companyId) {
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
+        if (!equipment || String(equipment.companyId) !== userCompanyId) {
             res.status(404);
             throw new Error('Equipment not found');
         }
@@ -118,7 +122,8 @@ const deleteEquipment = async (req, res, next) => {
         const equipment = await prisma.equipment.findUnique({
             where: { id: req.params.id }
         });
-        if (!equipment || equipment.companyId !== req.user.companyId) {
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
+        if (!equipment || String(equipment.companyId) !== userCompanyId) {
             res.status(404);
             throw new Error('Equipment not found');
         }
@@ -140,8 +145,9 @@ const assignEquipment = async (req, res, next) => {
         const equipment = await prisma.equipment.findUnique({
             where: { id: req.params.id }
         });
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
 
-        if (!equipment || equipment.companyId !== req.user.companyId) {
+        if (!equipment || String(equipment.companyId) !== userCompanyId) {
             res.status(404);
             throw new Error('Equipment not found');
         }
@@ -212,8 +218,9 @@ const returnEquipment = async (req, res, next) => {
         const equipment = await prisma.equipment.findUnique({
             where: { id: req.params.id }
         });
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
 
-        if (!equipment || equipment.companyId !== req.user.companyId) {
+        if (!equipment || String(equipment.companyId) !== userCompanyId) {
             res.status(404);
             throw new Error('Equipment not found');
         }
@@ -254,7 +261,8 @@ const getEquipmentHistory = async (req, res, next) => {
         const equipment = await prisma.equipment.findUnique({
             where: { id: req.params.id }
         });
-        if (!equipment || equipment.companyId !== req.user.companyId) {
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
+        if (!equipment || String(equipment.companyId) !== userCompanyId) {
             res.status(404);
             throw new Error('Equipment not found');
         }
@@ -286,7 +294,8 @@ const uploadEquipmentImage = async (req, res, next) => {
         const equipment = await prisma.equipment.findUnique({
             where: { id: req.params.id }
         });
-        if (!equipment || equipment.companyId !== req.user.companyId) {
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
+        if (!equipment || String(equipment.companyId) !== userCompanyId) {
             res.status(404);
             throw new Error('Equipment not found');
         }
@@ -296,9 +305,17 @@ const uploadEquipmentImage = async (req, res, next) => {
             throw new Error('No image file provided');
         }
 
+        let imageUrl = req.file.path;
+        if (req.file.filename) {
+            imageUrl = `/uploads/photos/${req.file.filename}`;
+        } else if (req.file.path && !req.file.path.startsWith('http')) {
+            const fname = path.basename(req.file.path);
+            imageUrl = `/uploads/photos/${fname}`;
+        }
+
         const updated = await prisma.equipment.update({
             where: { id: req.params.id },
-            data: { imageUrl: req.file.path }
+            data: { imageUrl }
         });
 
         res.json({ imageUrl: updated.imageUrl });
@@ -312,8 +329,9 @@ const uploadEquipmentImage = async (req, res, next) => {
 // @access  Private
 const getAllEquipmentHistory = async (req, res, next) => {
     try {
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
         const allEquipment = await prisma.equipment.findMany({
-            where: { companyId: req.user.companyId }
+            where: { companyId: userCompanyId }
         });
 
         const allHistory = [];

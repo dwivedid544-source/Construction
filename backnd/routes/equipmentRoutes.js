@@ -11,14 +11,14 @@ const {
     getEquipmentHistory,
     getAllEquipmentHistory
 } = require('../controllers/equipmentController');
-const { protect } = require('../middlewares/authMiddleware');
+const { protect, restrictAdminCreation } = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/uploadMiddleware');
 
 router.use(protect);
 
 router.route('/')
     .get(getEquipment)
-    .post(createEquipment);
+    .post(restrictAdminCreation('equipment', ['PM', 'SUPER_ADMIN']), createEquipment);
 
 // Company-wide all history — must be before /:id routes
 router.get('/all-history', getAllEquipmentHistory);

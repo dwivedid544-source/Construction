@@ -16,7 +16,7 @@ const {
     getSchedule,
     addDependency
 } = require('../controllers/taskController');
-const { protect, authorize, checkPermission } = require('../middlewares/authMiddleware');
+const { protect, authorize, checkPermission, restrictAdminCreation } = require('../middlewares/authMiddleware');
 
 router.use(protect);
 
@@ -28,7 +28,7 @@ router.get('/schedule', getSchedule);
 router.get('/project/:projectId', getProjectTasks);
 
 router.get('/', checkPermission('VIEW_TASKS'), getTasks);
-router.post('/', checkPermission('CREATE_TASK'), createTask);
+router.post('/', restrictAdminCreation('tasks', ['PM', 'FOREMAN', 'SUPER_ADMIN']), createTask);
 
 router.put('/:id/assign', checkPermission('EDIT_TASK'), assignTask);
 router.patch('/:id', updateTask); // Internal role checks or generic update
@@ -37,7 +37,7 @@ router.delete('/:id', checkPermission('DELETE_TASK'), deleteTask);
 
 // Sub-tasks
 router.get('/:id/subtasks', getSubTasks);
-router.post('/:id/subtasks', createSubTask);
+router.post('/:id/subtasks', restrictAdminCreation('subtasks', ['PM', 'FOREMAN', 'SUPER_ADMIN']), createSubTask);
 router.patch('/:id/subtasks/:subTaskId', updateSubTask);
 router.delete('/:id/subtasks/:subTaskId', deleteSubTask);
 

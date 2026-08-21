@@ -1,0 +1,47 @@
+[
+  {
+    "_id": "6a88135fd64f19bc0365e7c6",
+    "companyId": "6a87edd3ee0d6f487d0e89e9",
+    "templateName": "Foundation and cement pouring ",
+    "taskTitle": "Foundation",
+    "description": "Do this thing with he help of mechanical enginner",
+    "assignedRole": "WORKER",
+    "estimatedHours": 0,
+    "priority": "Medium",
+    "steps": [
+      {
+        "title": "Digging of potholes ",
+        "remarks": "",
+        "priority": "Medium",
+        "_id": "6a88135fd64f19bc0365e7c7",
+        "steps": []
+      },
+      {
+        "title": "Making of the foundational pillers",
+        "remarks": "",
+        "priority": "Medium",
+        "_id": "6a88135fd64f19bc0365e7c8",
+        "steps": []
+      },
+      {
+        "title": "Filling of poholes",
+        "remarks": "",
+        "priority": "Medium",
+        "_id": "6a88135fd64f19bc0365e7c9",
+        "steps": []
+      },
+      {
+        "title": "Foundational Pillering done",
+        "remarks": "",
+        "priority": "Medium",
+        "_id": "6a88135fd64f19bc0365e7ca",
+        "steps": []
+      }
+    ],
+    "position": 0,
+    "createdBy": "6a87f11cbd90aea6aa487ef1",
+    "createdAt": "2026-08-21T08:59:11.222Z",
+    "updatedAt": "2026-08-21T08:59:11.222Z",
+    "__v": 0
+  }
+]

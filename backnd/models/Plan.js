@@ -6,14 +6,25 @@ const planSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    tag: {
+        type: String,
+        default: ''
+    },
+    description: {
+        type: String,
+        default: ''
+    },
     price: {
         type: Number,
         required: true
     },
     period: {
         type: String,
-        enum: ['month', 'year', 'custom'],
         default: 'month'
+    },
+    durationStr: {
+        type: String,
+        default: '/ month'
     },
     features: [{
         type: String
@@ -26,9 +37,17 @@ const planSchema = new mongoose.Schema({
         type: Number,
         default: 5
     },
+    maxJobs: {
+        type: Number,
+        default: 10
+    },
     isPopular: {
         type: Boolean,
         default: false
+    },
+    isActive: {
+        type: Boolean,
+        default: true
     },
     rolePermissions: {
         type: Map,
