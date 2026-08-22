@@ -21,12 +21,12 @@ const getJobs = async (req, res) => {
         }
 
         // Role-based visibility
-        if (['COMPANY_OWNER', 'PM', 'SUPER_ADMIN', 'ENGINEER', 'ADMIN'].includes(role)) {
-            // Full company-level operational visibility for owners, admins, and project managers
+        if (['COMPANY_OWNER', 'PM', 'SUPER_ADMIN', 'ENGINEER', 'ADMIN', 'FOREMAN'].includes(role)) {
+            // Full company-level operational visibility for owners, admins, foremen, and project managers
             if (req.query.projectId) {
                 whereClause.projectId = req.query.projectId;
             }
-        } else if (['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(role)) {
+        } else if (['WORKER', 'SUBCONTRACTOR'].includes(role)) {
             const userTasks = await prisma.jobTask.findMany({
                 where: {
                     OR: [
@@ -38,11 +38,21 @@ const getJobs = async (req, res) => {
             });
             
             const taskJobIds = userTasks.map(t => t.jobId).filter(Boolean);
-            whereClause.OR = [
-                { foremanId: userId },
-                { assignedWorkers: userId },
-                { id: { in: taskJobIds } }
-            ];
+            const specificJobs = await prisma.job.findMany({
+                where: {
+                    companyId,
+                    OR: [
+                        { foremanId: userId },
+                        { assignedWorkers: userId },
+                        { id: { in: taskJobIds } }
+                    ]
+                },
+                select: { id: true }
+            });
+
+            if (specificJobs.length > 0) {
+                whereClause.id = { in: specificJobs.map(j => j.id) };
+            }
         } else if (role === 'CLIENT') {
             const clientProjects = await prisma.project.findMany({
                 where: { companyId, clientId: userId },

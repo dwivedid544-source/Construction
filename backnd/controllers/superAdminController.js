@@ -29,7 +29,7 @@ const getStats = async (req, res, next) => {
         planPriceMap['basic'] = 0;
 
         companies.forEach(c => {
-            totalStorageUsed += (c.storageUsed || 0);
+            totalStorageUsed += Number(c.storageUsed || 0);
             if (c.subscriptionStatus === 'active' && c.subscriptionPlanId) {
                 let price = planPriceMap[c.subscriptionPlanId];
                 if (price === undefined) {
@@ -258,15 +258,19 @@ const getAuditLogs = async (req, res, next) => {
     try {
         const logs = await prisma.auditLog.findMany({
             include: {
-                user: { select: { fullName: true, role: true } }
+                user: { select: { fullName: true, role: true, email: true } }
             },
-            orderBy: { timestamp: 'desc' },
-            take: 100
+            orderBy: [{ createdAt: 'desc' }, { timestamp: 'desc' }],
+            take: 200
         });
         res.json(logs.map(l => ({
             ...l,
-            _id: l.id,
-            userId: l.user
+            _id: l.id || l._id,
+            userId: l.user || {
+                fullName: l.userName || l.userEmail || 'System',
+                email: l.userEmail || '',
+                role: 'User'
+            }
         })));
     } catch (error) {
         next(error);

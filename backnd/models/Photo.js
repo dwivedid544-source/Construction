@@ -15,6 +15,10 @@ const photoSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Task'
     },
+    jobId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Job'
+    },
     uploadedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -23,6 +27,9 @@ const photoSchema = new mongoose.Schema({
     imageUrl: {
         type: String,
         required: true
+    },
+    url: {
+        type: String
     },
     thumbnailUrl: {
         type: String

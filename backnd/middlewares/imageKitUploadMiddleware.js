@@ -52,25 +52,65 @@ const upload = multer({
     }
 });
 
-// Middleware to handle ImageKit upload after multer memory storage
+const fs = require('fs');
+
+// Middleware to handle ImageKit upload with automatic reliable local storage fallback
 const imageKitUpload = async (req, res, next) => {
     // Handle both single file (req.file) and multiple files (req.files)
     const files = req.file ? [req.file] : (req.files || []);
     
     if (files.length === 0) return next();
 
-    try {
-        let folder = '/general';
-        if (req.baseUrl.includes('drawings')) folder = '/drawings';
-        else if (req.baseUrl.includes('vendors')) folder = '/trades';
-        else if (req.baseUrl.includes('rfis')) folder = '/rfis';
-        else if (req.baseUrl.includes('chat')) folder = '/chat';
-        else if (req.baseUrl.includes('issues')) folder = '/issues';
-        else if (req.baseUrl.includes('invoices')) folder = '/invoices';
-        else if (req.baseUrl.includes('project-documents')) folder = '/documents';
+    let subFolder = 'general';
+    if (req.baseUrl.includes('drawings')) subFolder = 'drawings';
+    else if (req.baseUrl.includes('vendors')) subFolder = 'trades';
+    else if (req.baseUrl.includes('rfis')) subFolder = 'rfis';
+    else if (req.baseUrl.includes('chat')) subFolder = 'chat';
+    else if (req.baseUrl.includes('issues')) subFolder = 'issues';
+    else if (req.baseUrl.includes('invoices')) subFolder = 'invoices';
+    else if (req.baseUrl.includes('project-documents')) subFolder = 'documents';
 
+    const saveLocally = (file) => {
+        const uploadDir = path.join(__dirname, `../uploads/${subFolder}`);
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        let ext = path.extname(file.originalname);
+        if (!ext) {
+            const mimeToExt = {
+                'image/jpeg': '.jpg', 'image/jpg': '.jpg',
+                'image/png': '.png', 'image/gif': '.gif',
+                'image/webp': '.webp', 'image/heic': '.jpg',
+                'application/pdf': '.pdf'
+            };
+            ext = mimeToExt[file.mimetype] || '.jpg';
+        }
+        const fileName = `${file.fieldname || 'file'}-${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
+        const targetPath = path.join(uploadDir, fileName);
+        fs.writeFileSync(targetPath, file.buffer);
+        const relPath = `uploads/${subFolder}/${fileName}`;
+        file.path = relPath;
+        file.url = `/${relPath}`;
+        file.location = `/${relPath}`;
+        return relPath;
+    };
+
+    const hasImageKitConfig = process.env.IMAGEKIT_PUBLIC_KEY && 
+                              process.env.IMAGEKIT_PRIVATE_KEY && 
+                              process.env.IMAGEKIT_URL_ENDPOINT;
+
+    if (!hasImageKitConfig) {
+        try {
+            files.forEach(saveLocally);
+            return next();
+        } catch (localErr) {
+            console.error('Local file save error:', localErr);
+            return res.status(500).json({ message: 'Failed to save uploaded file locally', error: localErr.message });
+        }
+    }
+
+    try {
         const uploadPromises = files.map(async (file) => {
-            // Derive extension: prefer from originalname, fall back to MIME type
             let ext = path.extname(file.originalname);
             if (!ext) {
                 const mimeToExt = {
@@ -81,24 +121,35 @@ const imageKitUpload = async (req, res, next) => {
                 };
                 ext = mimeToExt[file.mimetype] || '.jpg';
             }
-            const uploadResponse = await getImageKit().upload({
-                file: file.buffer,
-                fileName: `${file.fieldname}-${Date.now()}${ext}`,
-                folder: `construction_saas${folder}`,
-                useUniqueFileName: true
-            });
-            
-            // Attach the URL back to the file object so route handler can read it
-            file.path = uploadResponse.url;
-            file.mimetype = uploadResponse.fileType || file.mimetype;
-            return uploadResponse;
+            try {
+                const uploadResponse = await getImageKit().upload({
+                    file: file.buffer,
+                    fileName: `${file.fieldname}-${Date.now()}${ext}`,
+                    folder: `construction_saas/${subFolder}`,
+                    useUniqueFileName: true
+                });
+                
+                file.path = uploadResponse.url;
+                file.url = uploadResponse.url;
+                file.location = uploadResponse.url;
+                file.mimetype = uploadResponse.fileType || file.mimetype;
+                return uploadResponse;
+            } catch (ikErr) {
+                console.warn('[ImageKit] Upload failed, falling back to local disk:', ikErr.message);
+                saveLocally(file);
+            }
         });
 
         await Promise.all(uploadPromises);
         next();
     } catch (error) {
-        console.error('ImageKit Upload Error:', error);
-        res.status(500).json({ message: 'Error uploading file(s) to ImageKit', error: error.message });
+        console.warn('ImageKit batch fallback to local disk:', error.message);
+        try {
+            files.forEach(saveLocally);
+            next();
+        } catch (fallbackErr) {
+            res.status(500).json({ message: 'Error processing uploaded file', error: fallbackErr.message });
+        }
     }
 };
 

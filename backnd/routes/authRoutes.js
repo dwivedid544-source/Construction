@@ -26,10 +26,10 @@ router.post('/register-subscription', registerSubscription);
 router.post('/check-subscription-eligibility', checkSubscriptionEligibility);
 router.get('/me', protect, getMe);
 router.get('/users', protect, getUsers);
-router.post('/users', protect, authorize('SUPER_ADMIN', 'COMPANY_OWNER'), checkUserLimit, createUser);
-router.patch('/users/:id', protect, authorize('SUPER_ADMIN', 'COMPANY_OWNER'), updateUser);
+router.post('/users', protect, authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'ADMIN', 'PM'), checkUserLimit, createUser);
+router.patch('/users/:id', protect, authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'ADMIN', 'PM'), updateUser);
 router.patch('/profile', protect, upload.single('avatar'), updateProfile);
 router.patch('/updatepassword', protect, updatePassword);
-router.delete('/users/:id', protect, authorize('SUPER_ADMIN', 'COMPANY_OWNER'), deleteUser);
+router.delete('/users/:id', protect, authorize('SUPER_ADMIN', 'COMPANY_OWNER', 'ADMIN'), deleteUser);
 
 module.exports = router;

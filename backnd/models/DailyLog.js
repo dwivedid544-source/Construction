@@ -16,8 +16,7 @@ const dailyLogSchema = new mongoose.Schema({
         required: true
     },
     weather: {
-        status: String,
-        temperature: Number
+        type: mongoose.Schema.Types.Mixed
     },
     manpower: [{
         role: String,
@@ -28,6 +27,7 @@ const dailyLogSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    notes: String,
     materialsReceived: [String],
     equipmentUsed: [String],
     safetyObservations: String,
@@ -35,8 +35,11 @@ const dailyLogSchema = new mongoose.Schema({
     visitors: [String],
     reportedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        ref: 'User'
+    },
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
     },
     isVerified: {
         type: Boolean,

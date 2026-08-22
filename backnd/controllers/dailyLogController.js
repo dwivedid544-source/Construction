@@ -14,17 +14,9 @@ const getDailyLogs = async (req, res, next) => {
             });
             const projectIds = clientProjects.map(p => p.id);
             whereClause.projectId = { in: projectIds };
-        } else if (['FOREMAN', 'WORKER'].includes(req.user.role)) {
-            whereClause.createdBy = req.user.id;
         }
 
-        if (req.query.projectId) {
-            if (req.user.role === 'CLIENT') {
-                const isAllowed = whereClause.projectId?.in?.includes(req.query.projectId);
-                if (!isAllowed) {
-                    return res.status(403).json({ message: 'Not authorized to access this project logs' });
-                }
-            }
+        if (req.query.projectId && req.query.projectId !== 'ALL') {
             whereClause.projectId = req.query.projectId;
         }
         if (req.query.date) {
@@ -34,17 +26,17 @@ const getDailyLogs = async (req, res, next) => {
         const logs = await prisma.dailyLog.findMany({
             where: whereClause,
             include: {
-                project: { select: { name: true } },
-                creator: { select: { fullName: true, role: true } }
+                project: { select: { id: true, name: true } },
+                creator: { select: { id: true, fullName: true, role: true } }
             },
             orderBy: { date: 'desc' }
         });
 
         const mappedLogs = logs.map(l => ({
             ...l,
-            _id: l.id,
-            projectId: l.project,
-            reportedBy: l.creator
+            _id: l.id || l._id,
+            projectId: l.project || { name: 'Active Project' },
+            reportedBy: l.reportedBy || l.creator || { fullName: 'Admin', role: req.user.role }
         }));
 
         res.json(mappedLogs);
@@ -55,15 +47,15 @@ const getDailyLogs = async (req, res, next) => {
 
 // @desc    Create daily log
 // @route   POST /api/dailylogs
-// @access  Private (Foreman, PM)
+// @access  Private (Owner, PM, Foreman, Worker)
 const createDailyLog = async (req, res, next) => {
     try {
         let photos = [];
         if (req.files && req.files.length > 0) {
-            photos = req.files.map(file => file.path || file.secure_url);
+            photos = req.files.map(file => file.path || file.secure_url || file.url);
         }
 
-        const { projectId, date, weather, notes, workPerformed, visitors, safetyIncidents } = req.body;
+        const { projectId, date, weather, notes, workPerformed, visitors, safetyIncidents, manpower, location, materialsReceived, equipmentUsed, delays, safetyObservations } = req.body;
 
         const parseJsonField = (val) => {
             if (typeof val === 'string') {
@@ -81,17 +73,30 @@ const createDailyLog = async (req, res, next) => {
                 companyId: req.user.companyId,
                 projectId,
                 date: date ? new Date(date) : new Date(),
-                weather: typeof weather === 'object' ? JSON.stringify(weather) : weather,
+                weather: typeof weather === 'string' ? parseJsonField(weather) : weather,
                 notes: notes || '',
                 createdBy: req.user.id,
-                workPerformed: parseJsonField(workPerformed),
-                visitors: parseJsonField(visitors),
-                safetyIncidents: parseJsonField(safetyIncidents)
+                reportedBy: req.user.id,
+                workPerformed: typeof workPerformed === 'object' ? JSON.stringify(workPerformed) : String(workPerformed || ''),
+                manpower: parseJsonField(manpower) || [],
+                visitors: parseJsonField(visitors) || [],
+                materialsReceived: parseJsonField(materialsReceived) || [],
+                equipmentUsed: parseJsonField(equipmentUsed) || [],
+                delays: delays || '',
+                safetyObservations: safetyObservations || '',
+                photos: photos,
+                location: parseJsonField(location) || null
             }
         });
 
-        res.status(201).json({ ...log, _id: log.id });
+        res.status(201).json({
+            ...log,
+            _id: log.id,
+            projectId: { _id: projectId },
+            reportedBy: { fullName: req.user.fullName, role: req.user.role }
+        });
     } catch (error) {
+        console.error('createDailyLog error:', error);
         next(error);
     }
 };

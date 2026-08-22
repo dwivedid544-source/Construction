@@ -12,29 +12,30 @@ const getProjects = async (req, res, next) => {
             delete whereClause.companyId;
         }
 
-        if (['FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(role)) {
+        if (['WORKER', 'SUBCONTRACTOR'].includes(role)) {
             const [assignedJobs, directProjects] = await Promise.all([
                 prisma.job.findMany({
                     where: {
                         companyId,
                         OR: [
                             { foremanId: userId },
-                            { assignedWorkers: userId }
+                            { assignedWorkers: { some: { id: userId } } },
+                            { jobWorkers: { some: { userId: userId } } }
                         ]
                     },
                     select: { projectId: true }
-                }),
+                }).catch(() => []),
                 prisma.project.findMany({
                     where: {
                         companyId,
                         OR: [
-                            { pmIds: userId },
+                            { pms: { some: { id: userId } } },
                             { pmId: userId },
                             { createdBy: userId }
                         ]
                     },
                     select: { id: true }
-                })
+                }).catch(() => [])
             ]);
             
             const allProjectIds = [
@@ -43,7 +44,9 @@ const getProjects = async (req, res, next) => {
                     ...directProjects.map(p => p.id)
                 ])
             ];
-            whereClause.id = { in: allProjectIds };
+            if (allProjectIds.length > 0) {
+                whereClause.id = { in: allProjectIds };
+            }
         }
 
         if (role === 'CLIENT') {

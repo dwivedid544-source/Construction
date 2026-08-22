@@ -7,62 +7,19 @@ const getDrawings = async (req, res, next) => {
     try {
         const whereClause = { companyId: req.user.companyId };
 
-        if (['PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(req.user.role)) {
-            const jobFilter = { companyId: req.user.companyId };
-
-            if (req.user.role === 'PM') {
-                jobFilter.OR = [
-                    { foremanId: req.user.id },
-                    { createdBy: req.user.id }
-                ];
-            } else if (['FOREMAN', 'SUBCONTRACTOR'].includes(req.user.role)) {
-                jobFilter.foremanId = req.user.id;
-            } else {
-                jobFilter.assignedWorkers = { some: { id: req.user.id } };
-            }
-
-            const assignedJobs = await prisma.job.findMany({
-                where: jobFilter,
-                select: { projectId: true }
-            });
-            const jobProjectIds = assignedJobs.map(j => j.projectId).filter(Boolean);
-
-            let finalAllowedProjectIds = jobProjectIds;
-
-            if (req.user.role === 'PM') {
-                const directProjects = await prisma.project.findMany({
-                    where: {
-                        companyId: req.user.companyId,
-                        OR: [
-                            { pms: { some: { id: req.user.id } } },
-                            { pmId: req.user.id },
-                            { createdBy: req.user.id }
-                        ]
-                    },
-                    select: { id: true }
-                });
-                const directProjectIds = directProjects.map(p => p.id);
-                finalAllowedProjectIds = Array.from(new Set([...jobProjectIds, ...directProjectIds]));
-            }
-
-            whereClause.projectId = { in: finalAllowedProjectIds };
-
-        } else if (req.user.role === 'CLIENT') {
+        // For CLIENT role, filter to their assigned projects
+        if (req.user.role === 'CLIENT') {
             const clientProjects = await prisma.project.findMany({
-                where: { clientId: req.user.id },
+                where: { clientId: req.user.id, companyId: req.user.companyId },
                 select: { id: true }
             });
             const projectIds = clientProjects.map(p => p.id);
-            whereClause.projectId = { in: projectIds };
+            if (projectIds.length > 0) {
+                whereClause.projectId = { in: projectIds };
+            }
         }
 
         if (req.query.projectId) {
-            if (['CLIENT', 'PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(req.user.role)) {
-                const allowedIds = whereClause.projectId?.in || [];
-                if (!allowedIds.includes(req.query.projectId)) {
-                    return res.status(403).json({ message: 'Not authorized to access this project drawings' });
-                }
-            }
             whereClause.projectId = req.query.projectId;
         }
 
@@ -80,6 +37,7 @@ const getDrawings = async (req, res, next) => {
 
         res.json(mappedDrawings);
     } catch (error) {
+        console.error('getDrawings error:', error);
         next(error);
     }
 };
@@ -89,31 +47,45 @@ const getDrawings = async (req, res, next) => {
 // @access  Private
 const createDrawing = async (req, res, next) => {
     try {
-        const { projectId, title, drawingNumber, category } = req.body;
+        const { projectId, title, drawingNumber, category, status } = req.body;
         let fileUrl = req.body.fileUrl;
 
         if (req.file) {
-            fileUrl = req.file.path.replace(/\\/g, '/');
+            fileUrl = req.file.path ? req.file.path.replace(/\\/g, '/') : (req.file.url || req.file.location || req.file.filename);
         }
 
         if (!fileUrl) {
-            res.status(400);
-            throw new Error('Please upload a drawing file');
+            return res.status(400).json({ message: 'Please upload a drawing file' });
         }
 
-        const drawing = await prisma.drawing.create({
-            data: {
-                companyId: req.user.companyId,
-                projectId,
-                title,
-                number: drawingNumber || '',
+        const drawingData = {
+            companyId: req.user.companyId,
+            projectId,
+            title: title || 'Untitled Drawing',
+            number: drawingNumber || '',
+            drawingNumber: drawingNumber || '',
+            category: category || 'Architectural',
+            fileUrl,
+            version: '1.0',
+            currentVersion: 1,
+            status: status || 'Active',
+            versions: [{
+                versionNumber: 1,
+                version: '1.0',
                 fileUrl,
-                version: '1.0'
-            }
+                uploadedBy: req.user.id || req.user._id,
+                uploadedAt: new Date(),
+                description: 'Initial upload'
+            }]
+        };
+
+        const drawing = await prisma.drawing.create({
+            data: drawingData
         });
 
-        res.status(201).json({ ...drawing, _id: drawing.id });
+        res.status(201).json({ ...drawing, _id: drawing.id || drawing._id });
     } catch (error) {
+        console.error('createDrawing error:', error);
         next(error);
     }
 };
@@ -127,12 +99,11 @@ const addDrawingVersion = async (req, res, next) => {
         let fileUrl = req.body.fileUrl;
 
         if (req.file) {
-            fileUrl = req.file.path.replace(/\\/g, '/');
+            fileUrl = req.file.path ? req.file.path.replace(/\\/g, '/') : (req.file.url || req.file.location || req.file.filename);
         }
 
         if (!fileUrl) {
-            res.status(400);
-            throw new Error('Please upload a new drawing file');
+            return res.status(400).json({ message: 'Please upload a new drawing file' });
         }
 
         const drawing = await prisma.drawing.findFirst({
@@ -140,23 +111,37 @@ const addDrawingVersion = async (req, res, next) => {
         });
 
         if (!drawing) {
-            res.status(404);
-            throw new Error('Drawing not found');
+            return res.status(404).json({ message: 'Drawing not found' });
         }
 
-        // Parse versions or update the version field
-        const newVer = (parseFloat(drawing.version) + 1.0).toFixed(1);
+        const currentVerNum = parseFloat(drawing.version || '1.0') || 1.0;
+        const newVer = (currentVerNum + 1.0).toFixed(1);
+
+        const newVersionEntry = {
+            versionNumber: Math.round(currentVerNum + 1),
+            version: newVer.toString(),
+            fileUrl,
+            uploadedBy: req.user.id || req.user._id,
+            uploadedAt: new Date(),
+            description: description || `Version ${newVer}`
+        };
+
+        const existingVersions = Array.isArray(drawing.versions) ? [...drawing.versions] : [];
+        existingVersions.push(newVersionEntry);
 
         const updated = await prisma.drawing.update({
             where: { id: req.params.id },
             data: {
                 version: newVer.toString(),
-                fileUrl
+                currentVersion: Math.round(currentVerNum + 1),
+                fileUrl,
+                versions: existingVersions
             }
         });
 
-        res.status(201).json({ ...updated, _id: updated.id });
+        res.status(201).json({ ...updated, _id: updated.id || updated._id });
     } catch (error) {
+        console.error('addDrawingVersion error:', error);
         next(error);
     }
 };
@@ -209,17 +194,28 @@ const getDrawingAnnotations = async (req, res, next) => {
 // @access  Private
 const createDrawingAnnotation = async (req, res, next) => {
     try {
-        const { coordinates, content } = req.body;
+        const { type, coordinates, content, pageNumber, isVisibleToClient, status, versionId } = req.body;
 
         const annotation = await prisma.drawingAnnotation.create({
             data: {
                 drawingId: req.params.id,
-                data: typeof coordinates === 'object' ? coordinates : { content }
+                versionId: versionId || undefined,
+                userId: req.user.id || req.user._id,
+                userName: req.user.fullName || req.user.name || 'Team Member',
+                userRole: req.user.role || 'Member',
+                pageNumber: Number(pageNumber) || 1,
+                type: type || 'comment',
+                coordinates: coordinates || {},
+                content: content || '',
+                status: status || 'open',
+                isVisibleToClient: isVisibleToClient !== undefined ? Boolean(isVisibleToClient) : true,
+                data: req.body
             }
         });
 
-        res.status(201).json({ ...annotation, _id: annotation.id });
+        res.status(201).json({ ...annotation, _id: annotation.id || annotation._id });
     } catch (error) {
+        console.error('createDrawingAnnotation error:', error);
         next(error);
     }
 };
@@ -237,15 +233,18 @@ const updateDrawingAnnotation = async (req, res, next) => {
             return res.status(404).json({ message: 'Annotation not found' });
         }
 
+        const updateData = { ...req.body };
+        delete updateData._id;
+        delete updateData.id;
+
         const updated = await prisma.drawingAnnotation.update({
             where: { id: req.params.id },
-            data: {
-                data: req.body
-            }
+            data: updateData
         });
 
-        res.json({ ...updated, _id: updated.id });
+        res.json({ ...updated, _id: updated.id || updated._id });
     } catch (error) {
+        console.error('updateDrawingAnnotation error:', error);
         next(error);
     }
 };
@@ -260,6 +259,48 @@ const deleteDrawingAnnotation = async (req, res, next) => {
         });
         res.json({ message: 'Annotation removed' });
     } catch (error) {
+        console.error('deleteDrawingAnnotation error:', error);
+        next(error);
+    }
+};
+
+// @desc    Update drawing details (status, title, drawingNumber, category, projectId)
+// @route   PATCH /api/drawings/:id
+// @access  Private (Admin, PM, Engineer)
+const updateDrawing = async (req, res, next) => {
+    try {
+        const { title, drawingNumber, number, category, status, projectId } = req.body;
+        
+        const drawing = await prisma.drawing.findFirst({
+            where: { id: req.params.id, companyId: req.user.companyId }
+        });
+
+        if (!drawing) {
+            return res.status(404).json({ message: 'Drawing not found' });
+        }
+
+        const updateData = {};
+        if (title !== undefined) updateData.title = title;
+        if (drawingNumber !== undefined) {
+            updateData.drawingNumber = drawingNumber;
+            updateData.number = drawingNumber;
+        }
+        if (number !== undefined) {
+            updateData.number = number;
+            updateData.drawingNumber = number;
+        }
+        if (category !== undefined) updateData.category = category;
+        if (status !== undefined) updateData.status = status;
+        if (projectId !== undefined) updateData.projectId = projectId;
+
+        const updated = await prisma.drawing.update({
+            where: { id: req.params.id },
+            data: updateData
+        });
+
+        res.json({ ...updated, _id: updated.id || updated._id });
+    } catch (error) {
+        console.error('updateDrawing error:', error);
         next(error);
     }
 };
@@ -267,6 +308,7 @@ const deleteDrawingAnnotation = async (req, res, next) => {
 module.exports = {
     getDrawings,
     createDrawing,
+    updateDrawing,
     addDrawingVersion,
     deleteDrawing,
     getDrawingAnnotations,

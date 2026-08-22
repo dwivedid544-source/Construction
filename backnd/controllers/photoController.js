@@ -1,4 +1,7 @@
 const path = require('path');
+const Photo = require('../models/Photo');
+const Job = require('../models/Job');
+const Project = require('../models/Project');
 const prisma = require('../config/prisma');
 
 // @desc    Get all photos
@@ -7,53 +10,61 @@ const prisma = require('../config/prisma');
 const getPhotos = async (req, res, next) => {
     try {
         const userCompanyId = String(req.user.companyId || req.companyId || (typeof req.user.companyId === 'object' ? (req.user.companyId._id || req.user.companyId.id) : ''));
-        const whereClause = {};
+        const filter = {};
 
         if (req.user.role !== 'SUPER_ADMIN' && userCompanyId) {
-            whereClause.companyId = userCompanyId;
+            filter.companyId = userCompanyId;
         }
 
         if (req.query.projectId && req.query.projectId !== 'All' && req.query.projectId !== 'undefined' && req.query.projectId !== '') {
-            whereClause.projectId = req.query.projectId;
+            filter.projectId = req.query.projectId;
+        }
+        if (req.query.jobId && req.query.jobId !== 'undefined' && req.query.jobId !== '') {
+            filter.jobId = req.query.jobId;
         }
         if (req.query.taskId && req.query.taskId !== 'undefined' && req.query.taskId !== '') {
-            whereClause.taskId = req.query.taskId;
+            filter.taskId = req.query.taskId;
         }
 
-        const photos = await prisma.photo.findMany({
-            where: whereClause,
-            include: {
-                project: { select: { name: true } },
-                uploader: { select: { fullName: true, role: true } }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
+        const photos = await Photo.find(filter)
+            .populate('projectId', 'name')
+            .populate('jobId', 'name')
+            .populate('uploadedBy', 'fullName role')
+            .sort({ createdAt: -1 })
+            .lean();
 
         res.json(photos.map(p => ({
             ...p,
-            _id: p.id,
-            projectId: p.project ? { ...p.project, _id: p.projectId } : (p.projectId ? { _id: p.projectId, name: 'Project' } : null),
-            uploadedBy: p.uploader || { fullName: 'Team Member', role: 'Staff' }
+            _id: p._id.toString(),
+            id: p._id.toString(),
+            imageUrl: p.imageUrl || p.url,
+            url: p.imageUrl || p.url,
+            projectId: p.projectId ? { ...p.projectId, _id: (p.projectId._id || p.projectId).toString() } : null,
+            jobId: p.jobId ? { ...p.jobId, _id: (p.jobId._id || p.jobId).toString() } : null,
+            uploadedBy: p.uploadedBy || { fullName: 'Team Member', role: 'Staff' }
         })));
     } catch (error) {
         next(error);
     }
 };
 
-// @desc    Upload photo
+// @desc    Upload photo(s)
 // @route   POST /api/photos/upload
 // @access  Private
 const uploadPhoto = async (req, res, next) => {
     try {
-        const { projectId, taskId, description } = req.body;
+        const { projectId, jobId, taskId, description } = req.body;
         const userCompanyId = String(req.user.companyId || req.companyId || (typeof req.user.companyId === 'object' ? (req.user.companyId._id || req.user.companyId.id) : ''));
         const photos = [];
 
         const cleanProjectId = (projectId && projectId !== 'undefined' && projectId !== 'null' && projectId !== '') ? projectId : null;
+        const cleanJobId = (jobId && jobId !== 'undefined' && jobId !== 'null' && jobId !== '') ? jobId : null;
         const cleanTaskId = (taskId && taskId !== 'undefined' && taskId !== 'null' && taskId !== '') ? taskId : null;
 
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
+        const files = req.files || (req.file ? [req.file] : []);
+
+        if (files && files.length > 0) {
+            for (const file of files) {
                 let imageUrl = file.path;
                 if (file.filename) {
                     imageUrl = `/uploads/photos/${file.filename}`;
@@ -62,30 +73,48 @@ const uploadPhoto = async (req, res, next) => {
                     imageUrl = `/uploads/photos/${fname}`;
                 }
 
-                const photo = await prisma.photo.create({
-                    data: {
-                        companyId: userCompanyId,
-                        projectId: cleanProjectId,
-                        taskId: cleanTaskId,
-                        uploadedBy: req.user.id,
-                        imageUrl,
-                        description: description || file.originalname
-                    }
-                });
-                photos.push(photo);
-            }
-        } else if (req.body.imageUrl) {
-            const photo = await prisma.photo.create({
-                data: {
+                const photoDoc = await Photo.create({
                     companyId: userCompanyId,
                     projectId: cleanProjectId,
+                    jobId: cleanJobId,
                     taskId: cleanTaskId,
-                    uploadedBy: req.user.id,
-                    imageUrl: req.body.imageUrl,
-                    description: description || ''
+                    uploadedBy: req.user.id || req.user._id,
+                    imageUrl,
+                    url: imageUrl,
+                    description: description || file.originalname
+                });
+
+                // Also sync with Prisma if possible
+                try {
+                    await prisma.photo.create({
+                        data: {
+                            id: photoDoc._id.toString(),
+                            companyId: userCompanyId,
+                            projectId: cleanProjectId,
+                            taskId: cleanTaskId,
+                            uploadedBy: String(req.user.id || req.user._id),
+                            imageUrl,
+                            description: description || file.originalname
+                        }
+                    });
+                } catch (e) {
+                    // Ignore Prisma sync error
                 }
+
+                photos.push(photoDoc);
+            }
+        } else if (req.body.imageUrl) {
+            const photoDoc = await Photo.create({
+                companyId: userCompanyId,
+                projectId: cleanProjectId,
+                jobId: cleanJobId,
+                taskId: cleanTaskId,
+                uploadedBy: req.user.id || req.user._id,
+                imageUrl: req.body.imageUrl,
+                url: req.body.imageUrl,
+                description: description || ''
             });
-            photos.push(photo);
+            photos.push(photoDoc);
         }
 
         if (photos.length === 0) {
@@ -93,23 +122,25 @@ const uploadPhoto = async (req, res, next) => {
             throw new Error('Please upload at least one image file or provide an imageUrl');
         }
 
-        const photoIds = photos.map(p => p.id);
-        const populated = await prisma.photo.findMany({
-            where: { id: { in: photoIds } },
-            include: {
-                project: { select: { name: true } },
-                uploader: { select: { fullName: true, role: true } }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
+        const photoIds = photos.map(p => p._id);
+        const populated = await Photo.find({ _id: { $in: photoIds } })
+            .populate('projectId', 'name')
+            .populate('jobId', 'name')
+            .populate('uploadedBy', 'fullName role')
+            .lean();
 
         res.status(201).json(populated.map(p => ({
             ...p,
-            _id: p.id,
-            projectId: p.project ? { ...p.project, _id: p.projectId } : (p.projectId ? { _id: p.projectId, name: 'Project' } : null),
-            uploadedBy: p.uploader || { fullName: 'Team Member', role: 'Staff' }
+            _id: p._id.toString(),
+            id: p._id.toString(),
+            imageUrl: p.imageUrl || p.url,
+            url: p.imageUrl || p.url,
+            projectId: p.projectId ? { ...p.projectId, _id: (p.projectId._id || p.projectId).toString() } : null,
+            jobId: p.jobId ? { ...p.jobId, _id: (p.jobId._id || p.jobId).toString() } : null,
+            uploadedBy: p.uploadedBy || { fullName: 'Team Member', role: 'Staff' }
         })));
     } catch (error) {
+        console.error('uploadPhoto error:', error);
         next(error);
     }
 };
@@ -119,19 +150,27 @@ const uploadPhoto = async (req, res, next) => {
 // @access  Private
 const deletePhoto = async (req, res, next) => {
     try {
-        const photo = await prisma.photo.findUnique({
-            where: { id: req.params.id }
+        const userCompanyId = String(req.user.companyId || req.companyId || '');
+        const photo = await Photo.findOne({
+            _id: req.params.id,
+            ...(req.user.role !== 'SUPER_ADMIN' ? { companyId: userCompanyId } : {})
         });
 
-        const userCompanyId = String(req.user.companyId || req.companyId || '');
-        if (!photo || (req.user.role !== 'SUPER_ADMIN' && String(photo.companyId) !== userCompanyId)) {
+        if (!photo) {
             res.status(404);
             throw new Error('Photo not found');
         }
 
-        await prisma.photo.delete({
-            where: { id: req.params.id }
-        });
+        await Photo.deleteOne({ _id: req.params.id });
+
+        try {
+            await prisma.photo.delete({
+                where: { id: req.params.id }
+            });
+        } catch (e) {
+            // Ignore Prisma error
+        }
+
         res.json({ message: 'Photo removed' });
     } catch (error) {
         next(error);

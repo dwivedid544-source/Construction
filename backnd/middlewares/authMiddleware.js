@@ -56,15 +56,13 @@ const authorize = (...roles) => {
 };
 
 /**
- * Middleware: Restricts operational creation (Projects, Tasks, Equipment, POs, Daily Logs, Issues, RFIs, Drawings, Photos)
- * Company Owners are restricted from creating operational records; creation belongs to Project Managers & Field roles.
+ * Middleware: Verifies role access for operational creation (Projects, Tasks, Equipment, POs, Daily Logs, Issues, RFIs, Drawings, Photos).
+ * Allows Super Admins, Company Owners, Admins, and specified operational roles.
  */
-const restrictAdminCreation = (moduleName = 'operational records', allowedRoles = ['PM', 'FOREMAN', 'ENGINEER', 'SUPER_ADMIN']) => {
+const restrictAdminCreation = (moduleName = 'operational records', allowedRoles = ['PM', 'FOREMAN', 'ENGINEER', 'SUPER_ADMIN', 'COMPANY_OWNER', 'ADMIN', 'WORKER']) => {
     return (req, res, next) => {
-        if (req.user.role === 'COMPANY_OWNER') {
-            return res.status(403).json({
-                message: `Creation of ${moduleName} is restricted to Project Managers. Company Owners provide oversight, review, and approval.`
-            });
+        if (['COMPANY_OWNER', 'SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) {
+            return next();
         }
         if (!allowedRoles.includes(req.user.role)) {
             return res.status(403).json({

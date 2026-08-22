@@ -4,22 +4,36 @@ const auditLogSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: false
+    },
+    userName: {
+        type: String
+    },
+    userEmail: {
+        type: String
     },
     action: {
         type: String,
-        required: true // e.g., 'LOGIN', 'PLAN_CREATED', 'COMPANY_APPROVED'
+        required: true // e.g., 'User Login', 'Failed Login', 'PLAN_CREATED'
     },
     module: {
         type: String,
-        required: true // e.g., 'AUTH', 'BILLING', 'COMPANIES'
+        required: true,
+        default: 'Authentication'
     },
     details: {
         type: String
     },
-    ipAddress: String,
+    ipAddress: {
+        type: String,
+        default: '127.0.0.1'
+    },
     userAgent: String,
-    metadata: Object
+    metadata: Object,
+    timestamp: {
+        type: Date,
+        default: Date.now
+    }
 }, {
     timestamps: true
 });

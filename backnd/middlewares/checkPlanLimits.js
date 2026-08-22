@@ -61,21 +61,24 @@ const checkUserLimit = async (req, res, next) => {
             return res.status(404).json({ message: 'Company not found' });
         }
 
+        // If adding a Client, do not check team member limit
+        if (req.body?.role === 'CLIENT') {
+            return next();
+        }
+
         const plan = await getPlan(company);
         const userCount = await prisma.user.count({
             where: { 
                 companyId,
-                NOT: {
-                    role: 'CLIENT'
-                }
+                role: { in: ['PM', 'FOREMAN', 'ENGINEER', 'WORKER', 'SUBCONTRACTOR'] }
             }
         });
 
-        const maxUsers = plan ? plan.maxUsers : 5; // Default limit for no plan
+        const maxUsers = plan ? (plan.maxUsers || 5) : 5; // Default limit for no plan
 
         if (userCount >= maxUsers && req.user.role !== 'SUPER_ADMIN') {
             return res.status(403).json({ 
-                message: `User limit reached. Your ${plan ? plan.name : 'current'} plan allows up to ${maxUsers} team members. Please upgrade your plan to add more members.`,
+                message: `User limit reached. Your ${plan ? plan.name : 'current'} plan allows up to ${maxUsers} team members. Currently you have ${userCount} active members. Please upgrade your plan to add more members.`,
                 limitReached: true,
                 limitType: 'users',
                 currentCount: userCount,

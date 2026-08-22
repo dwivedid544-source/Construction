@@ -25,8 +25,6 @@ const getRFIs = async (req, res, next) => {
                 { createdBy: req.user.id },
                 { assignedTo: req.user.id }
             ];
-        } else if (req.user.role === 'FOREMAN') {
-            query.createdBy = req.user.id;
         }
 
         if (req.query.projectId) {

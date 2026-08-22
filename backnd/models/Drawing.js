@@ -16,14 +16,35 @@ const drawingSchema = new mongoose.Schema({
         required: true
     },
     drawingNumber: {
-        type: String
+        type: String,
+        default: ''
+    },
+    number: {
+        type: String,
+        default: ''
     },
     category: {
         type: String,
-        default: 'architectural'
+        default: 'Architectural'
+    },
+    fileUrl: {
+        type: String
+    },
+    version: {
+        type: String,
+        default: '1.0'
+    },
+    currentVersion: {
+        type: Number,
+        default: 1
+    },
+    status: {
+        type: String,
+        default: 'Active'
     },
     versions: [{
-        versionNumber: Number,
+        versionNumber: { type: Number, default: 1 },
+        version: { type: String, default: '1.0' },
         fileUrl: String,
         uploadedBy: {
             type: mongoose.Schema.Types.ObjectId,
@@ -35,16 +56,7 @@ const drawingSchema = new mongoose.Schema({
         },
         releaseDate: Date,
         description: String
-    }],
-    currentVersion: {
-        type: Number,
-        default: 1
-    },
-    status: {
-        type: String,
-        enum: ['active', 'superseded', 'void'],
-        default: 'active'
-    }
+    }]
 }, {
     timestamps: true
 });

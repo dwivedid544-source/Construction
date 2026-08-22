@@ -79,20 +79,6 @@ const clockIn = async (req, res, next) => {
             }
         }
 
-        if (!isManual && ((!latitude && latitude !== 0) || (!longitude && longitude !== 0))) {
-            if (!userId || userId === req.user.id) {
-                res.status(400);
-                throw new Error('Location access is required to clock in. Please enable GPS.');
-            }
-        }
-
-        if (!isManual && accuracy && accuracy > 200) {
-            if (!userId || userId === req.user.id) {
-                res.status(400);
-                throw new Error('GPS accuracy too low ( > 200m). Please try again in an area with better signal.');
-            }
-        }
-
         const activeLog = await prisma.timeLog.findFirst({
             where: { userId: targetUserId, clockOut: null }
         });
@@ -105,7 +91,9 @@ const clockIn = async (req, res, next) => {
         let geofenceStatus = 'unknown';
         let isOutsideGeofence = false;
 
-        if (!isManual && projectId && latitude && longitude) {
+        const hasValidCoords = latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null && !isNaN(Number(latitude)) && !isNaN(Number(longitude));
+
+        if (!isManual && projectId && hasValidCoords) {
             const project = await prisma.project.findUnique({ where: { id: projectId } });
             if (project) {
                 const siteLat = project.siteLatitude || (project.location ? JSON.parse(JSON.stringify(project.location)).latitude : null);
@@ -116,26 +104,21 @@ const clockIn = async (req, res, next) => {
                     const distance = calculateDistance(latitude, longitude, siteLat, siteLon);
                     isOutsideGeofence = distance > radius;
                     geofenceStatus = isOutsideGeofence ? 'outside' : 'inside';
-
-                    if (isOutsideGeofence && project.strictGeofence) {
-                        res.status(403);
-                        throw new Error(`Clock-in blocked: You are ${Math.round(distance - radius)}m outside the allowed site radius.`);
-                    }
                 }
             }
         }
 
-        const address = await reverseGeocode(latitude, longitude);
+        const address = hasValidCoords ? await reverseGeocode(latitude, longitude) : '';
 
         const log = await prisma.timeLog.create({
             data: {
                 companyId: req.user.companyId,
                 userId: targetUserId,
-                projectId,
+                projectId: projectId || null,
                 jobId: jobId || null,
                 clockIn: isManual ? new Date(manualTime) : new Date(),
-                clockInLatitude: latitude ? Number(latitude) : null,
-                clockInLongitude: longitude ? Number(longitude) : null,
+                clockInLatitude: hasValidCoords ? Number(latitude) : null,
+                clockInLongitude: hasValidCoords ? Number(longitude) : null,
                 clockInAccuracy: accuracy ? Number(accuracy) : null,
                 geofenceStatus,
                 isOutsideGeofence,
@@ -216,13 +199,6 @@ const clockOut = async (req, res, next) => {
             }
         }
 
-        if (!isManual && ((!latitude && latitude !== 0) || (!longitude && longitude !== 0))) {
-            if (!userId || userId === req.user.id) {
-                res.status(400);
-                throw new Error('Location access is required to clock out. Please enable GPS.');
-            }
-        }
-
         const log = await prisma.timeLog.findFirst({
             where: { userId: targetUserId, clockOut: null }
         });
@@ -235,7 +211,9 @@ const clockOut = async (req, res, next) => {
         let isOutsideGeofence = log.isOutsideGeofence;
         let geofenceStatus = log.geofenceStatus;
 
-        if (!isManual && log.projectId && latitude && longitude) {
+        const hasValidCoords = latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null && !isNaN(Number(latitude)) && !isNaN(Number(longitude));
+
+        if (!isManual && log.projectId && hasValidCoords) {
             const project = await prisma.project.findUnique({ where: { id: log.projectId } });
             if (project) {
                 const siteLat = project.siteLatitude || (project.location ? JSON.parse(JSON.stringify(project.location)).latitude : null);
@@ -247,24 +225,19 @@ const clockOut = async (req, res, next) => {
                     if (distance > radius) {
                         isOutsideGeofence = true;
                         geofenceStatus = 'outside';
-
-                        if (project.strictGeofence) {
-                            res.status(403);
-                            throw new Error(`Clock-out blocked: You must be within the project site to clock out.`);
-                        }
                     }
                 }
             }
         }
 
-        const address = await reverseGeocode(latitude, longitude);
+        const address = hasValidCoords ? await reverseGeocode(latitude, longitude) : '';
 
         const updated = await prisma.timeLog.update({
             where: { id: log.id },
             data: {
                 clockOut: isManual ? new Date(manualTime) : new Date(),
-                clockOutLatitude: latitude ? Number(latitude) : null,
-                clockOutLongitude: longitude ? Number(longitude) : null,
+                clockOutLatitude: hasValidCoords ? Number(latitude) : null,
+                clockOutLongitude: hasValidCoords ? Number(longitude) : null,
                 clockOutAccuracy: accuracy ? Number(accuracy) : null,
                 isOutsideGeofence,
                 geofenceStatus,

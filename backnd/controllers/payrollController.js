@@ -148,16 +148,19 @@ const getJobsPayroll = async (req, res, next) => {
             .lean();
 
         const results = await Promise.all(jobs.map(async (job) => {
-            // Find proof photos for this job or its project
+            // Find proof photos specifically uploaded for this job
             const photos = await Photo.find({
                 companyId,
-                $or: [
-                    { jobId: job._id },
-                    { projectId: job.projectId?._id || job.projectId }
-                ]
-            }).lean();
+                jobId: job._id
+            }).sort({ createdAt: -1 }).lean();
 
-            const photoUrls = photos.map(p => p.url || (p.images && p.images[0])).filter(Boolean);
+            const photoItems = photos.map(p => ({
+                _id: p._id.toString(),
+                id: p._id.toString(),
+                url: p.imageUrl || p.url || (p.images && p.images[0]),
+                imageUrl: p.imageUrl || p.url || (p.images && p.images[0]),
+                description: p.description || ''
+            })).filter(p => p.url);
 
             // Fetch tasks for this job to find assigned members
             const tasks = await JobTask.find({ jobId: job._id }).populate('assignedTo', 'fullName role rate').lean();
@@ -193,9 +196,9 @@ const getJobsPayroll = async (req, res, next) => {
                 budget: job.budget || 0,
                 totalContractPayout: job.budget || 0,
                 location: job.location || job.projectId?.location?.address || 'Site Location Not Specified',
-                proofPhotos: photoUrls,
-                proofPhotosCount: photoUrls.length,
-                hasProofPhotos: photoUrls.length > 0,
+                proofPhotos: photoItems,
+                proofPhotosCount: photoItems.length,
+                hasProofPhotos: photoItems.length > 0,
                 members
             };
         }));

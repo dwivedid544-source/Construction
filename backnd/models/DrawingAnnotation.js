@@ -7,34 +7,41 @@ const drawingAnnotationSchema = new mongoose.Schema({
         required: true
     },
     versionId: {
-        type: mongoose.Schema.Types.ObjectId, // References the _id of the version in the Drawing.versions array
-        required: true
+        type: mongoose.Schema.Types.ObjectId,
+        required: false
     },
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: false
+    },
+    userName: {
+        type: String
+    },
+    userRole: {
+        type: String
     },
     pageNumber: {
         type: Number,
-        required: true,
         default: 1
     },
     type: {
         type: String,
-        enum: ['highlight', 'comment', 'arrow', 'box', 'text', 'line', 'pen'],
-        required: true
+        default: 'comment'
     },
     coordinates: {
-        type: mongoose.Schema.Types.Mixed, // Will store { x1, y1, x2, y2 } or path data
-        required: true
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
+    },
+    data: {
+        type: mongoose.Schema.Types.Mixed
     },
     content: {
-        type: String // Optional text for comments or text notes
+        type: String,
+        default: ''
     },
     status: {
         type: String,
-        enum: ['open', 'resolved'],
         default: 'open'
     },
     isVisibleToClient: {
@@ -45,8 +52,7 @@ const drawingAnnotationSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster queries per drawing version
-drawingAnnotationSchema.index({ drawingId: 1, versionId: 1 });
+drawingAnnotationSchema.index({ drawingId: 1 });
 
 const DrawingAnnotation = mongoose.model('DrawingAnnotation', drawingAnnotationSchema);
 

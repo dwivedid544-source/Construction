@@ -13,6 +13,44 @@ const matchPassword = async (enteredPassword, hashedPassword) => {
     return await bcrypt.compare(enteredPassword, hashedPassword);
 };
 
+const logAuthEvent = async (req, { action, details, user, email, module = 'Authentication' }) => {
+    try {
+        const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || req.ip || '127.0.0.1';
+        const userAgent = req.headers['user-agent'] || '';
+        
+        const logData = {
+            userId: user ? (user.id || user._id) : undefined,
+            userName: user ? (user.fullName || user.name) : (email || 'Unknown User'),
+            userEmail: user ? user.email : (email || 'unknown'),
+            action,
+            module,
+            details,
+            ipAddress: clientIp,
+            userAgent,
+            timestamp: new Date()
+        };
+
+        const createdLog = await prisma.auditLog.create({
+            data: logData
+        });
+
+        const io = req.app?.get('io');
+        if (io) {
+            io.emit('audit_log_created', {
+                ...createdLog,
+                _id: createdLog.id || createdLog._id,
+                userId: {
+                    fullName: logData.userName,
+                    email: logData.userEmail,
+                    role: user?.role || 'User'
+                }
+            });
+        }
+    } catch (err) {
+        console.warn('[AuditLog] Error creating auth audit log:', err.message);
+    }
+};
+
 // @desc    Register a new company and owner
 // @route   POST /api/auth/register-company
 // @access  Public
@@ -424,6 +462,13 @@ const loginUser = async (req, res, next) => {
         if (user && (await matchPassword(password, user.password))) {
             console.log('DEBUG [login]: Password matched for', email);
             if (!user.isActive) {
+                logAuthEvent(req, {
+                    action: 'Failed Login',
+                    module: 'Authentication',
+                    user,
+                    email: normalizedEmail,
+                    details: 'Account is under review by Super Admin'
+                });
                 res.status(401);
                 throw new Error('Your account is currently under review by the Super Admin. Once all required checks are completed, your access will be approved. Please wait or contact your administrator for updates');
             }
@@ -440,6 +485,13 @@ const loginUser = async (req, res, next) => {
                 
                 if (company) {
                     if (company.expireDate && new Date(company.expireDate) < new Date()) {
+                        logAuthEvent(req, {
+                            action: 'Failed Login',
+                            module: 'Authentication',
+                            user,
+                            email: normalizedEmail,
+                            details: 'Company subscription plan has expired'
+                        });
                         res.status(401);
                         throw new Error('Company subscription plan has expired. Please contact support to renew.');
                     }
@@ -455,6 +507,15 @@ const loginUser = async (req, res, next) => {
 
             const token = generateToken(user.id, user.role, user.companyId);
             console.log('DEBUG [login]: Token generated, sending response');
+
+            // Automatically log successful login in Audit Logs
+            logAuthEvent(req, {
+                action: 'User Login',
+                module: 'Authentication',
+                user,
+                email: normalizedEmail,
+                details: 'User logged in successfully'
+            });
 
             // Calculate trial and expiration state
             let enhancedCompany = company;
@@ -490,6 +551,13 @@ const loginUser = async (req, res, next) => {
                 permissions
             });
         } else {
+            logAuthEvent(req, {
+                action: 'Failed Login',
+                module: 'Authentication',
+                user: user || null,
+                email: normalizedEmail,
+                details: user ? 'Invalid password entered' : 'User not found / invalid email'
+            });
             res.status(401);
             throw new Error('Invalid email or password');
         }
