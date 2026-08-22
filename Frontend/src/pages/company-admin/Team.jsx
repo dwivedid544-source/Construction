@@ -24,8 +24,19 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
+export const ALL_SYSTEM_ROLES = [
+  { name: 'PM', label: 'Project Manager (PM)', description: 'Project Manager' },
+  { name: 'FOREMAN', label: 'Site Foreman', description: 'Site Foreman' },
+  { name: 'ENGINEER', label: 'Site Engineer', description: 'Site Engineer' },
+  { name: 'WORKER', label: 'Field Worker / Crew', description: 'Field Worker / Crew' },
+  { name: 'SUBCONTRACTOR', label: 'Subcontractor / Trade Partner', description: 'Subcontractor' },
+  { name: 'COMPANY_OWNER', label: 'Company Owner / Admin', description: 'Company Owner / Admin' },
+  { name: 'CLIENT', label: 'Client', description: 'Client' },
+  { name: 'SUPER_ADMIN', label: 'Super Admin', description: 'Super Administrator' }
+];
+
 // Shared form for both Team Members and Clients
-const UserForm = ({ data, setData, onSubmit, submitLabel, isEdit = false, roleOptions }) => (
+const UserForm = ({ data, setData, onSubmit, submitLabel, isEdit = false, roleOptions = ALL_SYSTEM_ROLES }) => (
   <div className="space-y-4">
     <div>
       <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
@@ -89,11 +100,12 @@ const UserForm = ({ data, setData, onSubmit, submitLabel, isEdit = false, roleOp
         <div className="relative">
           <Phone size={18} className="absolute left-3 top-2.5 text-slate-400" />
           <input
-            type="text"
+            type="tel"
+            maxLength={10}
             value={data.phone}
-            onChange={e => setData({ ...data, phone: e.target.value })}
+            onChange={e => setData({ ...data, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 transition"
-            placeholder="+1 (555)..."
+            placeholder="10-digit number"
           />
         </div>
       </div>
@@ -119,7 +131,7 @@ const UserForm = ({ data, setData, onSubmit, submitLabel, isEdit = false, roleOp
       </div>
     </div>
 
-    <div className="grid grid-cols-2 gap-4">
+    <div className={`grid ${data.role === 'CLIENT' ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
         <select
@@ -132,21 +144,23 @@ const UserForm = ({ data, setData, onSubmit, submitLabel, isEdit = false, roleOp
           <option>Offline</option>
         </select>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Hourly Rate ($/hr)</label>
-        <div className="relative">
-          <DollarSign size={16} className="absolute left-3 top-3 text-slate-400" />
-          <input
-            type="number"
-            min="0"
-            step="0.5"
-            value={data.hourlyRate !== undefined ? data.hourlyRate : 30}
-            onChange={e => setData({ ...data, hourlyRate: e.target.value })}
-            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition"
-            placeholder="30.00"
-          />
+      {data.role !== 'CLIENT' && (
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Hourly Rate ($/hr)</label>
+          <div className="relative">
+            <DollarSign size={16} className="absolute left-3 top-3 text-slate-400" />
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={data.hourlyRate !== undefined ? data.hourlyRate : 30}
+              onChange={e => setData({ ...data, hourlyRate: e.target.value })}
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition"
+              placeholder="30.00"
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
     <div className="flex justify-end pt-4">
       <button
@@ -172,7 +186,7 @@ const StatusBadge = ({ status }) => (
 );
 
 // Reusable user table
-const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onChangePassword, emptyMessage, isAdmin = true }) => (
+const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onChangePassword, emptyMessage, isAdmin = true, isClientTable = false }) => (
   <div className="overflow-x-auto">
     <table className="w-full text-left text-sm text-slate-600">
       <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
@@ -181,7 +195,7 @@ const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onCha
           <th className="px-6 py-4 whitespace-nowrap">Role</th>
           <th className="px-6 py-4 whitespace-nowrap">Status</th>
           <th className="px-6 py-4 whitespace-nowrap">Contact</th>
-          <th className="px-6 py-4 whitespace-nowrap">Pay Rate</th>
+          {!isClientTable && <th className="px-6 py-4 whitespace-nowrap">Pay Rate</th>}
           <th className="px-6 py-4 text-right whitespace-nowrap">Actions</th>
         </tr>
       </thead>
@@ -220,9 +234,11 @@ const UserTable = ({ users, onView, onEdit, onDelete, onManagePermissions, onCha
                   </div>
                 </div>
               </td>
-              <td className="px-6 py-4 font-bold text-slate-800">
-                ${member.hourlyRate != null ? member.hourlyRate : 30}/hr
-              </td>
+              {!isClientTable && (
+                <td className="px-6 py-4 font-bold text-slate-800">
+                  ${member.hourlyRate != null ? member.hourlyRate : 30}/hr
+                </td>
+              )}
               <td className="px-6 py-4 text-right">
                 <div className="flex justify-end gap-2 text-right">
                   {isAdmin ? (
@@ -271,7 +287,7 @@ const CLIENT_ROLE_OPTIONS = [
 ];
 
 const emptyForm = (role) => ({
-  fullName: '', role, email: '', phone: '', status: 'Active', password: '', confirmPassword: '', hourlyRate: 30
+  fullName: '', role, email: '', phone: '', status: 'Active', password: '', confirmPassword: '', hourlyRate: role === 'CLIENT' ? undefined : 30
 });
 
 const Team = () => {
@@ -628,7 +644,11 @@ const Team = () => {
                 <>
                   <option value="PM">Project Manager</option>
                   <option value="FOREMAN">Site Foreman</option>
-                  <option value="WORKER">Worker</option>
+                  <option value="ENGINEER">Site Engineer</option>
+                  <option value="WORKER">Field Worker</option>
+                  <option value="SUBCONTRACTOR">Subcontractor</option>
+                  <option value="COMPANY_OWNER">Company Owner / Admin</option>
+                  <option value="SUPER_ADMIN">Super Admin</option>
                 </>
               ) : (
                 <option value="SUBCONTRACTOR">Subcontractor</option>
@@ -651,6 +671,7 @@ const Team = () => {
             onChangePassword={handleChangePassword}
             emptyMessage={activeTab === 'team' ? 'No team members found.' : (activeTab === 'subcontractors' ? 'No subcontractors found.' : 'No clients found.')}
             isAdmin={isAdmin}
+            isClientTable={activeTab === 'clients'}
           />
         )}
       </div>
@@ -664,7 +685,10 @@ const Team = () => {
           setData={setFormData}
           onSubmit={handleSaveAdd}
           submitLabel={isSubmitting ? 'Saving...' : (isTeamTab ? 'Add Member' : 'Add Client')}
-          roleOptions={allRoles.length > 0 ? (isTeamTab ? allRoles.filter(r => ['PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(r.name)) : allRoles.filter(r => r.name === 'CLIENT')) : currentRoleOptions}
+          roleOptions={isTeamTab ? ALL_SYSTEM_ROLES.map(r => {
+            const dbR = allRoles.find(db => db.name === r.name);
+            return { ...r, _id: dbR?._id || dbR?.id };
+          }) : ALL_SYSTEM_ROLES.filter(r => r.name === (activeTab === 'subcontractors' ? 'SUBCONTRACTOR' : 'CLIENT'))}
         />
       </Modal>
 
@@ -676,7 +700,10 @@ const Team = () => {
           onSubmit={handleSaveEdit}
           submitLabel={isSubmitting ? 'Saving...' : 'Save Changes'}
           isEdit={true}
-          roleOptions={allRoles.length > 0 ? (isTeamTab ? allRoles.filter(r => ['PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR'].includes(r.name)) : allRoles.filter(r => r.name === 'CLIENT')) : currentRoleOptions}
+          roleOptions={isTeamTab ? ALL_SYSTEM_ROLES.map(r => {
+            const dbR = allRoles.find(db => db.name === r.name);
+            return { ...r, _id: dbR?._id || dbR?.id };
+          }) : ALL_SYSTEM_ROLES.filter(r => r.name === (activeTab === 'subcontractors' ? 'SUBCONTRACTOR' : 'CLIENT'))}
         />
       </Modal>
 
@@ -692,7 +719,7 @@ const Team = () => {
               <p className="text-slate-500 text-sm uppercase font-bold">{selectedMember.role}</p>
               <StatusBadge status={selectedMember.status} />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left bg-slate-50 p-4 rounded-xl">
+            <div className={`grid grid-cols-1 ${selectedMember.role === 'CLIENT' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 text-left bg-slate-50 p-4 rounded-xl`}>
               <div>
                 <p className="text-xs text-slate-400 font-bold uppercase mb-1">Email</p>
                 <p className="text-sm font-medium text-slate-800 break-all">{selectedMember.email}</p>
@@ -701,10 +728,12 @@ const Team = () => {
                 <p className="text-xs text-slate-400 font-bold uppercase mb-1">Phone</p>
                 <p className="text-sm font-medium text-slate-800">{selectedMember.phone || '---'}</p>
               </div>
-              <div>
-                <p className="text-xs text-slate-400 font-bold uppercase mb-1">Pay Rate</p>
-                <p className="text-sm font-bold text-emerald-600">${selectedMember.hourlyRate != null ? selectedMember.hourlyRate : 30}/hr</p>
-              </div>
+              {selectedMember.role !== 'CLIENT' && (
+                <div>
+                  <p className="text-xs text-slate-400 font-bold uppercase mb-1">Pay Rate</p>
+                  <p className="text-sm font-bold text-emerald-600">${selectedMember.hourlyRate != null ? selectedMember.hourlyRate : 30}/hr</p>
+                </div>
+              )}
             </div>
             {isAdmin && (
               <div className="flex justify-center gap-3 pt-2">

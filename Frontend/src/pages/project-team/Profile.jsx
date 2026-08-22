@@ -181,9 +181,11 @@ const Profile = () => {
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
                                         <input
-                                            type="text"
+                                            type="tel"
+                                            maxLength={10}
                                             value={profile.phone}
-                                            onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                                            onChange={(e) => setProfile({ ...profile, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                                            placeholder="10-digit number"
                                             className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition"
                                         />
                                     </div>

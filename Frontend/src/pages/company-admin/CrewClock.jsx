@@ -218,31 +218,6 @@ const CrewClock = () => {
         }
     };
 
-    const getAdminLocation = async () => {
-        return new Promise((resolve) => {
-            if (!navigator.geolocation) {
-                console.warn('Geolocation not supported');
-                return resolve(null);
-            }
-
-            navigator.geolocation.getCurrentPosition(
-                (pos) => resolve(pos.coords),
-                (err) => {
-                    console.warn('High accuracy location failed, trying low accuracy...', err.message);
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => resolve(pos.coords),
-                        (err2) => {
-                            console.warn('Geolocation failed completely:', err2.message);
-                            resolve(null);
-                        },
-                        { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
-                    );
-                },
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-            );
-        });
-    };
-
     const handleBulkClockIn = async () => {
         if (selectedWorkers.length === 0) return;
         if (!activeJobId) {
@@ -253,18 +228,12 @@ const CrewClock = () => {
         try {
             setIsProcessing(true);
 
-            // Get Admin's current position once for the batch
-            const coords = await getAdminLocation();
-
             await Promise.all(selectedWorkers.map(wid => {
                 const worker = workers.find(w => w._id === wid);
                 if (!worker.isClockedIn) {
                     return api.post('/timelogs/clock-in', {
                         userId: wid,
                         projectId: activeJobId,
-                        latitude: coords?.latitude || 0,
-                        longitude: coords?.longitude || 0,
-                        accuracy: coords?.accuracy || 0,
                         deviceInfo: `Admin Force Clock-in: ${navigator.userAgent}`
                     });
                 }
@@ -286,17 +255,11 @@ const CrewClock = () => {
         try {
             setIsProcessing(true);
 
-            // Get Admin's current position once for the batch
-            const coords = await getAdminLocation();
-
             await Promise.all(selectedWorkers.map(async wid => {
                 const worker = workers.find(w => w._id === wid);
                 if (worker.isClockedIn) {
                     return api.post('/timelogs/clock-out', {
-                        userId: wid,
-                        latitude: coords?.latitude || 0,
-                        longitude: coords?.longitude || 0,
-                        accuracy: coords?.accuracy || 0
+                        userId: wid
                     });
                 }
                 return Promise.resolve();

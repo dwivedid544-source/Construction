@@ -2317,10 +2317,11 @@ const LandingPage = () => {
                                     <input
                                         type="tel"
                                         required
+                                        maxLength={10}
                                         autoComplete="off"
-                                        placeholder="Mobile number"
+                                        placeholder="10-digit number"
                                         value={formData.phone}
-                                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                                         style={{
                                             width: '100%',
                                             padding: '10px 14px',
@@ -2533,9 +2534,10 @@ const LandingPage = () => {
                                     <input
                                         type="tel"
                                         required
-                                        placeholder="Mobile number"
+                                        maxLength={10}
+                                        placeholder="10-digit number"
                                         value={customFormData.phone}
-                                        onChange={e => setCustomFormData({ ...customFormData, phone: e.target.value })}
+                                        onChange={e => setCustomFormData({ ...customFormData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                                         style={{
                                             width: '100%',
                                             padding: '11px 14px',

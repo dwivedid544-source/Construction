@@ -701,23 +701,10 @@ const CompanyAdminDashboard = () => {
     return () => clearInterval(interval);
   }, [isClockedIn]);
 
-  const [lastKnownCoords, setLastKnownCoords] = useState(null);
-
-  // Live Location Warm-up
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => setLastKnownCoords(pos.coords),
-      (err) => console.log('Warm-up location error:', err),
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
-
   const handleToggle = async () => {
     try {
       if (!isClockedIn && !selectedAssignment) {
-        showToast('Please select a site, task, or "Other" to clock into.', 'error');
+        showToast('Please select a site or "Other" to clock into.', 'error');
         return;
       }
 
@@ -729,55 +716,27 @@ const CompanyAdminDashboard = () => {
 
       setLoading(true);
 
-      const getPosition = () => new Promise((resolve, reject) => {
-        if (lastKnownCoords) return resolve(lastKnownCoords);
-        if (!navigator.geolocation) return reject(new Error('Geolocation is not supported.'));
-
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve(pos.coords),
-          (err) => {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => resolve(pos.coords),
-              (err2) => reject(err2 || err),
-              { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
-            );
-          },
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
-        );
-      });
-
       if (!isClockedIn) {
         let pId = null;
         let tId = null;
         let jId = null;
         let taskType = null;
 
-        if (selectedAssignment.startsWith('task_')) {
-          tId = selectedAssignment.replace('task_', '');
-          const tMatch = workerMetrics.assignedTasks?.find(t => t._id === tId);
-          if (tMatch) {
-            pId = tMatch.projectId?._id || tMatch.projectId;
-            jId = tMatch.jobId?._id || tMatch.jobId;
-            taskType = tMatch.type || 'JobTask';
-          }
-        } else if (selectedAssignment.startsWith('project_')) {
+        if (selectedAssignment.startsWith('project_')) {
           pId = selectedAssignment.replace('project_', '');
-          const pMatch = workerMetrics.assignedProjects?.find(p => p._id === pId);
+          const pMatch = workerMetrics.assignedProjects?.find(p => (p._id || p.id) === pId);
           if (pMatch) {
             jId = pMatch.jobId?._id || pMatch.jobId;
           }
         }
 
-        const coords = await getPosition();
         await api.post('/timelogs/clock-in', {
           projectId: pId,
           jobId: jId,
           taskId: tId,
           taskType: taskType,
           reason: selectedAssignment === 'random' ? clockInReason : undefined,
-          latitude: coords?.latitude,
-          longitude: coords?.longitude,
-          deviceInfo: navigator.userAgent
+          deviceInfo: navigator?.userAgent || 'Browser'
         });
 
         // Auto-resume job if it was on hold
@@ -796,11 +755,7 @@ const CompanyAdminDashboard = () => {
         showToast('Clocked in successfully!');
       } else {
         // Clock Out
-        const coords = await getPosition();
-        await api.post('/timelogs/clock-out', {
-          latitude: coords?.latitude,
-          longitude: coords?.longitude
-        });
+        await api.post('/timelogs/clock-out', {});
         setIsClockedIn(false);
         setTimer(0);
         fetchDashboardData();
@@ -808,18 +763,7 @@ const CompanyAdminDashboard = () => {
       }
     } catch (error) {
       console.error('Error toggling clock:', error);
-      let message = 'Failed to update attendance status';
-
-      if (error.code === 1) { // PERMISSION_DENIED
-        message = 'Location permission denied. Please allow location access in your browser settings.';
-      } else if (error.code === 2) { // POSITION_UNAVAILABLE
-        message = 'Location unavailable. Please make sure GPS is active.';
-      } else if (error.code === 3) { // TIMEOUT
-        message = 'Location request timed out. Please try again.';
-      } else {
-        message = error.response?.data?.message || error.message || message;
-      }
-
+      const message = error.response?.data?.message || error.message || 'Failed to update attendance status';
       showToast(message, 'error');
     } finally {
       setLoading(false);
@@ -887,12 +831,13 @@ const CompanyAdminDashboard = () => {
     }
   };
 
-  const isOwner = user?.role === 'COMPANY_OWNER';
+  const isOwner = user?.role === 'COMPANY_OWNER' || user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
   const isPM = user?.role === 'PM';
   const isForeman = user?.role === 'FOREMAN';
   const isWorker = user?.role === 'WORKER';
   const isSubcontractor = user?.role === 'SUBCONTRACTOR';
-  const isOwnerOrPM = isOwner || isPM;
+  const isEngineer = user?.role === 'ENGINEER';
+  const isOwnerOrPM = isOwner || isPM || isEngineer;
 
   return (
     <div className="space-y-6 pb-8 animate-fade-in w-full">
@@ -984,7 +929,7 @@ const CompanyAdminDashboard = () => {
               </h2>
               {!isClockedIn && workerMetrics.assignedProjects?.length > 0 && (
                 <div className="mt-4 max-w-sm mx-auto md:mx-0 relative" ref={siteDropdownRef}>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Select Site for Clock In</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Select Working Site</label>
 
                   {/* Searchable Site Selector */}
                   <div className="relative">
@@ -995,11 +940,9 @@ const CompanyAdminDashboard = () => {
                       <span className="truncate pr-4">
                         {selectedAssignment ? (
                           selectedAssignment === 'random' ? 'Random Site / Emergency Attendance' :
-                            selectedAssignment.startsWith('task_') ?
-                              workerMetrics.assignedTasks?.find(t => t._id === selectedAssignment.replace('task_', ''))?.title :
-                              workerMetrics.assignedProjects?.find(p => p._id === selectedAssignment.replace('project_', ''))?.name
+                            workerMetrics.assignedProjects?.find(p => (p._id || p.id) === selectedAssignment.replace('project_', ''))?.name || 'Selected Site'
                         ) : (
-                          <span className="text-slate-400">-- Choose Task / Project --</span>
+                          <span className="text-slate-400">-- Choose Working Site / Project --</span>
                         )}
                       </span>
                       <ChevronDown size={18} className={`text-slate-400 transition-transform duration-300 group-hover:text-blue-500 ${isSiteDropdownOpen ? 'rotate-180' : ''}`} />
@@ -1013,7 +956,7 @@ const CompanyAdminDashboard = () => {
                             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                               type="text"
-                              placeholder="Search sites or tasks..."
+                              placeholder="Search project sites..."
                               value={siteSearchTerm}
                               onChange={(e) => setSiteSearchTerm(e.target.value)}
                               className="w-full bg-slate-50 border-none rounded-xl pl-11 pr-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/10 placeholder:text-slate-400"
@@ -1022,10 +965,10 @@ const CompanyAdminDashboard = () => {
                           </div>
                         </div>
 
-                        {/* Results List */}
+                        {/* Results List - Project Sites Only */}
                         <div className="max-h-[250px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                           {/* Random Site Option */}
-                          {(!siteSearchTerm || 'random'.includes(siteSearchTerm.toLowerCase())) && (
+                          {(!siteSearchTerm || 'random'.includes(siteSearchTerm.toLowerCase()) || 'other'.includes(siteSearchTerm.toLowerCase())) && (
                             <div className="px-3 py-2 border-b border-slate-50">
                               <button
                                 onClick={() => {
@@ -1035,78 +978,58 @@ const CompanyAdminDashboard = () => {
                                 }}
                                 className={`w-full text-left p-3 rounded-xl transition-colors flex items-center gap-3 ${selectedAssignment === 'random' ? 'bg-orange-50 border border-orange-100' : 'hover:bg-slate-50'}`}
                               >
-                                <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center">
+                                <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
                                   <AlertCircle size={16} />
                                 </div>
                                 <div className="flex flex-col">
                                   <span className="text-sm font-bold text-slate-800">Random Site / Emergency</span>
-                                  <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight">Manual entry required</span>
+                                  <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight">Manual entry</span>
                                 </div>
                               </button>
                             </div>
                           )}
 
-                          {/* Tasks Section */}
-                          {workerMetrics.assignedTasks?.filter(t => t.title.toLowerCase().includes(siteSearchTerm.toLowerCase()) || (t.jobName && t.jobName.toLowerCase().includes(siteSearchTerm.toLowerCase()))).length > 0 && (
+                          {/* Projects / Working Sites Section */}
+                          {workerMetrics.assignedProjects?.filter(p => p.name?.toLowerCase().includes(siteSearchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(siteSearchTerm.toLowerCase()))).length > 0 ? (
                             <div className="px-3 py-2">
-                              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-500 bg-blue-50/50 rounded-lg mb-2">My Tasks</div>
-                              {workerMetrics.assignedTasks
-                                .filter(t => t.title.toLowerCase().includes(siteSearchTerm.toLowerCase()) || (t.jobName && t.jobName.toLowerCase().includes(siteSearchTerm.toLowerCase())))
-                                .map(t => (
-                                  <button
-                                    key={`task_${t._id}`}
-                                    onClick={() => {
-                                      setSelectedAssignment(`task_${t._id}`);
-                                      setIsSiteDropdownOpen(false);
-                                      setSiteSearchTerm('');
-                                    }}
-                                    className={`w-full text-left p-3 rounded-xl transition-colors mb-1 flex flex-col gap-0.5 ${selectedAssignment === `task_${t._id}` ? 'bg-blue-50 border border-blue-100' : 'hover:bg-slate-50'}`}
-                                  >
-                                    <span className="text-sm font-bold text-slate-800">{t.title}</span>
-                                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight truncate">
-                                      {t.jobName} / {t.projectName}
-                                    </span>
-                                  </button>
-                                ))}
-                            </div>
-                          )}
-
-                          {/* Projects Section */}
-                          {workerMetrics.assignedProjects?.filter(p => p.name.toLowerCase().includes(siteSearchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(siteSearchTerm.toLowerCase()))).length > 0 && (
-                            <div className="px-3 py-2">
-                              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-50/50 rounded-lg mb-2">General Site Attendance</div>
+                              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50/50 rounded-lg mb-2">Project Sites</div>
                               {workerMetrics.assignedProjects
-                                .filter(p => p.name.toLowerCase().includes(siteSearchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(siteSearchTerm.toLowerCase())))
-                                .map(p => (
-                                  <button
-                                    key={`project_${p._id}`}
-                                    onClick={() => {
-                                      setSelectedAssignment(`project_${p._id}`);
-                                      setIsSiteDropdownOpen(false);
-                                      setSiteSearchTerm('');
-                                    }}
-                                    className={`w-full text-left p-3 rounded-xl transition-colors mb-1 flex flex-col gap-0.5 ${selectedAssignment === `project_${p._id}` ? 'bg-emerald-50 border border-emerald-100' : 'hover:bg-slate-50'}`}
-                                  >
-                                    <span className="text-sm font-bold text-slate-800">{p.name}</span>
-                                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight truncate">
-                                      {p.jobName || p.jobId?.name || 'Assigned Job'}
-                                    </span>
-                                  </button>
-                                ))}
+                                .filter(p => p.name?.toLowerCase().includes(siteSearchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(siteSearchTerm.toLowerCase())))
+                                .map(p => {
+                                  const projId = p._id || p.id;
+                                  return (
+                                    <button
+                                      key={`project_${projId}`}
+                                      onClick={() => {
+                                        setSelectedAssignment(`project_${projId}`);
+                                        setIsSiteDropdownOpen(false);
+                                        setSiteSearchTerm('');
+                                      }}
+                                      className={`w-full text-left p-3 rounded-xl transition-colors mb-1 flex items-center gap-3 ${selectedAssignment === `project_${projId}` ? 'bg-blue-50 border border-blue-100' : 'hover:bg-slate-50'}`}
+                                    >
+                                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                        <MapPin size={16} />
+                                      </div>
+                                      <div className="flex flex-col truncate">
+                                        <span className="text-sm font-bold text-slate-800 truncate">{p.name}</span>
+                                        <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight truncate">
+                                          {p.jobName || (typeof p.location === 'object' ? p.location?.address : p.location) || 'Active Project Site'}
+                                        </span>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                             </div>
-                          )}
-
-                          {/* No Results */}
-                          {workerMetrics.assignedTasks?.filter(t => t.title.toLowerCase().includes(siteSearchTerm.toLowerCase())).length === 0 &&
-                            workerMetrics.assignedProjects?.filter(p => p.name.toLowerCase().includes(siteSearchTerm.toLowerCase())).length === 0 &&
+                          ) : (
                             siteSearchTerm && !'random'.includes(siteSearchTerm.toLowerCase()) && (
                               <div className="p-8 text-center space-y-2">
-                                <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-300">
-                                  <Search size={20} />
+                                <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-300">
+                                  <Search size={24} />
                                 </div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No matching sites</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No matching project sites found</p>
                               </div>
-                            )}
+                            )
+                          )}
                         </div>
                       </div>
                     )}
@@ -1142,7 +1065,7 @@ const CompanyAdminDashboard = () => {
 
       {/* Summary Cards Row */}
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${(isWorker || isSubcontractor) ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3 md:gap-4`}>
-        {(isOwner || isPM) && (
+        {isOwnerOrPM && (
           <>
             <SummaryCard title="Active Jobs" value={metrics.activeJobs} icon={Briefcase} color="bg-orange-400" loading={loading} />
             <SummaryCard title="Crew On Site" value={metrics.crewOnSiteCount} subtext={`of ${metrics.totalCrew}`} icon={Users} color="bg-emerald-400" loading={loading} />
@@ -1199,10 +1122,20 @@ const CompanyAdminDashboard = () => {
 
                 {isPM && (
                   <>
-                    <QuickActionButton label="Clock In Crew" icon={Users} bg="bg-blue-600" color="text-white" onClick={() => navigate('/company-admin/crew-clock')} />
+                    <QuickActionButton label="Add Drawing" icon={FileText} bg="bg-blue-600" color="text-white" onClick={() => navigate('/company-admin/drawings')} />
+                    <QuickActionButton label="Clock In Crew" icon={Users} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/crew-clock')} />
                     <QuickActionButton label="Daily Log" icon={FileText} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/daily-logs')} />
                     <QuickActionButton label="Upload Photo" icon={Camera} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/photos')} />
                     <QuickActionButton label="Create PO" icon={ClipboardList} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/purchase-orders/new')} />
+                  </>
+                )}
+
+                {isEngineer && (
+                  <>
+                    <QuickActionButton label="View Drawings" icon={FileText} bg="bg-blue-600" color="text-white" onClick={() => navigate('/company-admin/drawings')} />
+                    <QuickActionButton label="Review RFIs" icon={ClipboardList} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/rfi')} />
+                    <QuickActionButton label="Site Issues" icon={AlertCircle} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/issues')} />
+                    <QuickActionButton label="Site Photos" icon={Camera} bg="bg-white" color="text-slate-700" onClick={() => navigate('/company-admin/photos')} />
                   </>
                 )}
 

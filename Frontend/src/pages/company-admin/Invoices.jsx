@@ -100,24 +100,40 @@ const Invoices = () => {
         const project = projects.find(p => p._id === associatedProjectId);
         const associatedClientId = project?.clientId?._id || project?.clientId || formData.clientId;
 
-        const poItems = (po.items || []).map(item => ({
-            description: item.itemName || item.description || 'Material Item',
-            quantity: Number(item.quantity) || 1,
-            unitPrice: Number(item.unitPrice) || 0,
-            total: Number(item.total) || ((Number(item.quantity) || 1) * (Number(item.unitPrice) || 0))
-        }));
+        const poItems = (po.items || []).map(item => {
+            const qty = Number(item.quantity) || 1;
+            const price = Number(item.unitPrice) || 0;
+            const lineTotal = Number(item.total) || (qty * price);
+            return {
+                description: item.itemName || item.description || 'Material Item',
+                quantity: qty,
+                unitPrice: price,
+                total: Number(lineTotal.toFixed(2))
+            };
+        });
 
-        const computedSubtotal = Number(po.subtotal) || poItems.reduce((acc, it) => acc + it.total, 0);
+        // 1. Calculate Items Subtotal directly by summing all line item totals
+        const itemsSum = poItems.reduce((acc, it) => acc + (Number(it.total) || 0), 0);
+        const computedSubtotal = itemsSum > 0 ? itemsSum : (Number(po.subtotal) || 0);
+
+        // 2. Calculate Tax Rate and Tax Amount
+        let computedTaxRate = Number(po.taxRate);
         let computedTax = Number(po.tax);
-        if (isNaN(computedTax) || computedTax === 0) {
-            if (po.totalAmount && po.totalAmount > computedSubtotal) {
-                computedTax = Number((po.totalAmount - computedSubtotal).toFixed(2));
+
+        if (isNaN(computedTaxRate) || computedTaxRate <= 0) {
+            if (po.totalAmount && computedSubtotal > 0 && Number(po.totalAmount) > computedSubtotal) {
+                computedTax = Number((Number(po.totalAmount) - computedSubtotal).toFixed(2));
+                computedTaxRate = Number(((computedTax / computedSubtotal) * 100).toFixed(0));
             } else {
+                computedTaxRate = 15;
                 computedTax = Number((computedSubtotal * 0.15).toFixed(2));
             }
+        } else {
+            computedTax = Number((computedSubtotal * (computedTaxRate / 100)).toFixed(2));
         }
-        const computedTaxRate = computedSubtotal > 0 ? Number(((computedTax / computedSubtotal) * 100).toFixed(0)) : 15;
-        const totalAmt = Number(po.totalAmount) || Number((computedSubtotal + computedTax).toFixed(2));
+
+        // 3. Grand Total = Subtotal + Tax
+        const totalAmt = Number((computedSubtotal + computedTax).toFixed(2));
 
         setFormData(prev => ({
             ...prev,
@@ -778,32 +794,6 @@ const Invoices = () => {
                         </select>
                     </div>
 
-                    {/* Optional File Upload */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Invoice Document / Image (Optional)</label>
-                        <div className="relative">
-                            <input
-                                type="file"
-                                accept="image/*,application/pdf"
-                                onChange={e => setFile(e.target.files[0])}
-                                className="hidden"
-                                id="invoice-upload-modal"
-                            />
-                            <label
-                                htmlFor="invoice-upload-modal"
-                                className="flex items-center justify-center gap-3 w-full bg-slate-50 border border-dashed border-slate-300 rounded-xl p-4 cursor-pointer hover:bg-slate-100 transition text-slate-500 text-sm group"
-                            >
-                                <div className="p-2 bg-white rounded-full shadow-sm group-hover:scale-110 transition duration-300">
-                                    <Upload size={18} className="text-blue-600" />
-                                </div>
-                                <div className="flex flex-col items-start">
-                                    <span className="font-bold text-slate-700">{file ? file.name : 'Select or replace document'}</span>
-                                    <span className="text-xs text-slate-400">PDF or Image up to 10MB</span>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
                     {/* Financial Summary & Breakdown */}
                     <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
                         <div>
@@ -815,12 +805,16 @@ const Invoices = () => {
                                 step="any"
                                 value={formData.subtotal}
                                 onChange={e => {
-                                    const sub = Number(e.target.value) || 0;
-                                    const tx = Number(formData.tax) || 0;
+                                    const rawVal = e.target.value;
+                                    const sub = Number(rawVal) || 0;
+                                    const rate = Number(formData.taxRate) || 15;
+                                    const tx = Number((sub * (rate / 100)).toFixed(2));
+                                    const tot = Number((sub + tx).toFixed(2));
                                     setFormData(prev => ({
                                         ...prev,
-                                        subtotal: e.target.value,
-                                        totalAmount: (sub + tx).toFixed(2)
+                                        subtotal: rawVal,
+                                        tax: tx.toFixed(2),
+                                        totalAmount: tot.toFixed(2)
                                     }));
                                 }}
                                 placeholder="0.00"
@@ -837,12 +831,16 @@ const Invoices = () => {
                                 step="any"
                                 value={formData.tax}
                                 onChange={e => {
-                                    const tx = Number(e.target.value) || 0;
+                                    const rawVal = e.target.value;
+                                    const tx = Number(rawVal) || 0;
                                     const sub = Number(formData.subtotal) || 0;
+                                    const rate = sub > 0 ? Number(((tx / sub) * 100).toFixed(1)) : (Number(formData.taxRate) || 15);
+                                    const tot = Number((sub + tx).toFixed(2));
                                     setFormData(prev => ({
                                         ...prev,
-                                        tax: e.target.value,
-                                        totalAmount: (sub + tx).toFixed(2)
+                                        tax: rawVal,
+                                        taxRate: rate,
+                                        totalAmount: tot.toFixed(2)
                                     }));
                                 }}
                                 placeholder="0.00"
@@ -875,9 +873,9 @@ const Invoices = () => {
                                     {purchaseOrders.find(p => p._id === formData.poId)?.poNumber || 'PO Details'}
                                 </span>
                             </div>
-                            <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                            <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm custom-scrollbar">
                                 <table className="w-full text-left text-xs">
-                                    <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 uppercase text-[9px] tracking-wider">
+                                    <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 uppercase text-[9px] tracking-wider sticky top-0 bg-slate-50 z-10">
                                         <tr>
                                             <th className="p-2.5">Description</th>
                                             <th className="p-2.5 text-center">Qty</th>
@@ -887,7 +885,7 @@ const Invoices = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-slate-700">
                                         {formData.items.map((it, idx) => (
-                                            <tr key={idx}>
+                                            <tr key={idx} className="hover:bg-slate-50/60 transition">
                                                 <td className="p-2.5 font-medium">{it.description}</td>
                                                 <td className="p-2.5 text-center font-bold text-slate-600">{it.quantity}</td>
                                                 <td className="p-2.5 text-right">${Number(it.unitPrice || 0).toFixed(2)}</td>
@@ -899,10 +897,10 @@ const Invoices = () => {
                             </div>
 
                             {/* Tax & Total Summary Breakdown Card */}
-                            <div className="bg-white rounded-xl p-3 border border-slate-200 space-y-1.5 text-xs font-semibold">
+                            <div className="bg-white rounded-xl p-3.5 border border-slate-200 space-y-2 text-xs font-semibold shadow-sm">
                                 <div className="flex justify-between text-slate-500">
-                                    <span>Items Subtotal:</span>
-                                    <span>${Number(formData.subtotal || 0).toFixed(2)}</span>
+                                    <span>Items Subtotal ({formData.items.length} items):</span>
+                                    <span className="font-bold text-slate-800">${Number(formData.subtotal || 0).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-slate-500">
                                     <span className="flex items-center gap-1.5">
@@ -910,9 +908,9 @@ const Invoices = () => {
                                     </span>
                                     <span className="text-amber-600 font-bold">+${Number(formData.tax || 0).toFixed(2)}</span>
                                 </div>
-                                <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center">
+                                <div className="border-t border-slate-100 pt-2 flex justify-between items-center">
                                     <span className="font-black text-slate-900 uppercase text-[10px] tracking-wider">Grand Total:</span>
-                                    <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-100">
+                                    <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100 shadow-sm">
                                         ${Number(formData.totalAmount || 0).toFixed(2)}
                                     </span>
                                 </div>

@@ -52,10 +52,23 @@ export const ClockProvider = ({ children }) => {
         }
     }, [user?._id]);
 
-    // Load active log on login / user change.
+    // Load active log on login / user change and synchronize across tabs / socket events.
     useEffect(() => {
         setLoading(true);
         refresh();
+
+        // Multi-tab sync on tab focus or storage change
+        const handleFocusOrStorage = () => refresh();
+        window.addEventListener('focus', handleFocusOrStorage);
+        window.addEventListener('storage', handleFocusOrStorage);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') refresh();
+        });
+
+        return () => {
+            window.removeEventListener('focus', handleFocusOrStorage);
+            window.removeEventListener('storage', handleFocusOrStorage);
+        };
     }, [refresh]);
 
     // Single global ticking timer — recomputed from the server clockIn so it never drifts.

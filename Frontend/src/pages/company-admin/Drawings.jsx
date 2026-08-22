@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { FileText, Eye, Download, Search, Filter, Upload, Trash2, X, Save, AlertTriangle, CheckCircle, Loader, File, Send, Check, ChevronDown } from 'lucide-react';
+import { FileText, Eye, Download, Search, Filter, Upload, Trash2, X, Save, AlertTriangle, CheckCircle, Loader, File, Send, Check, ChevronDown, Plus, Edit2 } from 'lucide-react';
 import api, { getServerUrl } from '../../utils/api';
 import DrawingViewer from './DrawingViewer';
 import emailjs from '@emailjs/browser';
@@ -49,32 +49,30 @@ const SearchableSelect = ({ options, value, onChange }) => {
     <div className="relative" ref={dropdownRef}>
       <div 
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full px-4 py-2.5 bg-slate-50 border rounded-lg text-sm flex justify-between items-center cursor-pointer transition-all ${isOpen ? 'border-blue-500 ring-4 ring-blue-50' : 'border-slate-200 hover:border-slate-300'}`}
+        className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 bg-white flex justify-between items-center cursor-pointer shadow-sm hover:border-slate-300 transition-colors"
       >
         <span className={selectedOption ? "text-slate-800 font-medium" : "text-slate-400"}>
           {selectedOption ? selectedOption.name : "Select Project"}
         </span>
-        <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-blue-500' : ''}`} />
+        <ChevronDown size={16} className={`text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </div>
 
       {isOpen && (
-        <div className="absolute z-[100] mt-1.5 w-full bg-white border border-slate-200 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
-          <div className="p-2.5 border-b border-slate-100 bg-slate-50/50">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
-              <input 
-                type="text"
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500 transition-all"
-                placeholder="Search project..."
-              />
-            </div>
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-xl z-50 overflow-hidden animate-scale-in">
+          <div className="p-2 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
+            <Search size={14} className="text-slate-400 ml-1" />
+            <input 
+              type="text" 
+              placeholder="Search projects..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-transparent text-xs outline-none font-medium text-slate-700"
+              autoFocus
+            />
           </div>
-          <div className="max-h-56 overflow-y-auto custom-scrollbar p-1">
+          <div className="max-h-48 overflow-y-auto p-1">
             {filteredOptions.length > 0 ? (
-              filteredOptions.map(opt => (
+              filteredOptions.map((opt) => (
                 <div 
                   key={opt._id}
                   onClick={() => { onChange(opt._id); setIsOpen(false); setSearch(""); }}
@@ -96,8 +94,10 @@ const SearchableSelect = ({ options, value, onChange }) => {
 
 const Drawings = () => {
   const { user } = useAuth();
-  const canManage = ['COMPANY_OWNER', 'PM', 'SUPER_ADMIN'].includes(user?.role);
-  const canUploadDrawing = ['PM', 'ENGINEER', 'SUPER_ADMIN'].includes(user?.role);
+  // Project Manager is responsible for uploading; Admin and PM can edit status/details
+  const canManage = user?.role === 'PM';
+  const canUploadDrawing = user?.role === 'PM';
+  const canEdit = ['COMPANY_OWNER', 'SUPER_ADMIN', 'ADMIN', 'PM', 'ENGINEER'].includes(user?.role);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const projectFilter = searchParams.get('projectId');
@@ -112,6 +112,7 @@ const Drawings = () => {
 
   // Modal States
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isFullViewerOpen, setIsFullViewerOpen] = useState(false);
@@ -129,6 +130,14 @@ const Drawings = () => {
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [formData, setFormData] = useState({
     projectId: '', title: '', drawingNumber: '', category: '', file: null
+  });
+  const [editFormData, setEditFormData] = useState({
+    _id: '',
+    title: '',
+    drawingNumber: '',
+    category: 'Architectural',
+    status: 'In Review',
+    projectId: ''
   });
 
   const fetchDrawings = async () => {
@@ -234,6 +243,50 @@ const Drawings = () => {
     setSelectedDrawing(drawing);
     setSelectedVersion(latestVersion);
     setIsFullViewerOpen(true);
+  };
+
+  const handleEditClick = (drawing, e) => {
+    e?.stopPropagation();
+    setEditFormData({
+      _id: drawing._id,
+      title: drawing.title || '',
+      drawingNumber: drawing.drawingNumber || drawing.number || '',
+      category: drawing.category || 'Architectural',
+      status: drawing.status || 'In Review',
+      projectId: drawing.projectId?._id || drawing.projectId || ''
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editFormData.title.trim()) {
+      alert('Please enter a drawing title.');
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await api.patch(`/drawings/${editFormData._id}`, {
+        title: editFormData.title,
+        drawingNumber: editFormData.drawingNumber,
+        number: editFormData.drawingNumber,
+        category: editFormData.category,
+        status: editFormData.status,
+        projectId: editFormData.projectId || undefined
+      });
+
+      setDrawings(prev => prev.map(d => (d._id === editFormData._id ? { ...d, ...res.data } : d)));
+      setIsEditOpen(false);
+      setSuccessMessage({
+        title: 'Drawing Updated',
+        message: `Drawing status and details have been successfully updated to "${editFormData.status}".`
+      });
+      setIsSuccessOpen(true);
+    } catch (err) {
+      console.error('Error updating drawing:', err);
+      alert('Failed to update drawing: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = (drawing) => {
@@ -363,9 +416,9 @@ const Drawings = () => {
         {canUploadDrawing && (
           <button
             onClick={handleUploadClick}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center gap-2 transition"
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center gap-2 transition font-bold text-sm"
           >
-            <Upload size={18} /> Upload Revision
+            <Plus size={18} /> Add / Upload Drawing
           </button>
         )}
       </div>
@@ -466,20 +519,40 @@ const Drawings = () => {
                         const isApproved = statusLower.includes('approved') || statusLower === 'active';
                         const isReview = statusLower.includes('review');
                         const isSuperseded = statusLower.includes('superseded');
+                        const isDraft = statusLower.includes('draft');
+                        const isVoid = statusLower.includes('void');
                         return (
-                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase inline-flex items-center gap-1
+                          <button
+                            type="button"
+                            onClick={(e) => canEdit && handleEditClick(drawing, e)}
+                            className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase inline-flex items-center gap-1.5 transition-all
+                            ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-blue-400 hover:shadow-sm' : 'cursor-default'}
                             ${isApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
                               isReview ? 'bg-blue-100 text-blue-700 border border-blue-200' :
                               isSuperseded ? 'bg-orange-100 text-orange-700 border border-orange-200' :
-                                'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                            {isApproved && <CheckCircle size={10} />}
-                            {displayStatus}
-                          </span>
+                              isDraft ? 'bg-slate-100 text-slate-700 border border-slate-300' :
+                              isVoid ? 'bg-rose-100 text-rose-700 border border-rose-200' :
+                                'bg-slate-100 text-slate-600 border border-slate-200'}`}
+                            title={canEdit ? 'Click to change status' : ''}
+                          >
+                            {isApproved && <CheckCircle size={11} />}
+                            <span>{displayStatus}</span>
+                            {canEdit && <Edit2 size={9} className="opacity-60 ml-0.5" />}
+                          </button>
                         );
                       })()}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2 text-blue-600">
+                        {canEdit && (
+                          <button 
+                            onClick={(e) => handleEditClick(drawing, e)} 
+                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-transparent hover:border-amber-100" 
+                            title="Edit Details / Change Status"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        )}
                         <button onClick={() => handleDownload(drawing)} className="p-2 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100" title="Download Drawing">
                           <Download size={18} />
                         </button>
@@ -513,7 +586,7 @@ const Drawings = () => {
       {/* Modals */}
 
       {/* Upload Modal */}
-      <Modal isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} title="Upload New Revision">
+      <Modal isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} title="Add / Upload Drawing">
         <div className="space-y-4">
           <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50 hover:bg-slate-100 transition cursor-pointer relative">
             <input
@@ -611,6 +684,100 @@ const Drawings = () => {
             >
               {loading ? <Loader className="animate-spin" size={18} /> : <Save size={18} />}
               {loading ? 'Uploading...' : 'Upload Drawing'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Drawing & Status Modal */}
+      <Modal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} title="Edit Drawing & Status">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Drawing Title</label>
+            <input
+              type="text"
+              className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 font-semibold"
+              placeholder="e.g. Ground Floor Plan"
+              value={editFormData.title}
+              onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Drawing Number</label>
+              <input
+                type="text"
+                className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 font-semibold"
+                placeholder="e.g. A-101"
+                value={editFormData.drawingNumber}
+                onChange={(e) => setEditFormData({ ...editFormData, drawingNumber: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
+              <select
+                className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 font-semibold bg-white"
+                value={editFormData.category}
+                onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+              >
+                <option value="Architectural">Architectural</option>
+                <option value="Structural">Structural</option>
+                <option value="Electrical">Electrical</option>
+                <option value="Mechanical">Mechanical</option>
+                <option value="Plumbing">Plumbing</option>
+                <option value="Civil">Civil</option>
+                <option value="General">General</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+              <span>Drawing Status</span>
+              <span className="text-[10px] text-blue-600 font-black uppercase">Status Change</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'In Review', color: 'border-blue-500 bg-blue-50 text-blue-700' },
+                { label: 'Approved', color: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
+                { label: 'Active', color: 'border-teal-500 bg-teal-50 text-teal-700' },
+                { label: 'Draft', color: 'border-slate-500 bg-slate-50 text-slate-700' },
+                { label: 'Superseded', color: 'border-orange-500 bg-orange-50 text-orange-700' },
+                { label: 'Void', color: 'border-rose-500 bg-rose-50 text-rose-700' }
+              ].map(opt => (
+                <button
+                  type="button"
+                  key={opt.label}
+                  onClick={() => setEditFormData({ ...editFormData, status: opt.label })}
+                  className={`py-2.5 px-2 rounded-xl text-xs font-black uppercase tracking-wider border-2 transition-all flex items-center justify-center gap-1.5 ${
+                    editFormData.status === opt.label 
+                      ? `${opt.color} shadow-sm scale-102 font-bold` 
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  {editFormData.status === opt.label && <Check size={12} />}
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-3">
+            <button
+              type="button"
+              onClick={() => setIsEditOpen(false)}
+              className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl transition border border-slate-200 text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveEdit}
+              disabled={loading}
+              className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 transition text-sm flex items-center justify-center gap-2"
+            >
+              <Save size={16} /> Save Changes
             </button>
           </div>
         </div>

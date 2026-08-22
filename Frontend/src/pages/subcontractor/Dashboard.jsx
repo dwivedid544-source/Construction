@@ -32,22 +32,31 @@ const SubcontractorDashboard = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch projects
-                const [projectsRes, tasksRes] = await Promise.allSettled([
+                // Fetch projects, tasks and user report stats in parallel
+                const [projectsRes, tasksRes, statsRes] = await Promise.allSettled([
                     api.get('/projects'),
-                    api.get('/tasks')
+                    api.get('/tasks'),
+                    api.get('/reports/stats')
                 ]);
 
                 const projects = projectsRes.status === 'fulfilled' ? projectsRes.value.data : [];
                 const tasks = tasksRes.status === 'fulfilled' ? tasksRes.value.data : [];
+                const reportData = statsRes.status === 'fulfilled' ? statsRes.value.data : null;
 
                 const completedTasks = Array.isArray(tasks) ? tasks.filter(t => t.status === 'completed').length : 0;
                 const pendingTasks = Array.isArray(tasks) ? tasks.filter(t => t.status !== 'completed').length : 0;
 
+                let realHoursThisWeek = 0;
+                if (reportData?.workerMetrics?.weeklyDone) {
+                    realHoursThisWeek = parseFloat(reportData.workerMetrics.weeklyDone) || 0;
+                } else if (reportData?.metrics?.hoursToday) {
+                    realHoursThisWeek = reportData.metrics.hoursToday;
+                }
+
                 setStats({
-                    activeProjects: Array.isArray(projects) ? projects.length : 0,
+                    activeProjects: Array.isArray(projects) ? projects.filter(p => p.status === 'active' || !p.status).length || projects.length : 0,
                     pendingTasks,
-                    hoursThisWeek: 38,
+                    hoursThisWeek: realHoursThisWeek,
                     completedTasks
                 });
 

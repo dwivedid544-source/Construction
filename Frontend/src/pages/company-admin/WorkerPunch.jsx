@@ -129,27 +129,10 @@ const WorkerPunch = () => {
         return rawName;
     };
 
-    const [lastKnownCoords, setLastKnownCoords] = useState(null);
-
-    // Live Location Warm-up
-    useEffect(() => {
-        if (!navigator.geolocation) return;
-
-        const watchId = navigator.geolocation.watchPosition(
-            (pos) => {
-                setLastKnownCoords(pos.coords);
-            },
-            (err) => console.log('Warm-up location error:', err),
-            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-        );
-
-        return () => navigator.geolocation.clearWatch(watchId);
-    }, []);
-
     const handleToggle = async () => {
         try {
             if (!isClockedIn && !selectedAssignment) {
-                showToast('Please select a site, task, or "Other" to clock into.', 'error');
+                showToast('Please select a site or "Other" to clock into.', 'error');
                 return;
             }
 
@@ -161,97 +144,61 @@ const WorkerPunch = () => {
 
             setLoading(true);
 
-            // Use the warm-up location if available, otherwise fetch fresh one
-            const getPosition = () => new Promise((resolve, reject) => {
-                if (lastKnownCoords) return resolve(lastKnownCoords);
-                if (!navigator.geolocation) return reject(new Error('Geolocation is not supported.'));
-                
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => resolve(pos.coords),
-                    (err) => {
-                        navigator.geolocation.getCurrentPosition(
-                            (pos) => resolve(pos.coords),
-                            (err2) => reject(err2 || err),
-                            { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
-                        );
-                    },
-                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
-                );
-            });
-
             if (!isClockedIn) {
-                // Determine Project/Task/Job ID similar to dashboard
                 let pId = null;
                 let tId = null;
                 let jId = null;
                 let taskType = null;
 
-                if (selectedAssignment.startsWith('task_')) {
-                    tId = selectedAssignment.replace('task_', '');
-                    const tMatch = assignedTasks.find(t => t._id === tId);
-                    if (tMatch) {
-                        pId = tMatch.projectId?._id || tMatch.projectId;
-                        jId = tMatch.jobId?._id || tMatch.jobId;
-                        taskType = tMatch.type || 'JobTask';
-                    }
-                } else if (selectedAssignment.startsWith('project_')) {
+                if (selectedAssignment.startsWith('project_')) {
                     pId = selectedAssignment.replace('project_', '');
-                    const pMatch = assignedProjects.find(p => p._id === pId);
+                    const pMatch = assignedProjects.find(p => (p._id || p.id) === pId);
                     if (pMatch) {
                         jId = pMatch.jobId?._id || pMatch.jobId;
                     }
                 }
 
-                const coords = await getPosition();
                 const created = await clockIn({
                     projectId: pId,
                     taskId: tId,
                     jobId: jId,
                     taskType: taskType,
                     reason: selectedAssignment === 'random' ? clockInReason : undefined,
-                    latitude: coords?.latitude,
-                    longitude: coords?.longitude,
-                    deviceInfo: navigator.userAgent
+                    deviceInfo: navigator?.userAgent || 'Browser'
                 });
 
                 // Re-fetch data to sync all status strings
-                const statsRes = await api.get('/reports/stats');
-                if (statsRes.data.workerMetrics?.currentJob) {
-                    setActiveJob(formatJobName(statsRes.data.workerMetrics.currentJob, assignedProjects, assignedTasks));
+                try {
+                    const statsRes = await api.get('/reports/stats');
+                    if (statsRes.data.workerMetrics?.currentJob) {
+                        setActiveJob(formatJobName(statsRes.data.workerMetrics.currentJob, assignedProjects, assignedTasks));
+                    }
+                } catch (e) {
+                    console.log('Error refreshing stats:', e);
                 }
+
                 setHistory(prev => [created, ...prev].slice(0, 5));
                 setShowReasonModal(false);
                 setClockInReason('');
                 showToast('Clocked in successfully.');
             } else {
                 // Clock Out
-                const coords = await getPosition();
-                await clockOut({
-                    latitude: coords?.latitude,
-                    longitude: coords?.longitude
-                });
+                await clockOut();
                 setActiveJob(null);
                 setSiteLocation('Not Clocked In');
                 setSelectedAssignment('');
-                const res = await api.get('/timelogs');
-                const userLogs = res.data.filter(log => (log.userId?._id || log.userId)?.toString() === user?._id?.toString());
-                setHistory(userLogs.slice(0, 5));
+                try {
+                    const res = await api.get('/timelogs');
+                    const userLogs = res.data.filter(log => (log.userId?._id || log.userId)?.toString() === user?._id?.toString());
+                    setHistory(userLogs.slice(0, 5));
+                } catch (e) {
+                    console.log('Error refreshing logs:', e);
+                }
                 showToast('Clocked out successfully.');
             }
         } catch (error) {
             console.error('Error toggling clock:', error);
-            let message = 'Failed to update attendance status';
-            
-            if (error.code === 1) { // PERMISSION_DENIED
-                message = 'Location permission denied. Please allow location access in your browser settings.';
-            } else if (error.code === 2) { // POSITION_UNAVAILABLE
-                message = 'Location unavailable. Please make sure GPS is active.';
-            } else if (error.code === 3) { // TIMEOUT
-                message = 'Location request timed out. Please try again.';
-            } else {
-                message = error.response?.data?.message || error.message || message;
-            }
-            
+            const message = error.response?.data?.message || error.message || 'Failed to update attendance status';
             showToast(message, 'error');
         } finally {
             setLoading(false);
@@ -344,9 +291,9 @@ const WorkerPunch = () => {
                         </h2>
                         {!isClockedIn && (
                             <div className="mt-6 mb-4 max-w-sm mx-auto relative" ref={dropdownRef}>
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block text-left">Select Working Site / Task</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block text-left">Select Working Site</label>
                                 
-                                {/* Custom Searchable Select */}
+                                {/* Custom Searchable Select for Project Sites */}
                                 <div className="relative">
                                     <button
                                         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -355,11 +302,9 @@ const WorkerPunch = () => {
                                         <span className="truncate pr-4">
                                             {selectedAssignment ? (
                                                 selectedAssignment === 'random' ? 'Random Site / Emergency Attendance' : 
-                                                selectedAssignment.startsWith('task_') ? 
-                                                    assignedTasks.find(t => t._id === selectedAssignment.replace('task_', ''))?.title :
-                                                    assignedProjects.find(p => p._id === selectedAssignment.replace('project_', ''))?.name
+                                                assignedProjects.find(p => (p._id || p.id) === selectedAssignment.replace('project_', ''))?.name || 'Selected Site'
                                             ) : (
-                                                <span className="text-slate-400">-- Choose Task / Project --</span>
+                                                <span className="text-slate-400">-- Choose Working Site / Project --</span>
                                             )}
                                         </span>
                                         <ChevronDown size={18} className={`text-slate-400 transition-transform duration-300 group-hover:text-blue-500 ${isDropdownOpen ? 'rotate-180' : ''}`} />
@@ -373,7 +318,7 @@ const WorkerPunch = () => {
                                                     <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                                                     <input
                                                         type="text"
-                                                        placeholder="Search sites or tasks..."
+                                                        placeholder="Search project sites..."
                                                         value={searchTerm}
                                                         onChange={(e) => setSearchTerm(e.target.value)}
                                                         className="w-full bg-slate-50 border-none rounded-xl pl-11 pr-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/10 placeholder:text-slate-400"
@@ -382,10 +327,10 @@ const WorkerPunch = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Results List */}
+                                            {/* Results List - Project Sites Only */}
                                             <div className="max-h-[280px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                                                {/* Other Section (Always visible at top of list if no search or matching) */}
-                                                {(!searchTerm || 'random'.includes(searchTerm.toLowerCase())) && (
+                                                {/* Random Site Option */}
+                                                {(!searchTerm || 'random'.includes(searchTerm.toLowerCase()) || 'other'.includes(searchTerm.toLowerCase())) && (
                                                     <div className="px-3 py-2 border-b border-slate-50">
                                                         <button
                                                             onClick={() => {
@@ -395,77 +340,57 @@ const WorkerPunch = () => {
                                                             }}
                                                             className={`w-full text-left p-3 rounded-xl transition-colors flex items-center gap-3 ${selectedAssignment === 'random' ? 'bg-orange-50 border border-orange-100' : 'hover:bg-slate-50'}`}
                                                         >
-                                                            <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center">
+                                                            <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
                                                                 <AlertCircle size={16} />
                                                             </div>
                                                             <div className="flex flex-col">
                                                                 <span className="text-sm font-bold text-slate-800">Random Site / Emergency</span>
-                                                                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight">Manual site entry required</span>
+                                                                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight">Manual site entry</span>
                                                             </div>
                                                         </button>
                                                     </div>
                                                 )}
 
-                                                {/* Tasks Section */}
-                                                {assignedTasks.filter(t => t.title.toLowerCase().includes(searchTerm.toLowerCase()) || (t.jobName && t.jobName.toLowerCase().includes(searchTerm.toLowerCase()))).length > 0 && (
+                                                {/* Projects / Working Sites Section */}
+                                                {assignedProjects.filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(searchTerm.toLowerCase()))).length > 0 ? (
                                                     <div className="px-3 py-2">
-                                                        <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-500 bg-blue-50/50 rounded-lg mb-2">My Tasks</div>
-                                                        {assignedTasks
-                                                            .filter(t => t.title.toLowerCase().includes(searchTerm.toLowerCase()) || (t.jobName && t.jobName.toLowerCase().includes(searchTerm.toLowerCase())))
-                                                            .map(t => (
-                                                                <button
-                                                                    key={`task_${t._id}`}
-                                                                    onClick={() => {
-                                                                        setSelectedAssignment(`task_${t._id}`);
-                                                                        setIsDropdownOpen(false);
-                                                                        setSearchTerm('');
-                                                                    }}
-                                                                    className={`w-full text-left p-3 rounded-xl transition-colors mb-1 flex flex-col gap-0.5 ${selectedAssignment === `task_${t._id}` ? 'bg-blue-50 border border-blue-100' : 'hover:bg-slate-50'}`}
-                                                                >
-                                                                    <span className="text-sm font-bold text-slate-800">{t.title}</span>
-                                                                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight">
-                                                                        {t.jobName} / {t.projectName}
-                                                                    </span>
-                                                                </button>
-                                                            ))}
-                                                    </div>
-                                                )}
-
-                                                {/* Projects Section */}
-                                                {assignedProjects.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(searchTerm.toLowerCase()))).length > 0 && (
-                                                    <div className="px-3 py-2">
-                                                        <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-50/50 rounded-lg mb-2">General Site Attendance</div>
+                                                        <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50/50 rounded-lg mb-2">Project Sites</div>
                                                         {assignedProjects
-                                                            .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(searchTerm.toLowerCase())))
-                                                            .map(p => (
-                                                                <button
-                                                                    key={`project_${p._id}`}
-                                                                    onClick={() => {
-                                                                        setSelectedAssignment(`project_${p._id}`);
-                                                                        setIsDropdownOpen(false);
-                                                                        setSearchTerm('');
-                                                                    }}
-                                                                    className={`w-full text-left p-3 rounded-xl transition-colors mb-1 flex flex-col gap-0.5 ${selectedAssignment === `project_${p._id}` ? 'bg-emerald-50 border border-emerald-100' : 'hover:bg-slate-50'}`}
-                                                                >
-                                                                    <span className="text-sm font-bold text-slate-800">{p.name}</span>
-                                                                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight">
-                                                                        {p.jobName || p.jobId?.name || 'Assigned Job'}
-                                                                    </span>
-                                                                </button>
-                                                            ))}
+                                                            .filter(p => p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || (p.jobName && p.jobName.toLowerCase().includes(searchTerm.toLowerCase())))
+                                                            .map(p => {
+                                                                const projId = p._id || p.id;
+                                                                return (
+                                                                    <button
+                                                                        key={`project_${projId}`}
+                                                                        onClick={() => {
+                                                                            setSelectedAssignment(`project_${projId}`);
+                                                                            setIsDropdownOpen(false);
+                                                                            setSearchTerm('');
+                                                                        }}
+                                                                        className={`w-full text-left p-3 rounded-xl transition-colors mb-1 flex items-center gap-3 ${selectedAssignment === `project_${projId}` ? 'bg-blue-50 border border-blue-100' : 'hover:bg-slate-50'}`}
+                                                                    >
+                                                                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                                                            <MapPin size={16} />
+                                                                        </div>
+                                                                        <div className="flex flex-col truncate">
+                                                                            <span className="text-sm font-bold text-slate-800 truncate">{p.name}</span>
+                                                                            <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight truncate">
+                                                                                {p.jobName || (typeof p.location === 'object' ? p.location?.address : p.location) || 'Active Project Site'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
                                                     </div>
-                                                )}
-
-                                                {/* No Results */}
-                                                {assignedTasks.filter(t => t.title.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 &&
-                                                 assignedProjects.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 &&
-                                                 searchTerm && !'random'.includes(searchTerm.toLowerCase()) && (
-                                                    <div className="p-8 text-center space-y-2">
-                                                        <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-300">
-                                                            <Search size={24} />
+                                                ) : (
+                                                    searchTerm && !'random'.includes(searchTerm.toLowerCase()) && (
+                                                        <div className="p-8 text-center space-y-2">
+                                                            <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-300">
+                                                                <Search size={24} />
+                                                            </div>
+                                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No matching project sites found</p>
                                                         </div>
-                                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No matching sites found</p>
-                                                    </div>
+                                                    )
                                                 )}
                                             </div>
                                         </div>
@@ -502,7 +427,6 @@ const WorkerPunch = () => {
                                 )
                             )}
                         </button>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Auto-syncing your GPS location...</p>
                     </div>
                 </div>
 

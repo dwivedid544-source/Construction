@@ -6,7 +6,7 @@ import {
     AlertCircle, ChevronRight, Banknote, Wallet, FileText, X,
     Calendar, Briefcase, Loader2, ShieldCheck, User, Building2,
     CheckSquare, Image as ImageIcon, Check, ExternalLink, ChevronDown, ChevronUp,
-    AlertTriangle, Camera, UploadCloud, Plus
+    AlertTriangle, Camera, UploadCloud, Plus, Trash2
 } from 'lucide-react';
 import api, { getServerUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
@@ -212,15 +212,18 @@ const Payroll = () => {
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
         
+        const pId = String(job.projectId?._id || job.projectId || '');
+        const jId = String(job.jobId?._id || job.jobId || job._id || '');
+
         const formData = new FormData();
-        if (job.projectId) formData.append('projectId', job.projectId);
-        if (job.jobId) formData.append('jobId', job.jobId);
-        formData.append('description', `Site work proof for ${job.jobName}`);
+        if (pId) formData.append('projectId', pId);
+        if (jId) formData.append('jobId', jId);
+        formData.append('description', `Site work proof for ${job.jobName || 'Job'}`);
         files.forEach(file => {
             formData.append('images', file);
         });
 
-        setUploadingJobId(job.jobId);
+        setUploadingJobId(jId);
         const toastId = toast.loading(`Uploading ${files.length} site work proof photo(s)...`);
         try {
             await api.post('/photos/upload', formData, {
@@ -234,6 +237,34 @@ const Payroll = () => {
         } finally {
             setUploadingJobId(null);
             if (e.target) e.target.value = '';
+        }
+    };
+
+    // ── Action: Remove Site Work Proof Photo ───────────────────────────────────
+    const [deletingPhotoId, setDeletingPhotoId] = useState(null);
+    const handleDeleteProofPhoto = async (photo, e) => {
+        if (e) e.stopPropagation();
+        const photoId = typeof photo === 'object' ? (photo._id || photo.id) : photo;
+        if (!photoId) return;
+
+        if (!window.confirm('Are you sure you want to remove this site work proof photo?')) return;
+
+        setDeletingPhotoId(photoId);
+        const toastId = toast.loading('Removing proof photo...');
+        try {
+            await api.delete(`/photos/${photoId}`);
+            toast.success('Proof photo removed successfully!', { id: toastId });
+            setLightboxImage(prev => {
+                if (!prev) return null;
+                const prevId = typeof prev === 'object' ? (prev._id || prev.id) : prev;
+                return prevId === photoId ? null : prev;
+            });
+            await fetchJobPayroll();
+        } catch (err) {
+            console.error('Failed to remove proof photo:', err);
+            toast.error(err.response?.data?.message || 'Failed to remove proof photo. Please try again.', { id: toastId });
+        } finally {
+            setDeletingPhotoId(null);
         }
     };
 
@@ -794,20 +825,40 @@ const Payroll = () => {
                                             {/* Photos Gallery Thumbnails */}
                                             {hasProof && (
                                                 <div className="flex items-center gap-2 overflow-x-auto py-1">
-                                                    {job.proofPhotos.slice(0, 6).map((url, pIdx) => (
-                                                        <img
-                                                            key={pIdx}
-                                                            src={getServerUrl(url)}
-                                                            alt="Site Proof"
-                                                            onClick={() => setLightboxImage(url)}
-                                                            className="w-10 h-10 rounded-xl object-cover border-2 border-white shadow-sm hover:scale-110 cursor-pointer transition-transform"
-                                                            title="Click to inspect proof photo"
-                                                        />
-                                                    ))}
+                                                    {job.proofPhotos.slice(0, 6).map((photoObj, pIdx) => {
+                                                        const imgUrl = typeof photoObj === 'string' ? photoObj : (photoObj.url || photoObj.imageUrl);
+                                                        const photoId = typeof photoObj === 'string' ? null : (photoObj._id || photoObj.id);
+                                                        return (
+                                                            <div key={pIdx} className="relative group shrink-0">
+                                                                <img
+                                                                    src={getServerUrl(imgUrl)}
+                                                                    alt="Site Proof"
+                                                                    onClick={() => setLightboxImage(photoObj)}
+                                                                    className="w-11 h-11 rounded-xl object-cover border-2 border-white shadow-sm group-hover:scale-105 cursor-pointer transition-all hover:ring-2 hover:ring-blue-400"
+                                                                    title="Click to zoom, view or remove proof photo"
+                                                                />
+                                                                {photoId && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => handleDeleteProofPhoto(photoObj, e)}
+                                                                        disabled={deletingPhotoId === photoId}
+                                                                        title="Remove proof photo"
+                                                                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:scale-110 active:scale-90 z-10"
+                                                                    >
+                                                                        {deletingPhotoId === photoId ? (
+                                                                            <Loader2 size={10} className="animate-spin" />
+                                                                        ) : (
+                                                                            <Trash2 size={10} />
+                                                                        )}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
                                                     {job.proofPhotos.length > 6 && (
                                                         <span
                                                             onClick={() => setLightboxImage(job.proofPhotos[0])}
-                                                            className="w-10 h-10 rounded-xl bg-slate-800 text-white font-black text-xs flex items-center justify-center cursor-pointer shadow-sm hover:scale-105 transition-transform"
+                                                            className="w-11 h-11 rounded-xl bg-slate-800 text-white font-black text-xs flex items-center justify-center cursor-pointer shadow-sm hover:scale-105 transition-transform shrink-0"
                                                         >
                                                             +{job.proofPhotos.length - 6}
                                                         </span>
@@ -1374,6 +1425,94 @@ const Payroll = () => {
                                         Done &amp; Close Portal
                                     </button>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* ── Proof Photo Zoom & Delete Lightbox Modal ────────────────── */}
+            {lightboxImage && createPortal(
+                <div
+                    className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200"
+                    onClick={() => setLightboxImage(null)}
+                >
+                    <div
+                        className="bg-white rounded-3xl overflow-hidden max-w-3xl w-full shadow-2xl border border-slate-200/80 flex flex-col max-h-[90vh]"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="p-4 px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                                    <ImageIcon size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                                        Site Work Proof Photo
+                                    </h3>
+                                    {typeof lightboxImage === 'object' && lightboxImage.description && (
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            {lightboxImage.description}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <a
+                                    href={getServerUrl(typeof lightboxImage === 'string' ? lightboxImage : (lightboxImage.url || lightboxImage.imageUrl))}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition"
+                                    title="Open Full Resolution"
+                                >
+                                    <ExternalLink size={18} />
+                                </a>
+                                <button
+                                    onClick={() => setLightboxImage(null)}
+                                    className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+                                    title="Close"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Image Preview Container */}
+                        <div className="flex-1 overflow-auto bg-slate-900 flex items-center justify-center p-4 min-h-[300px]">
+                            <img
+                                src={getServerUrl(typeof lightboxImage === 'string' ? lightboxImage : (lightboxImage.url || lightboxImage.imageUrl))}
+                                alt="Site Work Proof Preview"
+                                className="max-h-[60vh] max-w-full object-contain rounded-xl shadow-2xl"
+                            />
+                        </div>
+
+                        {/* Modal Footer Actions */}
+                        <div className="p-4 px-6 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div className="text-xs text-slate-500 font-medium">
+                                Verified work proof photo
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {typeof lightboxImage === 'object' && (lightboxImage._id || lightboxImage.id) && (
+                                    <button
+                                        onClick={(e) => handleDeleteProofPhoto(lightboxImage, e)}
+                                        disabled={deletingPhotoId === (lightboxImage._id || lightboxImage.id)}
+                                        className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition active:scale-95 disabled:opacity-50"
+                                    >
+                                        {deletingPhotoId === (lightboxImage._id || lightboxImage.id) ? (
+                                            <><Loader2 size={14} className="animate-spin" /> Removing...</>
+                                        ) : (
+                                            <><Trash2 size={14} /> Remove Photo</>
+                                        )}
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setLightboxImage(null)}
+                                    className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider transition active:scale-95"
+                                >
+                                    Close
+                                </button>
                             </div>
                         </div>
                     </div>

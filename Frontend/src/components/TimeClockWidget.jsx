@@ -59,92 +59,36 @@ const TimeClockWidget = () => {
             return;
         }
 
-        if (!navigator.geolocation) {
-            alert('Geolocation is not supported by your browser. Location access is mandatory for clock-in.');
-            return;
-        }
-
         try {
             setStatus('loading');
 
-            // Get geolocation
-            const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 15000,
-                    maximumAge: 0
-                });
-            });
-
             const res = await api.post('/timelogs/clock-in', {
                 projectId: selectedProject,
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-                deviceInfo: navigator.userAgent
+                deviceInfo: navigator?.userAgent || 'Browser'
             });
 
             setActiveLog(res.data);
             setStatus('active');
         } catch (error) {
             console.error('Clock in failed:', error);
-            let message = 'Clock in failed';
-
-            if (error.code === 1) { // PERMISSION_DENIED
-                message = 'Location permission denied. You MUST allow location access to clock in. Please check your browser settings.';
-            } else if (error.code === 2) { // POSITION_UNAVAILABLE
-                message = 'Location unavailable. Please ensure GPS is turned on and you have a clear view of the sky.';
-            } else if (error.code === 3) { // TIMEOUT
-                message = 'Location request timed out. Please try again in an area with better signal.';
-            } else {
-                message = error.response?.data?.message || error.message || message;
-            }
-
+            const message = error.response?.data?.message || error.message || 'Clock in failed';
             alert(message);
             setStatus('idle');
         }
     };
 
     const handleClockOut = async () => {
-        if (!navigator.geolocation) {
-            alert('Geolocation is not supported by your browser. Location access is mandatory for clock-out.');
-            return;
-        }
-
         try {
             setStatus('loading');
 
-            const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 15000,
-                    maximumAge: 0
-                });
-            });
-
-            await api.post('/timelogs/clock-out', {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy
-            });
+            await api.post('/timelogs/clock-out', {});
 
             setActiveLog(null);
             setStatus('idle');
             setElapsedTime('00:00:00');
         } catch (error) {
             console.error('Clock out failed:', error);
-            let message = 'Clock out failed';
-
-            if (error.code === 1) {
-                message = 'Location permission denied. You MUST allow location access to clock out. Please check your browser settings.';
-            } else if (error.code === 2) {
-                message = 'Location unavailable. Please ensure GPS is turned on.';
-            } else if (error.code === 3) {
-                message = 'Location request timed out. Please try again.';
-            } else {
-                message = error.response?.data?.message || error.message || message;
-            }
-
+            const message = error.response?.data?.message || error.message || 'Clock out failed';
             alert(message);
             setStatus('active');
         }

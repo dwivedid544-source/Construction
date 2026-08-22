@@ -97,30 +97,6 @@ const DailyLogs = () => {
         setIsModalOpen(true);
     };
 
-    const handleLocationCapture = () => {
-        if (!navigator.geolocation) {
-            alert("Geolocation is not supported by your browser");
-            return;
-        }
-
-        setIsCapturingLocation(true);
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                const { latitude, longitude } = position.coords;
-                setFormData(prev => ({
-                    ...prev,
-                    location: { latitude, longitude, address: 'Captured from GPS' }
-                }));
-                setIsCapturingLocation(false);
-            },
-            (error) => {
-                console.error("Error capturing location:", error);
-                alert("Unable to retrieve your location");
-                setIsCapturingLocation(false);
-            }
-        );
-    };
-
     const handleFileChange = (e) => {
         const files = Array.from(e.target.files);
         if (files.length + selectedFiles.length > 5) {
@@ -227,7 +203,7 @@ const DailyLogs = () => {
                     </p>
                 </div>
                 <div className="flex gap-3">
-                    {['PM', 'FOREMAN', 'WORKER', 'SUPER_ADMIN'].includes(user?.role) && (
+                    {['PM', 'FOREMAN', 'WORKER', 'SUPER_ADMIN', 'COMPANY_OWNER', 'ADMIN', 'ENGINEER'].includes(user?.role) && (
                         <button
                             onClick={handleCreate}
                             className="bg-blue-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 font-black text-sm uppercase tracking-tight"
@@ -684,8 +660,8 @@ const DailyLogs = () => {
                         </div>
                     </div>
 
-                    {/* Media & Location Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-100">
+                    {/* Photo Upload Section */}
+                    <div className="pt-4 border-t border-slate-100">
                         <div className="space-y-3">
                             <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                                 <ImageIcon size={14} className="text-blue-600" /> Photo Upload (Max 5)
@@ -709,34 +685,6 @@ const DailyLogs = () => {
                                     </label>
                                 )}
                             </div>
-                        </div>
-
-                        <div className="space-y-3">
-                            <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                <MapPin size={14} className="text-red-500" /> Site Location
-                            </label>
-                            <button
-                                onClick={handleLocationCapture}
-                                disabled={isCapturingLocation}
-                                className={`w-full p-4 rounded-2xl border flex items-center justify-center gap-3 font-black text-xs uppercase tracking-widest transition-all
-                                    ${formData.location 
-                                        ? 'bg-emerald-50 border-emerald-200 text-emerald-600' 
-                                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
-                            >
-                                {isCapturingLocation ? (
-                                    <>
-                                        <Loader size={16} className="animate-spin" /> Capturing...
-                                    </>
-                                ) : formData.location ? (
-                                    <>
-                                        <Check size={16} /> Location Captured
-                                    </>
-                                ) : (
-                                    <>
-                                        <MapPin size={16} /> Capture GPS Location
-                                    </>
-                                )}
-                            </button>
                         </div>
                     </div>
 

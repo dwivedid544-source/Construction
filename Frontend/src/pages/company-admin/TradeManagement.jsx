@@ -582,9 +582,10 @@ const TradeManagement = () => {
                             <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">Phone</label>
                             <input
                                 type="tel"
+                                maxLength={10}
                                 value={formData.phone}
-                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                placeholder="+1"
+                                onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                                placeholder="10-digit number"
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm focus:border-blue-500 outline-none transition"
                             />
                         </div>

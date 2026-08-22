@@ -7,13 +7,42 @@ const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
 
-const safeSetUserLocalStorage = (userData) => {
-  try {
-    localStorage.setItem('user', JSON.stringify(userData));
-  } catch (quotaErr) {
-    console.warn('[AuthContext] LocalStorage quota exceeded, storing sanitized user:', quotaErr.message);
+const getStoredAuth = () => {
+  const sessionToken = sessionStorage.getItem('token');
+  const sessionUser = sessionStorage.getItem('user');
+  if (sessionToken && sessionUser) {
     try {
-      // Strip oversized fields to ensure quota compliance
+      return { token: sessionToken, user: JSON.parse(sessionUser) };
+    } catch {}
+  }
+  const localToken = localStorage.getItem('token');
+  const localUser = localStorage.getItem('user');
+  if (localToken && localUser) {
+    try {
+      const parsed = JSON.parse(localUser);
+      // Seed sessionStorage for this tab so it maintains its own independent session
+      try {
+        sessionStorage.setItem('token', localToken);
+        sessionStorage.setItem('user', localUser);
+      } catch {}
+      return { token: localToken, user: parsed };
+    } catch {}
+  }
+  return { token: null, user: null };
+};
+
+const safeSetUserStorage = (userData, token = null) => {
+  try {
+    const userStr = JSON.stringify(userData);
+    sessionStorage.setItem('user', userStr);
+    localStorage.setItem('user', userStr);
+    if (token) {
+      sessionStorage.setItem('token', token);
+      localStorage.setItem('token', token);
+    }
+  } catch (quotaErr) {
+    console.warn('[AuthContext] Storage quota warning, storing sanitized user:', quotaErr.message);
+    try {
       const sanitized = {
         _id: userData._id || userData.id,
         id: userData._id || userData.id,
@@ -28,7 +57,13 @@ const safeSetUserLocalStorage = (userData) => {
         mustChangePassword: userData.mustChangePassword,
         permissions: userData.permissions || []
       };
-      localStorage.setItem('user', JSON.stringify(sanitized));
+      const sanitizedStr = JSON.stringify(sanitized);
+      sessionStorage.setItem('user', sanitizedStr);
+      localStorage.setItem('user', sanitizedStr);
+      if (token) {
+        sessionStorage.setItem('token', token);
+        localStorage.setItem('token', token);
+      }
     } catch (fallbackErr) {
       console.error('[AuthContext] Critical storage error:', fallbackErr);
     }
@@ -43,25 +78,27 @@ export const AuthProvider = ({ children }) => {
 
   const refreshPermissions = async (currentUser) => {
     try {
-      const permRes = await api.get('/roles/my-permissions');
+      const currentToken = sessionStorage.getItem('token') || localStorage.getItem('token');
+      const permRes = await api.get('/roles/my-permissions', {
+        headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {}
+      });
       const updatedUser = {
         ...currentUser,
         permissions: permRes.data.permissions || []
       };
       setUser(updatedUser);
-      safeSetUserLocalStorage(updatedUser);
+      safeSetUserStorage(updatedUser);
       console.log('Permissions refreshed real-time');
     } catch (error) {
       console.error('Failed to refresh permissions real-time:', error);
     }
   };
 
-  // Track token to control socket lifecycle — NOT user._id
-  // This prevents socket disconnect/reconnect on every user state update (permissions refresh etc.)
-  const tokenRef = useRef(localStorage.getItem('token'));
+  // Track token to control socket lifecycle per tab
+  const tokenRef = useRef(sessionStorage.getItem('token') || localStorage.getItem('token'));
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
     tokenRef.current = token;
 
     if (!token) {
@@ -73,11 +110,9 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    // If socket already exists and is connected with the same token, do nothing
     if (socketRef.current && socketRef.current.connected) {
       return;
     }
-    // If socket exists but disconnected, let Socket.IO auto-reconnect handle it
     if (socketRef.current) {
       return;
     }
@@ -117,30 +152,29 @@ export const AuthProvider = ({ children }) => {
       socketRef.current = null;
       setSocket(null);
     };
-    // Only re-run when user logs in (null -> value) or logs out (value -> null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user ? 'logged-in' : 'logged-out']);
 
   useEffect(() => {
-    // Check for stored token/user on load
+    // Check for stored token/user on load for this tab
     const initAuth = async () => {
-      const storedUser = localStorage.getItem('user');
-      const token = localStorage.getItem('token');
+      const { token, user: storedUser } = getStoredAuth();
 
       if (storedUser && token) {
         try {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-          setLoading(false); // Set loading to false immediately after setting local user
+          setUser(storedUser);
+          setLoading(false);
 
-          // Refresh permissions/verify token in background
-          api.get('/roles/my-permissions').then(permRes => {
+          // Refresh permissions/verify token in background for THIS tab
+          api.get('/roles/my-permissions', {
+            headers: { Authorization: `Bearer ${token}` }
+          }).then(permRes => {
             const updatedUser = {
-              ...parsedUser,
+              ...storedUser,
               permissions: permRes.data.permissions || []
             };
             setUser(updatedUser);
-            safeSetUserLocalStorage(updatedUser);
+            safeSetUserStorage(updatedUser);
             locationTracker.init(updatedUser);
           }).catch(error => {
             console.error('Background permission refresh failed:', error);
@@ -178,7 +212,6 @@ export const AuthProvider = ({ children }) => {
         }
       };
 
-      // Delay slightly to ensure browser environments/service workers are loaded
       const timer = setTimeout(registerFCM, 2000);
       return () => clearTimeout(timer);
     }
@@ -192,7 +225,6 @@ export const AuthProvider = ({ children }) => {
           const { setupWebNotificationListeners } = await import('../utils/webPushNotifications');
           unsubscribe = setupWebNotificationListeners((payload) => {
             console.log('[WebPush] Foreground notification payload:', payload);
-            // Show a native browser notification if granted
             if (Notification.permission === 'granted') {
               new Notification(payload.notification?.title || payload.data?.title || 'New Message', {
                 body: payload.notification?.body || payload.data?.body || '',
@@ -215,7 +247,6 @@ export const AuthProvider = ({ children }) => {
       const response = await api.post('/auth/login', { email, password });
       const userData = response.data;
 
-      // Now permissions are included in the login response
       const permissions = userData.permissions || [];
 
       const userWithPerms = {
@@ -223,10 +254,9 @@ export const AuthProvider = ({ children }) => {
         permissions
       };
 
-      // Set token and user data in local storage safely
-      localStorage.setItem('token', userData.token);
+      // Set token and user data in tab-isolated sessionStorage and fallback localStorage
+      safeSetUserStorage(userWithPerms, userData.token);
       setUser(userWithPerms);
-      safeSetUserLocalStorage(userWithPerms);
 
       // Start location tracking on login
       locationTracker.init(userWithPerms);
@@ -247,8 +277,12 @@ export const AuthProvider = ({ children }) => {
     }
 
     setUser(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
+    try {
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+    } catch {}
     locationTracker.stopTracking();
   };
 
@@ -262,7 +296,7 @@ export const AuthProvider = ({ children }) => {
       phoneNumber: newData.phoneNumber || newData.phone || user?.phoneNumber,
     };
     setUser(updatedUser);
-    safeSetUserLocalStorage(updatedUser);
+    safeSetUserStorage(updatedUser);
   };
 
   return (

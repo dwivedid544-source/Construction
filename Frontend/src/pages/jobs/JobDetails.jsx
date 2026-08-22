@@ -739,39 +739,17 @@ const JobDetails = () => {
         try {
             setClockTogglingId(taskId);
 
-            const getPosition = () => new Promise((resolve, reject) => {
-                if (!navigator.geolocation) return reject(new Error('Geolocation is not supported by your browser.'));
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => resolve(pos.coords),
-                    (err) => {
-                        navigator.geolocation.getCurrentPosition(
-                            (pos) => resolve(pos.coords),
-                            (err2) => reject(err2),
-                            { enableHighAccuracy: false, timeout: 10000, maximumAge: 30000 }
-                        );
-                    },
-                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-                );
-            });
-
             if (activeTimeLog && activeTimeLog.taskId?._id === taskId) {
                 // Stop Clock
-                const coords = await getPosition();
-                await api.post('/timelogs/clock-out', {
-                    latitude: coords?.latitude,
-                    longitude: coords?.longitude
-                });
+                await api.post('/timelogs/clock-out', {});
                 setActiveTimeLog(null);
             } else if (!activeTimeLog) {
                 // Start Clock
-                const coords = await getPosition();
                 const res = await api.post('/timelogs/clock-in', {
                     projectId: job?.projectId?._id,
                     jobId: job?._id,
                     taskId: taskId,
-                    latitude: coords?.latitude,
-                    longitude: coords?.longitude,
-                    deviceInfo: navigator.userAgent
+                    deviceInfo: navigator?.userAgent || 'Browser'
                 });
                 setActiveTimeLog(res.data);
                 // Update local task state to bypass refresh

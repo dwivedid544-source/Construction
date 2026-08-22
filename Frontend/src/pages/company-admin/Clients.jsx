@@ -202,10 +202,11 @@ const Clients = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
                             <input
                                 type="tel"
+                                maxLength={10}
                                 value={formData.phone}
-                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                onChange={e => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-blue-500"
-                                placeholder="(555) 123-4567"
+                                placeholder="10-digit number"
                             />
                         </div>
                         <div>

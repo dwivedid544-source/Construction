@@ -1,44 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Clock, User, Shield, AlertCircle, RefreshCw, Search, Terminal, Filter } from 'lucide-react';
 import api from '../../utils/api';
+import { useAuth } from '../../context/AuthContext';
 
 const SystemLogs = () => {
+    const { socket } = useAuth();
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
 
-    const fetchLogs = async () => {
+    const fetchLogs = async (isBackground = false) => {
         try {
-            setLoading(true);
+            if (!isBackground) setLoading(true);
             const response = await api.get('/super-admin/logs');
             setLogs(response.data);
             setError(null);
         } catch (err) {
             console.error('Error fetching logs:', err);
-            setError('Failed to load system audit logs.');
+            if (!isBackground) setError('Failed to load system audit logs.');
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
     useEffect(() => {
         fetchLogs();
+
+        // 1. WebSocket real-time event listener
+        if (socket) {
+            const handleNewLog = (newLog) => {
+                setLogs((prev) => {
+                    const exists = prev.some(l => l._id === newLog._id);
+                    if (exists) return prev;
+                    return [newLog, ...prev];
+                });
+            };
+            socket.on('audit_log_created', handleNewLog);
+            return () => {
+                socket.off('audit_log_created', handleNewLog);
+            };
+        }
+    }, [socket]);
+
+    // 2. Continuous real-time background sync every 5 seconds
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchLogs(true);
+        }, 5000);
+        return () => clearInterval(interval);
     }, []);
 
-    const getActionColor = (action) => {
-        if (action.includes('CREATE') || action.includes('UPLOAD')) return 'text-emerald-600 bg-emerald-50 border-emerald-100';
-        if (action.includes('DELETE') || action.includes('REJECT')) return 'text-rose-600 bg-rose-50 border-rose-100';
-        if (action.includes('UPDATE') || action.includes('EDIT')) return 'text-blue-600 bg-blue-50 border-blue-100';
+    const getActionColor = (action = '') => {
+        const act = action.toUpperCase();
+        if (act.includes('FAILED') || act.includes('DELETE') || act.includes('REJECT')) return 'text-rose-600 bg-rose-50 border-rose-100';
+        if (act.includes('USER LOGIN') || act.includes('LOGIN') || act.includes('CREATE') || act.includes('UPLOAD')) return 'text-emerald-600 bg-emerald-50 border-emerald-100';
+        if (act.includes('UPDATE') || act.includes('EDIT')) return 'text-blue-600 bg-blue-50 border-blue-100';
         return 'text-slate-600 bg-slate-50 border-slate-100';
     };
 
-    const filteredLogs = logs.filter(log =>
-        log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.module.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.userId?.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.details?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredLogs = logs.filter(log => {
+        const term = searchTerm.toLowerCase();
+        const actionMatch = (log.action || '').toLowerCase().includes(term);
+        const moduleMatch = (log.module || '').toLowerCase().includes(term);
+        const userMatch = (log.userId?.fullName || log.userName || log.userEmail || '').toLowerCase().includes(term);
+        const detailsMatch = (log.details || '').toLowerCase().includes(term);
+        const ipMatch = (log.ipAddress || '').toLowerCase().includes(term);
+        return actionMatch || moduleMatch || userMatch || detailsMatch || ipMatch;
+    });
 
     if (loading && logs.length === 0) {
         return (
@@ -123,9 +152,9 @@ const SystemLogs = () => {
                                     <td className="px-8 py-5">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-black text-slate-600 shadow-sm">
-                                                {log.userId?.fullName?.charAt(0) || 'S'}
+                                                {(log.userId?.fullName || log.userName || log.userEmail || 'S').charAt(0).toUpperCase()}
                                             </div>
-                                            <span className="text-sm font-black text-slate-900 leading-none">{log.userId?.fullName || 'System'}</span>
+                                            <span className="text-sm font-black text-slate-900 leading-none">{log.userId?.fullName || log.userName || log.userEmail || 'System'}</span>
                                         </div>
                                     </td>
                                     <td className="px-8 py-5">

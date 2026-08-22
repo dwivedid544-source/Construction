@@ -195,9 +195,22 @@ const ProjectDetails = () => {
         }
     };
 
-    // Helper for lazy loading equipment
+    // Helper for checking if equipment is assigned to a job
+    const isEquipmentAssignedToJob = (eq, targetJobId) => {
+        if (!eq || !targetJobId) return false;
+        const jId = String(targetJobId._id || targetJobId.id || targetJobId);
+        const assignedId = String(
+            eq.assignedJob?._id ||
+            eq.assignedJob?.id ||
+            eq.assignedJobId ||
+            (typeof eq.assignedJob === 'string' ? eq.assignedJob : '') ||
+            ''
+        );
+        return assignedId === jId;
+    };
+
+    // Helper for loading fresh equipment
     const ensureEquipmentLoaded = async () => {
-        if (equipment.length > 0) return;
         try {
             const res = await api.get('/equipment');
             setEquipment(res.data || []);
@@ -291,20 +304,43 @@ const ProjectDetails = () => {
         if (!isAssigningEquipment || selectedEquipmentIds.length === 0) return;
         try {
             setIsAssigningEquipLoading(true);
-            await Promise.all(selectedEquipmentIds.map(id => api.post(`/equipment/${id}/assign`, { jobId: isAssigningEquipment })));
+            const targetJobId = String(isAssigningEquipment._id || isAssigningEquipment.id || isAssigningEquipment);
+            await Promise.all(selectedEquipmentIds.map(id => api.post(`/equipment/${id}/assign`, { jobId: targetJobId })));
             
-            // Re-fetch equipment to update UI
-            const equipRes = await api.get('/equipment');
-            setEquipment(equipRes.data);
+            // Re-fetch equipment and jobs to update UI
+            const [equipRes, jobRes] = await Promise.all([
+                api.get('/equipment'),
+                api.get(`/jobs?projectId=${projectId}`)
+            ]);
+            setEquipment(equipRes.data || []);
+            if (jobRes.data) setJobs(jobRes.data);
             
             setIsAssigningEquipment(null);
             setSelectedEquipmentIds([]);
             setEquipSearch('');
         } catch (err) {
-            console.error(err);
+            console.error('Error assigning equipment:', err);
             alert('Failed to assign equipment');
         } finally {
             setIsAssigningEquipLoading(false);
+        }
+    };
+
+    const handleReturnEquipment = async (equipId) => {
+        try {
+            setReturningEquipId(equipId);
+            await api.post(`/equipment/${equipId}/return`);
+            const [equipRes, jobRes] = await Promise.all([
+                api.get('/equipment'),
+                api.get(`/jobs?projectId=${projectId}`)
+            ]);
+            setEquipment(equipRes.data || []);
+            if (jobRes.data) setJobs(jobRes.data);
+        } catch (err) {
+            console.error('Error returning equipment:', err);
+            alert('Failed to return equipment');
+        } finally {
+            setReturningEquipId(null);
         }
     };
 
@@ -452,18 +488,6 @@ const ProjectDetails = () => {
             setProjectDeficiencies(prev => prev.map(d => d._id === id ? { ...d, status } : d));
         } catch (err) {
             console.error('Error updating status:', err);
-        }
-    };
-
-    const handleReturnEquipment = async (equipId) => {
-        try {
-            setReturningEquipId(equipId);
-            await api.post(`/equipment/${equipId}/return`);
-            setEquipment(prev => prev.map(e => e._id === equipId ? { ...e, assignedJob: null } : e));
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setReturningEquipId(null);
         }
     };
 
@@ -1245,7 +1269,7 @@ const ProjectDetails = () => {
                                                                 <button
                                                                     onClick={async () => {
                                                                         await ensureEquipmentLoaded();
-                                                                        setIsAssigningEquipment(job._id);
+                                                                        setIsAssigningEquipment(job._id || job.id);
                                                                         setSelectedEquipmentIds([]);
                                                                     }}
                                                                     className="w-5 h-5 flex items-center justify-center rounded-md bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
@@ -1257,13 +1281,13 @@ const ProjectDetails = () => {
 
                                                         </div>
                                                         <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full">
-                                                            {equipment.filter(e => (e.assignedJob?._id === job._id || e.assignedJob === job._id)).length}
+                                                            {equipment.filter(e => isEquipmentAssignedToJob(e, job._id || job.id)).length}
                                                         </span>
                                                     </div>
 
                                                     <div className="space-y-1.5">
-                                                        {equipment.filter(e => (e.assignedJob?._id === job._id || e.assignedJob === job._id)).map(e => (
-                                                            <div key={e._id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl p-2 group/equip">
+                                                        {equipment.filter(e => isEquipmentAssignedToJob(e, job._id || job.id)).map(e => (
+                                                            <div key={e._id || e.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl p-2 group/equip">
                                                                 <div className="flex items-center gap-2 min-w-0">
                                                                     <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${e.category === 'Small Tools' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
                                                                         <Briefcase size={12} />
@@ -1271,15 +1295,15 @@ const ProjectDetails = () => {
                                                                     <span className="text-[11px] font-bold text-slate-700 truncate">{e.name}</span>
                                                                 </div>
                                                                 <button
-                                                                    onClick={() => handleReturnEquipment(e._id)}
-                                                                    disabled={returningEquipId === e._id}
+                                                                    onClick={() => handleReturnEquipment(e._id || e.id)}
+                                                                    disabled={returningEquipId === (e._id || e.id)}
                                                                     className="opacity-0 group-hover/equip:opacity-100 transition-all text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded-lg hover:bg-blue-100"
                                                                 >
-                                                                    {returningEquipId === e._id ? '...' : 'Return'}
+                                                                    {returningEquipId === (e._id || e.id) ? '...' : 'Return'}
                                                                 </button>
                                                             </div>
                                                         ))}
-                                                        {equipment.filter(e => (e.assignedJob?._id === job._id || e.assignedJob === job._id)).length === 0 && (
+                                                        {equipment.filter(e => isEquipmentAssignedToJob(e, job._id || job.id)).length === 0 && (
                                                             <p className="text-[11px] text-slate-300 font-bold italic">No equipment assigned</p>
                                                         )}
                                                     </div>
@@ -1445,56 +1469,60 @@ const ProjectDetails = () => {
                             <div className="max-h-[400px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
                                 {equipment
                                     .filter(e => {
-                                        const isAssigned = e.assignedJob && (typeof e.assignedJob === 'object' ? e.assignedJob._id : e.assignedJob);
-                                        return !isAssigned || e.status === 'idle';
+                                        const isAssigned = e.assignedJob && (typeof e.assignedJob === 'object' ? (e.assignedJob._id || e.assignedJob.id) : e.assignedJob);
+                                        return !isAssigned || e.status === 'idle' || isEquipmentAssignedToJob(e, isAssigningEquipment);
                                     })
                                     .filter(e =>
                                         (e.name || '').toLowerCase().includes(equipSearch.toLowerCase()) ||
                                         (e.type || '').toLowerCase().includes(equipSearch.toLowerCase()) ||
                                         (e.serialNumber || '').toLowerCase().includes(equipSearch.toLowerCase())
                                     )
-                                    .map(item => (
-                                        <div
-                                            key={item._id}
-                                            onClick={() => {
-                                                if (selectedEquipmentIds.includes(item._id)) {
-                                                    setSelectedEquipmentIds(selectedEquipmentIds.filter(id => id !== item._id));
-                                                } else {
-                                                    setSelectedEquipmentIds([...selectedEquipmentIds, item._id]);
-                                                }
-                                            }}
-                                            className={`flex items-center gap-4 p-4 rounded-3xl cursor-pointer transition-all border-2
-                                                ${selectedEquipmentIds.includes(item._id)
-                                                    ? 'bg-blue-50/50 border-blue-600/30 shadow-sm'
-                                                    : 'bg-white border-slate-100 hover:border-slate-200'}`}
-                                        >
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm font-black text-lg
-                                                ${item.category === 'Small Tools' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                <Briefcase size={22} />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-[15px] font-black text-slate-900 leading-tight">{item.name}</p>
-                                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded-lg bg-slate-100 text-slate-500 uppercase">
-                                                        {item.category === 'Small Tools' ? 'Tool' : 'Heavy'}
-                                                    </span>
+                                    .map(item => {
+                                        const itemId = String(item._id || item.id);
+                                        const isSelected = selectedEquipmentIds.includes(itemId);
+                                        return (
+                                            <div
+                                                key={itemId}
+                                                onClick={() => {
+                                                    if (isSelected) {
+                                                        setSelectedEquipmentIds(selectedEquipmentIds.filter(id => id !== itemId));
+                                                    } else {
+                                                        setSelectedEquipmentIds([...selectedEquipmentIds, itemId]);
+                                                    }
+                                                }}
+                                                className={`flex items-center gap-4 p-4 rounded-3xl cursor-pointer transition-all border-2
+                                                    ${isSelected
+                                                        ? 'bg-blue-50/50 border-blue-600/30 shadow-sm ring-2 ring-blue-500/20'
+                                                        : 'bg-white border-slate-100 hover:border-slate-200'}`}
+                                            >
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm font-black text-lg
+                                                    ${item.category === 'Small Tools' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                    <Briefcase size={22} />
                                                 </div>
-                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                    {item.type} <span className="mx-1 text-slate-200">|</span>
-                                                    SN: <span className="text-blue-600/70">#{item.serialNumber || 'NA'}</span>
-                                                </p>
-                                            </div>
-                                            {selectedEquipmentIds.includes(item._id) && (
-                                                <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-200">
-                                                    <Check size={14} className="text-white" />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-[15px] font-black text-slate-900 leading-tight">{item.name}</p>
+                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-lg bg-slate-100 text-slate-500 uppercase">
+                                                            {item.category === 'Small Tools' ? 'Tool' : 'Heavy'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                                        {item.type} <span className="mx-1 text-slate-200">|</span>
+                                                        SN: <span className="text-blue-600/70">#{item.serialNumber || 'NA'}</span>
+                                                    </p>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                {isSelected && (
+                                                    <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-200">
+                                                        <Check size={14} className="text-white" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
 
                                 {equipment.filter(e => {
-                                    const isAssigned = e.assignedJob && (typeof e.assignedJob === 'object' ? e.assignedJob._id : e.assignedJob);
-                                    return !isAssigned || e.status === 'idle';
+                                    const isAssigned = e.assignedJob && (typeof e.assignedJob === 'object' ? (e.assignedJob._id || e.assignedJob.id) : e.assignedJob);
+                                    return !isAssigned || e.status === 'idle' || isEquipmentAssignedToJob(e, isAssigningEquipment);
                                 }).length === 0 && (
                                     <div className="py-20 text-center bg-slate-50 rounded-[32px] border border-dashed border-slate-200">
                                         <Briefcase size={40} className="mx-auto text-slate-200 mb-3" />
@@ -1866,10 +1894,10 @@ const ProjectDetails = () => {
                                     <Briefcase size={14} className="text-blue-500" /> Equipment On Site
                                 </h4>
                                 <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 min-h-[150px]">
-                                    {equipment.filter(e => (e.assignedJob?._id === selectedJobForDetails._id || e.assignedJob === selectedJobForDetails._id)).length > 0 ? (
+                                    {equipment.filter(e => isEquipmentAssignedToJob(e, selectedJobForDetails?._id || selectedJobForDetails?.id)).length > 0 ? (
                                         <div className="flex flex-wrap gap-2">
-                                            {equipment.filter(e => (e.assignedJob?._id === selectedJobForDetails._id || e.assignedJob === selectedJobForDetails._id)).map(item => (
-                                                <span key={item._id} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-600 uppercase tracking-tight shadow-sm">
+                                            {equipment.filter(e => isEquipmentAssignedToJob(e, selectedJobForDetails?._id || selectedJobForDetails?.id)).map(item => (
+                                                <span key={item._id || item.id} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-600 uppercase tracking-tight shadow-sm">
                                                     {item.name}
                                                 </span>
                                             ))}
@@ -2983,10 +3011,11 @@ const ProjectDetails = () => {
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Phone Number</label>
                                     <input 
                                         type="tel" 
+                                        maxLength={10}
                                         value={newContact.phone} 
-                                        onChange={e => setNewContact({...newContact, phone: e.target.value})}
+                                        onChange={e => setNewContact({...newContact, phone: e.target.value.replace(/\D/g, '').slice(0, 10)})}
                                         className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-bold text-slate-900 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all outline-none placeholder:text-slate-300"
-                                        placeholder="(555) 555-0123"
+                                        placeholder="10-digit number"
                                     />
                                 </div>
                                 

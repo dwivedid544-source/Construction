@@ -223,10 +223,11 @@ const Settings = () => {
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Contact Number</label>
                     <input
-                      type="text"
+                      type="tel"
+                      maxLength={10}
                       value={profile.phone}
-                      placeholder="e.g. +1 234 567 890"
-                      onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                      placeholder="10-digit number"
+                      onChange={(e) => setProfile({ ...profile, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
@@ -368,7 +369,7 @@ const RoleSettings = () => {
         permissionsMap[r.name] = r.permissions;
       });
       setAllPermissions(permissionsMap);
-      const ALLOWED_ROLES = ['PM', 'FOREMAN', 'WORKER', 'SUBCONTRACTOR', 'CLIENT'];
+      const ALLOWED_ROLES = ['PM', 'FOREMAN', 'ENGINEER', 'WORKER', 'SUBCONTRACTOR', 'COMPANY_OWNER', 'CLIENT', 'SUPER_ADMIN'];
       setRoles(response.data.filter(r => ALLOWED_ROLES.includes(r.name)));
     } catch (error) {
       console.error('Error fetching roles:', error);
@@ -1072,10 +1073,11 @@ const InvoiceTemplateSettings = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Billing Phone Number</label>
                 <input
-                  type="text"
+                  type="tel"
+                  maxLength={10}
                   value={template.phone}
-                  onChange={(e) => setTemplate({ ...template, phone: e.target.value })}
-                  placeholder="e.g. +91 98765 43210"
+                  onChange={(e) => setTemplate({ ...template, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                  placeholder="10-digit number"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
                 />
               </div>
